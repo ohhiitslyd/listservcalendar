@@ -18,7 +18,7 @@ const {
     GOOGLE_CLIENT_ID,
     GOOGLE_CLIENT_SECRET,
     GOOGLE_REDIRECT_URI,
-    FRONTEND_URL = 'http://localhost:5173 '
+    FRONTEND_URL = 'http://localhost:5173'
 } = process.env;
 
 if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET || !GOOGLE_REDIRECT_URI) {
