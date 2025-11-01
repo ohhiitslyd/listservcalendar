@@ -6,6 +6,7 @@ import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import Database from 'better-sqlite3';
+import crypto from 'crypto';
 
 dotenv.config();
 
@@ -36,17 +37,31 @@ app.use(session({
     cookie: {
         httpOnly: true,
         sameSite: 'lax',
-        secure: false // set to true behind HTTPS/proxy in production
+        secure: false
     }
 }));
 
-// SQLite for draft events
+// SQLite setup
 const db = new Database(path.join(__dirname, 'db.sqlite'));
-db.exec('CREATE TABLE IF NOT EXISTS drafts(id TEXT PRIMARY KEY, user_id TEXT NOT NULL, title TEXT, description TEXT, location TEXT, start TEXT NOT NULL, end TEXT, all_day INTEGER DEFAULT 0, created_at TEXT DEFAULT CURRENT_TIMESTAMP, updated_at TEXT DEFAULT CURRENT_TIMESTAMP);');
-const draftInsert = db.prepare('INSERT INTO drafts(id, user_id, title, description, location, start, end, all_day) VALUES(@id, @user_id, @title, @description, @location, @start, @end, @all_day)');
-const draftUpdate = db.prepare('UPDATE drafts SET title = @title, description = @description, location = @location, start = @start, end = @end, all_day = @all_day, updated_at = CURRENT_TIMESTAMP WHERE id = @id AND user_id = @user_id');
-const draftDelete = db.prepare('DELETE FROM drafts WHERE id = @id AND user_id = @user_id');
-const draftByUser = db.prepare('SELECT * FROM drafts WHERE user_id =?');
+db.exec(`CREATE TABLE IF NOT EXISTS drafts(
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    title TEXT,
+    description TEXT,
+    location TEXT,
+    start TEXT NOT NULL,
+    end TEXT,
+    all_day INTEGER DEFAULT 0,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+);`);
+
+const draftInsert = db.prepare(`INSERT INTO drafts(id, user_id, title, description, location, start, end, all_day)
+    VALUES(@id, @user_id, @title, @description, @location, @start, @end, @all_day)`);
+const draftUpdate = db.prepare(`UPDATE drafts SET title=@title, description=@description, location=@location, 
+    start=@start, end=@end, all_day=@all_day, updated_at=CURRENT_TIMESTAMP WHERE id=@id AND user_id=@user_id`);
+const draftDelete = db.prepare('DELETE FROM drafts WHERE id=@id AND user_id=@user_id');
+const draftByUser = db.prepare('SELECT * FROM drafts WHERE user_id=?');
 
 function ensureAuthed(req, res, next) {
     if (!req.session.tokens || !req.session.user) {
@@ -61,24 +76,51 @@ function getOAuthClient(req) {
         GOOGLE_CLIENT_SECRET,
         GOOGLE_REDIRECT_URI
     );
-    if (req.session.tokens) {
-        oauth2Client.setCredentials(req.session.tokens);
-    }
-    // Update session if tokens are refreshed
+    if (req.session.tokens) oauth2Client.setCredentials(req.session.tokens);
     oauth2Client.on('tokens', (tokens) => {
         req.session.tokens = { ...req.session.tokens, ...tokens };
     });
     return oauth2Client;
 }
 
-// Auth routes
+/* 🧩 Helper: Ensure ListServ Events calendar exists */
+async function getOrCreateListServCalendar(req, oauth2Client) {
+    if (req.session.listservCalendarId) {
+        return { id: req.session.listservCalendarId, created: false };
+    }
+
+    const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
+    const list = await calendar.calendarList.list();
+    const existing = (list.data.items || []).find(
+        c => c.summary && c.summary.toLowerCase() === 'listserv events'
+    );
+
+    if (existing) {
+        req.session.listservCalendarId = existing.id;
+        return { id: existing.id, created: false };
+    }
+
+    const newCal = await calendar.calendars.insert({
+        requestBody: {
+            summary: 'ListServ Events',
+            description: 'Dedicated calendar for ListServ app',
+            timeZone: 'America/Los_Angeles'
+        }
+    });
+
+    await calendar.calendarList.insert({ requestBody: { id: newCal.data.id } });
+    req.session.listservCalendarId = newCal.data.id;
+    return { id: newCal.data.id, created: true };
+}
+
+// --- AUTH ---
 app.get('/auth/google', (req, res) => {
     const oauth2Client = getOAuthClient(req);
     const scopes = [
         'openid',
         'email',
         'profile',
-        'https://www.googleapis.com/auth/calendar ' // read/write
+        'https://www.googleapis.com/auth/calendar'
     ];
     const url = oauth2Client.generateAuthUrl({
         access_type: 'offline',
@@ -95,16 +137,17 @@ app.get('/auth/google/callback', async (req, res) => {
         const { tokens } = await oauth2Client.getToken(code);
         req.session.tokens = tokens;
 
-        // Fetch user info
         oauth2Client.setCredentials(tokens);
         const oauth2 = google.oauth2({ version: 'v2', auth: oauth2Client });
         const { data: userinfo } = await oauth2.userinfo.get();
-        // userinfo.id is stable; fallback to email if needed
         req.session.user = {
             id: userinfo.id || userinfo.email,
             email: userinfo.email,
             name: userinfo.name
         };
+
+        // Ensure calendar exists on login
+        await getOrCreateListServCalendar(req, oauth2Client);
 
         res.redirect(FRONTEND_URL);
     } catch (err) {
@@ -125,21 +168,43 @@ app.get('/api/me', (req, res) => {
     res.json({ user: req.session.user });
 });
 
-// Get merged events: Google + drafts
-app.get('/api/events', ensureAuthed, async (req, res) => {
+/* 🆕 Get current working calendar info */
+app.get('/api/calendar', ensureAuthed, async (req, res) => {
     try {
         const oauth2Client = getOAuthClient(req);
         const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
 
-        const now = new Date();
-        const defaultTimeMin = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString();
-        const defaultTimeMax = new Date(now.getFullYear(), now.getMonth() + 3, 0, 23, 59, 59).toISOString();
+        const { id: calendarId, created } = await getOrCreateListServCalendar(req, oauth2Client);
+        const { data } = await calendar.calendars.get({ calendarId });
 
-        const timeMin = req.query.timeMin || defaultTimeMin;
-        const timeMax = req.query.timeMax || defaultTimeMax;
+        res.json({
+            id: data.id,
+            summary: data.summary,
+            timeZone: data.timeZone,
+            accessRole: data.accessRole || 'unknown',
+            created
+        });
+    } catch (err) {
+        console.error('/api/calendar error', err);
+        res.status(500).json({ error: 'Failed to fetch calendar info' });
+    }
+});
+
+// --- EVENTS ---
+app.get('/api/events', ensureAuthed, async (req, res) => {
+    try {
+        const oauth2Client = getOAuthClient(req);
+        const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
+        const { id: calendarId } = await getOrCreateListServCalendar(req, oauth2Client);
+
+        const now = new Date();
+        const timeMin = req.query.timeMin ||
+            new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString();
+        const timeMax = req.query.timeMax ||
+            new Date(now.getFullYear(), now.getMonth() + 3, 0, 23, 59, 59).toISOString();
 
         const googleResp = await calendar.events.list({
-            calendarId: 'primary',
+            calendarId,
             timeMin,
             timeMax,
             singleEvents: true,
@@ -180,13 +245,13 @@ app.get('/api/events', ensureAuthed, async (req, res) => {
     }
 });
 
-// Create a draft event
+// --- CREATE DRAFT ---
 app.post('/api/drafts', ensureAuthed, (req, res) => {
     try {
         const { title, description, location, start, end, allDay } = req.body;
         if (!start) return res.status(400).json({ error: 'start required' });
 
-        const id = `draft_${cryptoRandomId()}`;
+        const id = `draft_${crypto.randomBytes(12).toString('hex')}`;
         draftInsert.run({
             id,
             user_id: req.session.user.id,
@@ -204,29 +269,7 @@ app.post('/api/drafts', ensureAuthed, (req, res) => {
     }
 });
 
-// Update a draft (optional; used if you add edit UI)
-app.put('/api/drafts/:id', ensureAuthed, (req, res) => {
-    try {
-        const { id } = req.params; // raw draft id without prefix expected
-        const { title, description, location, start, end, allDay } = req.body;
-        draftUpdate.run({
-            id,
-            user_id: req.session.user.id,
-            title: title || '',
-            description: description || '',
-            location: location || '',
-            start,
-            end: end || null,
-            all_day: allDay ? 1 : 0
-        });
-        res.json({ ok: true });
-    } catch (err) {
-        console.error('Update draft error', err);
-        res.status(500).json({ error: 'Failed to update draft' });
-    }
-});
-
-// Delete: works for both draft and google events by id prefix
+// --- DELETE EVENT ---
 app.delete('/api/events/:compoundId', ensureAuthed, async (req, res) => {
     try {
         const { compoundId } = req.params;
@@ -238,7 +281,8 @@ app.delete('/api/events/:compoundId', ensureAuthed, async (req, res) => {
         if (source === 'google') {
             const oauth2Client = getOAuthClient(req);
             const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
-            await calendar.events.delete({ calendarId: 'primary', eventId: rawId });
+            const { id: calendarId } = await getOrCreateListServCalendar(req, oauth2Client);
+            await calendar.events.delete({ calendarId, eventId: rawId });
             return res.json({ ok: true });
         }
         res.status(400).json({ error: 'Unknown event source' });
@@ -248,7 +292,7 @@ app.delete('/api/events/:compoundId', ensureAuthed, async (req, res) => {
     }
 });
 
-// Publish a draft -> create on Google, then delete the draft
+// --- PUBLISH DRAFT ---
 app.post('/api/events/:compoundId/publish', ensureAuthed, async (req, res) => {
     try {
         const { compoundId } = req.params;
@@ -260,59 +304,44 @@ app.post('/api/events/:compoundId/publish', ensureAuthed, async (req, res) => {
 
         const oauth2Client = getOAuthClient(req);
         const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
+        const { id: calendarId } = await getOrCreateListServCalendar(req, oauth2Client);
 
         const resource = {
             summary: row.title || '',
             description: row.description || '',
-            location: row.location || '',
+            location: row.location || ''
         };
 
         if (row.all_day) {
-            // All-day events use 'date' (end date is exclusive)
-            resource.start = { date: row.start }; // expect YYYY-MM-DD
-            resource.end = { date: row.end || row.start }; // if end missing, single-day
+            resource.start = { date: row.start };
+            resource.end = { date: row.end || row.start };
         } else {
             resource.start = { dateTime: row.start };
             resource.end = { dateTime: row.end || row.start };
         }
 
         const insertResp = await calendar.events.insert({
-            calendarId: 'primary',
-            resource
+            calendarId,
+            requestBody: resource
         });
 
-        // Remove local draft after publish
         draftDelete.run({ id: rawId, user_id: req.session.user.id });
 
-        res.json({
-            ok: true,
-            published: {
-                id: `google:${insertResp.data.id}`
-            }
-        });
+        res.json({ ok: true, published: { id: `google:${insertResp.data.id}` } });
     } catch (err) {
         console.error('Publish draft error', err);
         res.status(500).json({ error: 'Failed to publish draft' });
     }
 });
 
-// Utility to generate local ids
-function cryptoRandomId() {
-    return [...crypto.getRandomValues(new Uint8Array(12))]
-        .map(b => b.toString(16).padStart(2, '0')).join('');
-}
-
-// Serve client build in production
+// --- STATIC SERVE ---
 const clientDist = path.join(__dirname, '..', 'client', 'dist');
 app.use(express.static(clientDist));
 app.get('*', (req, res, next) => {
-    // Only serve index.html if it exists (in prod after build)
     if (!req.path.startsWith('/api') && !req.path.startsWith('/auth')) {
         try {
             return res.sendFile(path.join(clientDist, 'index.html'));
-        } catch {
-            // in dev, frontend runs separately
-        }
+        } catch { }
     }
     next();
 });
