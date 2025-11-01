@@ -127,9 +127,9 @@ function App() {
                     headerToolbar={{
                         left: 'prev,next today',
                         center: 'title',
-                        right: 'dayGridMonth,timeGridWeek,timeGridDay'
+                        right: ''
                     }}
-                    initialView="dayGridMonth"
+                    initialView="dayGridWeek"
                     selectable={true}
                     selectMirror={true}
                     select={onSelect}
