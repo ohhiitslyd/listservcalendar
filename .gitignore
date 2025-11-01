@@ -1,0 +1,17 @@
+
+# Dependencies
+node_modules/
+
+# Vite build cache
+.vite/
+
+# Production build folder
+dist/
+
+# Environment variables
+.env
+.env.*
+
+# Mac system files
+.DS_Store
+
