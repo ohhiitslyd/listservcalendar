@@ -79,9 +79,7 @@ function App() {
         const id = ev.id; // in form 'draft:...' or 'google:...'
         const isDraft = id.startsWith('draft:');
 
-        const options = isDraft
-            ? ['Publish', 'Delete', 'Cancel']
-            : ['Delete', 'Cancel'];
+        const options = isDraft ? ['Publish', 'Delete', 'Cancel'] : ['Delete', 'Cancel'];
 
         const choice = window.prompt(`Event: ${ev.title}\nChoose: ${options.join(' / ')}`);
         if (!choice) return;
@@ -106,45 +104,133 @@ function App() {
     };
 
     return (
-        <div style={{ maxWidth: 1200, margin: '20px auto', padding: 16 }}>
-            <h2>Calendar Sync</h2>
-            <div style={{ marginBottom: 12 }}>
-                {user ? (
-                    <div>
-                        <span>Signed in as {user.name || user.email}</span>
-                        <button style={{ marginLeft: 8 }} onClick={logout}>Logout</button>
-                        <button style={{ marginLeft: 8 }} onClick={fetchEvents}>Refresh</button>
-                    </div>
-                ) : (
-                    <button onClick={login}>Sign in with Google</button>
-                )}
+        <div
+            style={{
+                display: 'flex',
+                flexDirection: 'column',
+                height: '100vh',
+                overflow: 'hidden'
+            }}
+        >
+            {/* Fixed Header */}
+            <div
+                style={{
+                    flexShrink: 0,
+                    padding: '20px',
+                    borderBottom: '1px solid #ddd',
+                    backgroundColor: '#fff'
+                }}
+            >
+                <h2 style={{ margin: 0, marginBottom: 12 }}>Calendar Sync</h2>
+                <div style={{ marginBottom: 12 }}>
+                    {user ? (
+                        <div>
+                            <span>Signed in as {user.name || user.email}</span>
+                            <button style={{ marginLeft: 8 }} onClick={logout}>
+                                Logout
+                            </button>
+                            <button style={{ marginLeft: 8 }} onClick={fetchEvents}>
+                                Refresh
+                            </button>
+                        </div>
+                    ) : (
+                        <button onClick={login}>Sign in with Google</button>
+                    )}
+                </div>
             </div>
 
-            <div>
-                <FullCalendarReact
-                    ref={calendarRef}
-                    plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
-                    headerToolbar={{
-                        left: 'prev,next today',
-                        center: 'title',
-                        right: 'dayGridMonth,timeGridWeek,timeGridDay'
+            {/* Main Content Area with Panels */}
+            <div
+                style={{
+                    flex: 1,
+                    overflow: 'hidden',
+                    display: 'flex',
+                    flexDirection: 'row'
+                }}
+            >
+                {/* Left Panel - Filtering (Future) */}
+                <div
+                    style={{
+                        flexShrink: 0,
+                        width: '250px',
+                        borderRight: '1px solid #ddd',
+                        backgroundColor: '#f9f9f9',
+                        padding: '20px',
+                        overflow: 'auto'
                     }}
-                    initialView="dayGridMonth"
-                    selectable={true}
-                    selectMirror={true}
-                    select={onSelect}
-                    events={events}
-                    eventClick={onEventClick}
-                    height="auto"
-                />
+                >
+                    <h3 style={{ marginTop: 0, fontSize: '14px', fontWeight: '600' }}>Filters</h3>
+                    <p style={{ fontSize: '12px', color: '#666', margin: 0 }}>Filtering panel placeholder</p>
+                </div>
+
+                {/* Calendar Container - Fixed Header, Scrollable Body */}
+                <div
+                    style={{
+                        flex: 1,
+                        overflow: 'hidden',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        padding: '20px'
+                    }}
+                >
+                    <div
+                        style={{
+                            flex: 1,
+                            overflow: 'hidden',
+                            minHeight: 0
+                        }}
+                    >
+                        <FullCalendarReact
+                            ref={calendarRef}
+                            plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
+                            headerToolbar={{
+                                left: 'prev,next today',
+                                center: 'title',
+                                right: 'dayGridMonth,timeGridWeek,timeGridDay'
+                            }}
+                            initialView="dayGridMonth"
+                            selectable={true}
+                            selectMirror={true}
+                            select={onSelect}
+                            events={events}
+                            eventClick={onEventClick}
+                            height="100%"
+                        />
+                    </div>
+                </div>
+
+                {/* Right Panel - Event Details (Future) */}
+                <div
+                    style={{
+                        flexShrink: 0,
+                        width: '300px',
+                        borderLeft: '1px solid #ddd',
+                        backgroundColor: '#f9f9f9',
+                        padding: '20px',
+                        overflow: 'auto'
+                    }}
+                >
+                    <h3 style={{ marginTop: 0, fontSize: '14px', fontWeight: '600' }}>Event Details</h3>
+                    <p style={{ fontSize: '12px', color: '#666', margin: 0 }}>Event card display placeholder</p>
+                </div>
             </div>
 
-            <p style={{ marginTop: 16 }}>
-                Notes:
-                <br />- Click and drag on the calendar to create a draft event (not published).
-                <br />- Click a draft to Publish or Delete.
-                <br />- Click a Google event to Delete it from both the app and Google Calendar.
-            </p>
+            {/* Optional Fixed Footer */}
+            <div
+                style={{
+                    flexShrink: 0,
+                    padding: '16px 20px',
+                    borderTop: '1px solid #ddd',
+                    backgroundColor: '#fff',
+                    fontSize: '12px',
+                    color: '#666'
+                }}
+            >
+                <p style={{ margin: 0 }}>
+                    Notes: Click and drag to create a draft event. Click a draft to Publish or Delete. Click a Google
+                    event to Delete it from both the app and Google Calendar.
+                </p>
+            </div>
         </div>
     );
 }
