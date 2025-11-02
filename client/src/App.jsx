@@ -127,7 +127,7 @@ function App() {
                     headerToolbar={{
                         left: 'prev,next today',
                         center: 'title',
-                        right: ''
+                        right: 'timeGridWeek,timeGridDay'
                     }}
                     initialView="timeGridWeek"
                     selectable={true}
