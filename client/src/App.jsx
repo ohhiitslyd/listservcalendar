@@ -7,7 +7,10 @@ import "./App.css";
 
 function App() {
   const [user, setUser] = useState(null);
+  const [calendars, setCalendars] = useState([]);
+  const [visibleCalendars, setVisibleCalendars] = useState(new Set());
   const [events, setEvents] = useState([]);
+  const [listservCalendarId, setListservCalendarId] = useState(null);
   const calendarRef = useRef();
 
   // Modal states
@@ -30,28 +33,93 @@ function App() {
     setUser(data.user);
   };
 
-  const fetchEvents = useCallback(async () => {
-    const res = await fetch("/api/events", { credentials: "include" });
-    if (res.status === 401) return setEvents([]);
+  // Fetch calendars and set defaults
+  const fetchCalendars = async () => {
+    const res = await fetch("/api/calendars", { credentials: "include" });
+    if (!res.ok) return;
     const data = await res.json();
-    // Transform events for FullCalendar with extendedProps
-    const transformedEvents = (data.events || []).map((ev) => ({
-      ...ev,
-      extendedProps: {
-        description: ev.description || "",
-        location: ev.location || "",
-      },
-    }));
-    setEvents(transformedEvents);
-  }, []);
+    const items = data.calendars || [];
+    setCalendars(items);
+
+    // find listserv calendar id if present
+    const ls = items.find(
+      (c) => c.summary && c.summary.toLowerCase() === "listserv events"
+    );
+    if (ls) setListservCalendarId(ls.id);
+
+    // Default visible: primary + listserv (if exists)
+    const defaults = items
+      .filter(
+        (c) =>
+          c.primary ||
+          (c.summary && c.summary.toLowerCase() === "listserv events")
+      )
+      .map((c) => c.id);
+
+    // If nothing matched (rare), default to 'primary'
+    if (defaults.length === 0) defaults.push("primary");
+
+    setVisibleCalendars(new Set(defaults));
+    // fetch events for defaults
+    await fetchEvents(defaults);
+  };
+
+  // Fetch working calendar info (optional)
+  const fetchWorkingCalendar = async () => {
+    const res = await fetch("/api/calendar", { credentials: "include" });
+    if (!res.ok) return;
+    const data = await res.json();
+    if (data && data.id) {
+      setListservCalendarId(data.id);
+    }
+  };
+
+  // Fetch events for the selected calendar IDs
+  const fetchEvents = useCallback(
+    async (calendarIds) => {
+      const ids = calendarIds || Array.from(visibleCalendars);
+      const query =
+        ids && ids.length
+          ? `?calendarIds=${encodeURIComponent(ids.join(","))}`
+          : "";
+      const res = await fetch(`/api/events${query}`, {
+        credentials: "include",
+      });
+      if (res.status === 401) {
+        setEvents([]);
+        return;
+      }
+      const data = await res.json();
+      // Transform events for FullCalendar with extendedProps
+      const transformedEvents = (data.events || []).map((ev) => ({
+        ...ev,
+        extendedProps: {
+          description: ev.description || "",
+          location: ev.location || "",
+          source: ev.source,
+          calendarId: ev.calendarId || null,
+        },
+      }));
+      setEvents(transformedEvents);
+    },
+    [visibleCalendars]
+  );
 
   useEffect(() => {
     fetchMe();
   }, []);
 
   useEffect(() => {
-    if (user) fetchEvents();
-  }, [user, fetchEvents]);
+    if (user) {
+      fetchCalendars();
+      fetchWorkingCalendar();
+    } else {
+      setCalendars([]);
+      setVisibleCalendars(new Set());
+      setEvents([]);
+      setListservCalendarId(null);
+    }
+  }, [user]);
 
   const login = () => {
     window.location.href = "/auth/google";
@@ -61,6 +129,15 @@ function App() {
     await fetch("/auth/logout", { method: "POST", credentials: "include" });
     setUser(null);
     setEvents([]);
+  };
+
+  // Helper to toggle calendar visibility
+  const toggleCalendar = async (calId) => {
+    const newSet = new Set(visibleCalendars);
+    if (newSet.has(calId)) newSet.delete(calId);
+    else newSet.add(calId);
+    setVisibleCalendars(newSet);
+    await fetchEvents(Array.from(newSet));
   };
 
   const onSelect = (selectionInfo) => {
@@ -132,11 +209,30 @@ function App() {
     setEventForm({ title: "", description: "", location: "", allDay: false });
     const api = calendarRef.current?.getApi();
     api?.unselect();
-    await fetchEvents();
+    await fetchEvents(Array.from(visibleCalendars));
   };
 
   const onEventClick = (clickInfo) => {
     const ev = clickInfo.event;
+    const id = ev.id;
+    const source =
+      ev.extendedProps?.source ||
+      (id.startsWith("draft:") ? "draft" : "google");
+
+    // If it's a Google event not from ListServ, show info only
+    if (source === "google") {
+      const calendarId = ev.extendedProps?.calendarId;
+      const isListServEvent =
+        listservCalendarId && calendarId === listservCalendarId;
+
+      if (!isListServEvent) {
+        window.alert(
+          "This event is not part of the ListServ Events calendar. Edits are only allowed for ListServ Events."
+        );
+        return;
+      }
+    }
+
     setSelectedEvent(ev);
     setEventModalOpen(true);
   };
@@ -154,7 +250,7 @@ function App() {
     } else {
       setEventModalOpen(false);
       setSelectedEvent(null);
-      await fetchEvents();
+      await fetchEvents(Array.from(visibleCalendars));
     }
   };
 
@@ -168,14 +264,16 @@ function App() {
     });
     setEventModalOpen(false);
     setSelectedEvent(null);
-    await fetchEvents();
+    await fetchEvents(Array.from(visibleCalendars));
   };
+
+  const refresh = () => fetchEvents(Array.from(visibleCalendars));
 
   return (
     <div className="app-container">
       {/* Fixed Header */}
       <div className="app-header">
-        <h2>Calendar Sync</h2>
+        <h2>Calendar Sync (ListServ)</h2>
         <div className="app-header-controls">
           {user ? (
             <div>
@@ -183,7 +281,7 @@ function App() {
               <button className="app-header-button" onClick={logout}>
                 Logout
               </button>
-              <button className="app-header-button" onClick={fetchEvents}>
+              <button className="app-header-button" onClick={refresh}>
                 Refresh
               </button>
             </div>
@@ -191,6 +289,52 @@ function App() {
             <button onClick={login}>Sign in with Google</button>
           )}
         </div>
+
+        {/* Calendar Selection */}
+        {user && calendars.length > 0 && (
+          <div style={{ marginTop: 12 }}>
+            <strong>Calendars</strong>
+            <div style={{ marginTop: 8 }}>
+              {calendars.length === 0 && (
+                <div style={{ fontStyle: "italic" }}>No calendars loaded</div>
+              )}
+              {calendars.map((c) => {
+                const isListServ =
+                  c.summary && c.summary.toLowerCase() === "listserv events";
+                return (
+                  <label
+                    key={c.id}
+                    style={{
+                      marginRight: 12,
+                      display: "inline-flex",
+                      alignItems: "center",
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={visibleCalendars.has(c.id)}
+                      onChange={() => toggleCalendar(c.id)}
+                      disabled={isListServ}
+                      style={{ marginRight: 6 }}
+                    />
+                    <span>
+                      {c.summary}
+                      {c.primary ? " (primary)" : ""}
+                      {isListServ ? " (ListServ)" : ""}
+                    </span>
+                  </label>
+                );
+              })}
+            </div>
+            <div style={{ marginTop: 6, fontSize: 13, color: "#444" }}>
+              <div>
+                Notes: Primary calendar and ListServ Events are visible by
+                default. Edits (publish/delete) are only allowed on the ListServ
+                Events calendar.
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Main Content Area with Panels */}
@@ -210,9 +354,9 @@ function App() {
               headerToolbar={{
                 left: "prev,next today",
                 center: "title",
-                right: "dayGridMonth,timeGridWeek,timeGridDay",
+                right: "timeGridWeek,timeGridDay",
               }}
-              initialView="dayGridMonth"
+              initialView="timeGridWeek"
               selectable={true}
               selectMirror={true}
               select={onSelect}
@@ -396,12 +540,18 @@ function App() {
                   Publish to Google Calendar
                 </button>
               )}
-              <button
-                className="button button-danger"
-                onClick={handleDeleteEvent}
-              >
-                Delete
-              </button>
+              {/* Only show delete for drafts or ListServ events */}
+              {(selectedEvent.id.startsWith("draft:") ||
+                (selectedEvent.extendedProps?.calendarId ===
+                  listservCalendarId &&
+                  listservCalendarId)) && (
+                <button
+                  className="button button-danger"
+                  onClick={handleDeleteEvent}
+                >
+                  Delete
+                </button>
+              )}
             </div>
           </div>
         </div>
