@@ -129,7 +129,7 @@ function App() {
                         center: 'title',
                         right: ''
                     }}
-                    initialView="dayGridWeek"
+                    initialView="timeGridWeek"
                     selectable={true}
                     selectMirror={true}
                     select={onSelect}
