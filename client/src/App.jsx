@@ -13,6 +13,53 @@ function App() {
   const [listservCalendarId, setListservCalendarId] = useState(null);
   const calendarRef = useRef();
 
+  // Filter states
+  const [activeFilters, setActiveFilters] = useState(new Set());
+  const [weeklyCounts, setWeeklyCounts] = useState({});
+
+  // Filter categories
+  const CATEGORIES = {
+    "Career Development (by field/major)": [
+      "Finance",
+      "Engineering",
+      "Pre-Med",
+      "Computer Science",
+    ],
+    "Greek Life Events": ["On night events (drinks 21+)", "Phil events"],
+    "Dartmouth Related Research Opportunities": [
+      "Evergreen AI",
+      "URad opportunities",
+    ],
+    "Music / Arts": [
+      "Acapella",
+      "Orchestra",
+      "Bands",
+      "DJ Set",
+      "Dance Shows",
+      "Visual Art",
+      "Movie Screenings",
+      "Museum Exhibits",
+      "Hood",
+      "BVAC",
+    ],
+    "Free Food": ["Free Food"],
+    "Outdoors / Nature": ["DOC events"],
+    "News / Politics": ["DPU", "Political Talks"],
+    "House Community Events": [
+      "Allen House",
+      "West House",
+      "East Wheelock House",
+      "North Park House",
+      "School House",
+      "South House",
+      "Community Dinners",
+      "Community Trips",
+    ],
+    "Cultural / Religion / Theological": ["AQ", "Hillel", "KSA", "DCSA"],
+    "Dartmouth Related Academia": ["Dean Emails", "Termly Reminders"],
+    "Department Based (by department)": [],
+  };
+
   // Modal states
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [eventModalOpen, setEventModalOpen] = useState(false);
@@ -98,6 +145,7 @@ function App() {
           location: ev.location || "",
           source: ev.source,
           calendarId: ev.calendarId || null,
+          filter: ev.filter || ev.tag || null, // Add filter/tag for filtering
         },
       }));
       setEvents(transformedEvents);
@@ -130,6 +178,91 @@ function App() {
     setUser(null);
     setEvents([]);
   };
+
+  // Filter helper functions
+  const isGoogle = (e) => {
+    const id = String(e?.id || e?._def?.publicId || "");
+    return (
+      id.startsWith("google:") ||
+      e?.source === "google" ||
+      e?.provider === "google" ||
+      e?.calendarType === "google"
+    );
+  };
+
+  const getTag = (e) => {
+    const ext = e?.extendedProps || e?._def?.extendedProps || {};
+    return ext.filter || ext.tag || null;
+  };
+
+  const isCampus = (e) => !!getTag(e);
+
+  const toggleFilter = (name) => {
+    setActiveFilters((prev) => {
+      const next = new Set(prev);
+      next.has(name) ? next.delete(name) : next.add(name);
+      return next;
+    });
+  };
+
+  const clearFilters = () => setActiveFilters(new Set());
+
+  // Apply filters to calendar events
+  const applyFiltersToCalendar = useCallback(() => {
+    const api = calendarRef.current?.getApi?.();
+    if (!api) return;
+
+    const noneSelected = activeFilters.size === 0;
+
+    api.batchRendering(() => {
+      api.getEvents().forEach((evApi) => {
+        if (isGoogle(evApi)) {
+          evApi.setProp("display", "auto");
+          return;
+        }
+        if (!isCampus(evApi)) {
+          evApi.setProp("display", "auto");
+          return;
+        }
+        if (noneSelected) {
+          evApi.setProp("display", "auto");
+        } else {
+          const tag = getTag(evApi);
+          evApi.setProp("display", activeFilters.has(tag) ? "auto" : "none");
+        }
+      });
+    });
+  }, [activeFilters]);
+
+  // Calculate weekly counts for filter badges
+  useEffect(() => {
+    const api = calendarRef.current?.getApi?.();
+    const base = api?.getDate?.() ?? new Date();
+    const start = new Date(base);
+    start.setHours(0, 0, 0, 0);
+    start.setDate(start.getDate() - start.getDay());
+    const end = new Date(start);
+    end.setDate(end.getDate() + 6);
+    end.setHours(23, 59, 59, 999);
+    const counts = {};
+    Object.values(CATEGORIES)
+      .flat()
+      .forEach((f) => (counts[f] = 0));
+
+    (events || []).forEach((e) => {
+      if (!isCampus(e)) return;
+      const when = new Date(e.start || e.startStr || e.date || e.startTime);
+      if (isNaN(+when) || when < start || when > end) return;
+      const tag = getTag(e);
+      if (typeof counts[tag] === "number") counts[tag] += 1;
+    });
+    setWeeklyCounts(counts);
+  }, [events]);
+
+  // Apply filters when they change
+  useEffect(() => {
+    applyFiltersToCalendar();
+  }, [applyFiltersToCalendar, events]);
 
   // Helper to toggle calendar visibility
   const toggleCalendar = async (calId) => {
@@ -339,10 +472,98 @@ function App() {
 
       {/* Main Content Area with Panels */}
       <div className="app-content">
-        {/* Left Panel - Filtering (Future) */}
+        {/* Left Panel - Filters */}
         <div className="app-left-panel">
-          <h3>Filters</h3>
-          <p>Filtering panel placeholder</p>
+          <div
+            style={{ display: "flex", alignItems: "center", marginBottom: 12 }}
+          >
+            <h3 style={{ margin: 0, flex: 1 }}>Filters</h3>
+            <button
+              onClick={clearFilters}
+              style={{
+                fontSize: 12,
+                border: "1px solid #e5e7eb",
+                background: "#fff",
+                borderRadius: 8,
+                padding: "4px 8px",
+                cursor: "pointer",
+              }}
+            >
+              Clear
+            </button>
+          </div>
+
+          {Object.entries(CATEGORIES).map(([cat, items]) => (
+            <div key={cat} style={{ marginBottom: 16 }}>
+              <div
+                style={{
+                  fontSize: 12,
+                  fontWeight: 800,
+                  color: "#374151",
+                  marginBottom: 8,
+                  textTransform: "uppercase",
+                  letterSpacing: "0.04em",
+                }}
+              >
+                {cat}
+              </div>
+              {items.length === 0 ? (
+                <div style={{ color: "#9ca3af", fontSize: 13 }}>
+                  (No filters yet)
+                </div>
+              ) : (
+                items.map((name) => {
+                  const active = activeFilters.has(name);
+                  const count = weeklyCounts[name] ?? 0;
+                  return (
+                    <button
+                      key={name}
+                      onClick={() => toggleFilter(name)}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        width: "100%",
+                        borderRadius: 10,
+                        padding: "8px 10px",
+                        border: active
+                          ? "1px solid #3b82f6"
+                          : "1px solid #e5e7eb",
+                        background: active ? "#eff6ff" : "#fff",
+                        color: active ? "#1d4ed8" : "#111827",
+                        cursor: "pointer",
+                        fontSize: 14,
+                        marginBottom: 8,
+                      }}
+                    >
+                      <span
+                        style={{
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {name}
+                      </span>
+                      <span
+                        style={{
+                          fontSize: 12,
+                          minWidth: 26,
+                          textAlign: "center",
+                          padding: "2px 6px",
+                          borderRadius: 999,
+                          background: "#f3f4f6",
+                          border: "1px solid #e5e7eb",
+                        }}
+                      >
+                        {count}
+                      </span>
+                    </button>
+                  );
+                })
+              )}
+            </div>
+          ))}
         </div>
 
         {/* Calendar Container - Fixed Header, Scrollable Body */}
