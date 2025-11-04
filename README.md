@@ -1,11 +1,10 @@
 # We Run the School
 
-![Team Photo](Insert a Team Photo URL here)
-[*how?*](https://help.github.com/articles/about-readmes/#relative-links-and-image-paths-in-readme-files)
+![Team Photo](images/groupPic.heic)
 
 <!--TODO: short project description, some sample screenshots or mockups-->
 A public online events calendar focused on organizing Dartmouth Events in a centralized and easy to use website.
-
+![Sprint 4 Screen Shot](images/scaffold1.png)
 ## Architecture
 
 <!--TODO:  descriptions of code organization and tools and libraries used-->
