@@ -26,6 +26,6 @@ TODO: how to deploy the project
 
 ## Authors
 
-Bill Zheng, Christian Nyamekya, Lydia Jin, Lorenzo Cuellar, Memo Tangtipongkul, Walker Ball
+Bill Zheng, Christian Nyamekye, Lydia Jin, Lorenzo Cuellar, Memo Tangtipongkul, Walker Ball
 
 ## Acknowledgments
