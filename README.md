@@ -1,6 +1,6 @@
 # We Run the School
 
-![Team Photo](images/groupPic.heic)
+![Team Photo](images/groupPic.png)
 
 <!--TODO: short project description, some sample screenshots or mockups-->
 A public online events calendar focused on organizing Dartmouth Events in a centralized and easy to use website.
