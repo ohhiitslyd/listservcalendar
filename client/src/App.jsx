@@ -1,9 +1,10 @@
-import React, { useEffect, useState, useCallback, useRef } from "react";
+import React, { useEffect, useState, useCallback, useRef, useMemo } from "react"; //added useMemo
 import FullCalendarReact from "@fullcalendar/react";
 import dayGridPlugin from "@fullcalendar/daygrid";
 import timeGridPlugin from "@fullcalendar/timegrid";
 import interactionPlugin from "@fullcalendar/interaction";
 import "./App.css";
+
 
 function App() {
   const [user, setUser] = useState(null);
@@ -12,7 +13,32 @@ function App() {
   const [events, setEvents] = useState([]);
   const [listservCalendarId, setListservCalendarId] = useState(null);
   const calendarRef = useRef();
+  // beginning of added lines 
+  //added the below two lines
+  //categories from the backend
+  const [availableCats, setAvailableCats] = useState([]); 
+  //selcted frontend/user categories
+  const [selectedCats, setSelectedCats] = useState(new Set()); 
+  // Load available categories from the server to render the left panel.
+  // Endpoint was added on the backend in step 1E (/api/event-categories).
+  useEffect(() => {
+    (async () => {
+      const res = await fetch('/api/event-categories', { credentials: 'include' });
+      if (res.ok) {
+        const data = await res.json();
+        setAvailableCats(data.categories || []);
+      }
+    })();
+  }, []);
 
+  // Build ?categories=... when selectedCats changes.
+  const categoriesParam = useMemo(() => {
+    if (!selectedCats.size) return '';
+    const s = Array.from(selectedCats).join(',');
+    return `&categories=${encodeURIComponent(s)}`;
+  }, [selectedCats]);
+
+  //ending of added lines
   // Filter states
   const [activeFilters, setActiveFilters] = useState(new Set());
   const [weeklyCounts, setWeeklyCounts] = useState({});
@@ -122,22 +148,26 @@ function App() {
   };
 
   // Fetch events for the selected calendar IDs
+  //beginning of replaced old fetchEvents 
+  // Fetch events for the selected calendars, plus optional category filter.
+  // We append categoriesParam if any filters are selected.
   const fetchEvents = useCallback(
     async (calendarIds) => {
       const ids = calendarIds || Array.from(visibleCalendars);
-      const query =
-        ids && ids.length
-          ? `?calendarIds=${encodeURIComponent(ids.join(","))}`
-          : "";
-      const res = await fetch(`/api/events${query}`, {
-        credentials: "include",
-      });
+      const base = (ids && ids.length)
+        ? `?calendarIds=${encodeURIComponent(ids.join(","))}`
+        : `?`; // still put a ? so categories can append cleanly
+
+      const url = `/api/events${base}${categoriesParam}`;
+      const res = await fetch(url, { credentials: "include" });
+
       if (res.status === 401) {
         setEvents([]);
         return;
       }
       const data = await res.json();
-      // Transform events for FullCalendar with extendedProps
+
+      // Transform for FullCalendar; keep extendedProps as you had
       const transformedEvents = (data.events || []).map((ev) => ({
         ...ev,
         extendedProps: {
@@ -145,13 +175,15 @@ function App() {
           location: ev.location || "",
           source: ev.source,
           calendarId: ev.calendarId || null,
-          filter: ev.filter || ev.tag || null, // Add filter/tag for filtering
+          filter: ev.filter || ev.tag || null,
+          categories: ev.categories || [] // <- server attaches categories
         },
       }));
       setEvents(transformedEvents);
     },
-    [visibleCalendars]
+    [visibleCalendars, categoriesParam]
   );
+  // ending of replaced fetchevents changes 
 
   useEffect(() => {
     fetchMe();
@@ -168,6 +200,15 @@ function App() {
       setListservCalendarId(null);
     }
   }, [user]);
+
+  //added this 
+  // Re-fetch events when selected categories change
+  useEffect(() => {
+    if (user) {
+      fetchEvents(Array.from(visibleCalendars));
+    }
+  }, [categoriesParam, user, visibleCalendars, fetchEvents]);
+  //end of additions 
 
   const login = () => {
     window.location.href = "/auth/google";
@@ -479,7 +520,9 @@ function App() {
           >
             <h3 style={{ margin: 0, flex: 1 }}>Filters</h3>
             <button
-              onClick={clearFilters}
+              /* replaced the line below with the second below */
+              /* onClick={clearFilters} */
+              onClick={() => setSelectedCats(new Set())}
               style={{
                 fontSize: 12,
                 border: "1px solid #e5e7eb",
@@ -492,7 +535,8 @@ function App() {
               Clear
             </button>
           </div>
-
+          {/* beginning of commented out to change left panel */}
+          {/*
           {Object.entries(CATEGORIES).map(([cat, items]) => (
             <div key={cat} style={{ marginBottom: 16 }}>
               <div
@@ -562,8 +606,35 @@ function App() {
                   );
                 })
               )}
+            </div> 
+          ))} {/* end of commented out */} 
+          {/* beginning of replaced left tab */}
+          {/* Backend-driven categories (from /api/event-categories) */}
+          {availableCats.length === 0 ? (
+            <div style={{ color: "#9ca3af", fontSize: 13 }}>
+              (No categories available)
             </div>
-          ))}
+          ) : (
+            availableCats.map(cat => (
+              <label key={cat.key} style={{ display: "block", marginBottom: 8 }}>
+                <input
+                  type="checkbox"
+                  checked={selectedCats.has(cat.key)}
+                  onChange={() => {
+                    setSelectedCats(prev => {
+                      const next = new Set(prev);
+                      if (next.has(cat.key)) next.delete(cat.key);
+                      else next.add(cat.key);
+                      return next;
+                    });
+                  }}
+                  style={{ marginRight: 8 }}
+                />
+                {cat.label || cat.key}
+              </label>
+            ))
+          )}
+          {/* ending of replaced left tab */}
         </div>
 
         {/* Calendar Container - Fixed Header, Scrollable Body */}

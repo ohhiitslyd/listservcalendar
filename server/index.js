@@ -7,11 +7,52 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import Database from 'better-sqlite3';
 import crypto from 'crypto';
+// added
+import fs from 'fs'; 
 
 dotenv.config();
-
+// beginning of additions
+// Resolve file location relative to this index.js
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+// If the JSON file is next to index.js in server/
+const CATEGORY_DESCRIPTOR_PATH = path.join(__dirname, 'event_category_descriptors.json');
+/**
+ * Shape of the file (structure of tags):
+ * {
+ *   "categories": {
+ *     "Career Development": {
+ *       "label": "Career Development",
+ *       "must_include_any": [...],
+ *       "exclude_if_any": [...],
+ *       "description": "..."
+ *     },
+ *     ...
+ *   }
+ * }
+ */
+// Load the JSON once at boot
+let CATEGORY_RULES = { categories: {} };
+try {
+  const raw = fs.readFileSync(CATEGORY_DESCRIPTOR_PATH, 'utf8');
+  CATEGORY_RULES = JSON.parse(raw);
+  console.log(
+    '[categories] loaded',
+    Object.keys(CATEGORY_RULES.categories || {}).length,
+    'categories from',
+    CATEGORY_DESCRIPTOR_PATH
+  );
+} catch (e) {
+  console.warn(
+    'Could not read event_category_descriptors.json. Category filtering will be empty.',
+    e
+  );
+}
+// ending of additions 
+
+// const __filename = fileURLToPath(import.meta.url);
+// const __dirname = path.dirname(__filename);
 
 const {
   PORT = 3000,
@@ -20,7 +61,7 @@ const {
   GOOGLE_CLIENT_SECRET,
   GOOGLE_REDIRECT_URI,
   FRONTEND_URL = 'http://localhost:5173'
-} = process.env;
+} = process.env; 
 
 if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET || !GOOGLE_REDIRECT_URI) {
   console.error('Missing Google OAuth env vars. Check .env.');
@@ -91,6 +132,50 @@ async function getOrCreateListServCalendar(req, oauth2Client) {
   req.session.listservCalendarId = newCal.data.id;
   return { id: newCal.data.id, created: true };
 }
+
+// beginning of additions
+
+// --- Filtering helper Functions (event category classification) ---
+// normalize and test text
+function toTextBlob(ev) {
+  //combining fields together
+  const { title = '', description = '', location = ''} = ev || {};
+  return `${title} ${description} ${location}`.toLowerCase(); 
+}
+
+//is a non case sensitive match
+function matchesAnyKeyword(blob, keywords = []) {
+  return keywords.some((kw) => blob.includes(String(kw).toLowerCase())); 
+}
+
+/**
+ * assignCategories(ev) -> array of category keys
+ * Uses CATEGORY_RULES.categories[*].must_include_any / exclude_if_any
+ * Logic:
+ *  - If must_include_any is present: require at least one to appear
+ *  - If exclude_if_any contains a hit: skip that category
+ */
+function assignCategories(ev) {
+  const blob = toTextBlob(ev);
+  const out = [];
+
+  const cats = CATEGORY_RULES?.categories || {};
+  for (const [key, def] of Object.entries(cats)) {
+    const must = def.must_include_any || [];
+    const exc  = def.exclude_if_any || [];
+
+    // If must_include_any exists and none hit -> skip
+    if (must.length > 0 && !matchesAnyKeyword(blob, must)) continue;
+
+    // If any excluded keyword hits -> skip
+    if (exc.length > 0 && matchesAnyKeyword(blob, exc)) continue;
+
+    out.push(key); // match!
+  }
+  return out;
+}
+
+// ending of additions 
 
 // --- Auth ---
 app.get('/auth/google', (req, res) => {
@@ -166,9 +251,41 @@ app.get('/api/events', ensureAuthed, async (req,res)=>{
       id:`draft:${d.id}`, source:'draft', title:d.title||'(Draft)', description:d.description||'', location:d.location||'', start:d.start, end:d.end, allDay:!!d.all_day
     }));
 
-    res.json({ events:[...drafts,...allEvents] });
-  } catch(e){ console.error(e); res.status(500).json({error:'Failed to fetch events'}); }
-});
+    //deleted this 
+   /* res.json({ events:[...drafts,...allEvents] });
+  } catch(e){ console.error(e); res.status(500).json({error:'Failed to fetch events'}); } */
+    //beginning of additions 
+    const combined = [...drafts, ...allEvents];
+    // tagging events with categories from the JSON rules 
+    const tagged = combined.map(ev => ({...ev, categories: assignCategories(ev)}));
+
+    // if the query parameters exist, filter
+    let filtered = tagged;
+    if (req.query.categories) {
+      const reqCats = req.query.categories.split(',').map(s => s.trim()).filter(Boolean);
+      //keep the events which match any of the required categories
+      filtered = tagged.filter(ev => ev.categories?.some(c => reqCats.includes(c))); 
+    }
+
+    res.json({ events: filtered }); 
+  } catch(e) {
+    console.error(e);
+    res.status(500).json({error:'Failed to reach events'}); 
+  }
+}); 
+
+//returns category labels from the JSON (left panel) - more additions
+app.get('/api/event-categories', ensureAuthed, (req, res) => {
+  const cats = CATEGORY_RULES?.categories || {};
+  const list = Object.entries(cats).map(([key, def]) => ({
+    key,
+    label: def.label || key,
+    description: def.description || ''
+  }));
+  res.json({ categories: list });
+}); 
+
+    //ending of additions 
 
 // --- Drafts ---
 app.post('/api/drafts', ensureAuthed, (req,res)=>{

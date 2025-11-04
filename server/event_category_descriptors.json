@@ -60,7 +60,8 @@
         },
         "Dartmouth Related Academia": {
             "Label": "Dartmouth Related Academia",
-            "must_include_any": ["Dean", "Termly Reminders", "Week Reminder"]
+            "must_include_any": ["Dean", "Termly Reminders", "Week Reminder"], 
+            "description": ["Events which are centered around general academic advice for students."]
         }
     }
 }
