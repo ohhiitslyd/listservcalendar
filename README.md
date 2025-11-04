@@ -4,7 +4,7 @@
 
 <!--TODO: short project description, some sample screenshots or mockups-->
 A public online events calendar focused on organizing Dartmouth Events in a centralized and easy to use website.
-![Sprint 4 Screen Shot](images/scaffold1.png)
+![Sprint 4 Screen Shot](images/demoPic.png)
 ## Architecture
 
 <!--TODO:  descriptions of code organization and tools and libraries used-->
