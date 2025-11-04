@@ -259,12 +259,29 @@ app.get('/api/events', ensureAuthed, async (req,res)=>{
     // tagging events with categories from the JSON rules 
     const tagged = combined.map(ev => ({...ev, categories: assignCategories(ev)}));
 
-    // if the query parameters exist, filter
+    // If query parameters exist, only filter ListServ events.
+    // Non-ListServ events are ALWAYS kept, regardless of filters.
     let filtered = tagged;
     if (req.query.categories) {
-      const reqCats = req.query.categories.split(',').map(s => s.trim()).filter(Boolean);
-      //keep the events which match any of the required categories
-      filtered = tagged.filter(ev => ev.categories?.some(c => reqCats.includes(c))); 
+      const reqCats = req.query.categories
+        .split(',')
+        .map(s => s.trim())
+        .filter(Boolean);
+
+      filtered = tagged.filter(ev => {
+        // A "ListServ" event is either:
+        // 1) a Google event that belongs to the ListServ calendar, OR
+        // 2) a local draft (destined for ListServ).
+        const isListServGoogle = ev.source === 'google' && ev.calendarId === listservCalendarId;
+        const isListServDraft  = ev.source === 'draft';
+        const isListServ       = isListServGoogle || isListServDraft;
+
+        // Non-ListServ events are unaffected by filters → always keep.
+        if (!isListServ) return true;
+
+        // For ListServ events, enforce category matching.
+        return ev.categories?.some(c => reqCats.includes(c));
+      });
     }
 
     res.json({ events: filtered }); 
