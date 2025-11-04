@@ -19,8 +19,33 @@ function App() {
   const [availableCats, setAvailableCats] = useState([]); 
   //selcted frontend/user categories
   const [selectedCats, setSelectedCats] = useState(new Set()); 
+
+  // bubble counts (place inside App component) ---
+  // Compute counts per category from the current events in view, counting events that have been tagged by the backend 
+  // ListServ events are the ones that get filtered; non-ListServ stay visible.
+  const categoryCounts = useMemo(() => {
+    const counts = {};
+    // Ensure we know the ListServ calendar id (used by server to identify listserv events)
+    const lsId = listservCalendarId;
+
+    (events || []).forEach((ev) => {
+      // Identify ListServ events 
+      const isListServGoogle = ev.source === "google" && ev.calendarId === lsId;
+      const isListServDraft = ev.source === "draft";
+      const isListServ = isListServGoogle || isListServDraft;
+
+      // only count ListServ so counts match filtering
+      if (!isListServ) return; 
+
+      const cats = ev?.extendedProps?.categories || [];
+      cats.forEach((c) => {
+        counts[c] = (counts[c] || 0) + 1;
+      });
+    });
+    return counts;
+  }, [events, listservCalendarId]);
+
   // Load available categories from the server to render the left panel.
-  // Endpoint was added on the backend in step 1E (/api/event-categories).
   useEffect(() => {
     (async () => {
       const res = await fetch('/api/event-categories', { credentials: 'include' });
@@ -609,30 +634,41 @@ function App() {
             </div> 
           ))} {/* end of commented out */} 
           {/* beginning of replaced left tab */}
-          {/* Backend-driven categories (from /api/event-categories) */}
+          {/* bubbles as filters */}
           {availableCats.length === 0 ? (
             <div style={{ color: "#9ca3af", fontSize: 13 }}>
               (No categories available)
             </div>
           ) : (
-            availableCats.map(cat => (
-              <label key={cat.key} style={{ display: "block", marginBottom: 8 }}>
-                <input
-                  type="checkbox"
-                  checked={selectedCats.has(cat.key)}
-                  onChange={() => {
-                    setSelectedCats(prev => {
-                      const next = new Set(prev);
-                      if (next.has(cat.key)) next.delete(cat.key);
-                      else next.add(cat.key);
-                      return next;
-                    });
-                  }}
-                  style={{ marginRight: 8 }}
-                />
-                {cat.label || cat.key}
-              </label>
-            ))
+            <div className="filter-bubbles">
+              {availableCats.map((cat) => {
+                const key = cat.key;                 // server sends { key, label, description }
+                const label = cat.label || key;
+                const active = selectedCats.has(key);
+                const count = categoryCounts[key] || 0; // show how many events match this category
+
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    className={`filter-chip ${active ? "selected" : ""}`}
+                    onClick={() => {
+                      // Toggle selection and trigger re-fetch via your existing effect
+                      setSelectedCats((prev) => {
+                        const next = new Set(prev);
+                        if (next.has(key)) next.delete(key);
+                        else next.add(key);
+                        return next;
+                      });
+                    }}
+                    title={cat.description || label}
+                  >
+                    <span className="chip-label">{label}</span>
+                    <span className="chip-count">{count}</span>
+                  </button>
+                );
+              })}
+            </div>
           )}
           {/* ending of replaced left tab */}
         </div>
