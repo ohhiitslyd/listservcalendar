@@ -1,5 +1,5 @@
 // src/components/Calendar/Calendar.jsx
-import React, { useRef, useContext, useEffect } from "react";
+import React, { useContext, useEffect } from "react";
 import FullCalendar from "@fullcalendar/react";
 import dayGridPlugin from "@fullcalendar/daygrid";
 import timeGridPlugin from "@fullcalendar/timegrid";
@@ -9,17 +9,7 @@ import { AppContext } from "../../context/AppContext";
 import { useEvents } from "../../hooks/useEvents";
 import "./Calendar.css";
 
-/**
- * Calendar component – renders FullCalendar and wires up the
- * selection / click handlers that interact with the global AppContext.
- */
 export const Calendar = () => {
-  // -----------------------------------------------------------------
-  // 1️⃣  Hooks – must be at the top level of the component
-  // -----------------------------------------------------------------
-  const calendarRef = useRef(null); // <-- the ref used to talk to FullCalendar
-
-  // Pull everything we need from the context **once**
   const {
     user,
     events,
@@ -28,17 +18,14 @@ export const Calendar = () => {
     setCreateModalOpen,
     setSelectedEvent,
     listservCalendarId,
+    calendarRef,          // <-- now comes from context
   } = useContext(AppContext);
 
-  // Hook that knows how to hide/show events according to active filters
   const { applyFiltersToCalendar } = useEvents();
 
-  // -----------------------------------------------------------------
-  // 2️⃣  Event‑handler functions (plain functions – no hooks inside)
-  // -----------------------------------------------------------------
+  // ----- SELECT (drag‑to‑create) -----
   const handleSelect = (selectionInfo) => {
-    if (!user) return; // ignore selections when not logged in
-
+    if (!user) return;
     setSelectionInfo(selectionInfo);
     setEventForm({
       title: "",
@@ -49,13 +36,13 @@ export const Calendar = () => {
     setCreateModalOpen(true);
   };
 
+  // ----- CLICK ON EXISTING EVENT -----
   const handleEventClick = (clickInfo) => {
     const ev = clickInfo.event;
     const source =
       ev.extendedProps?.source ||
       (ev.id?.startsWith("draft:") ? "draft" : "google");
 
-    // Disallow editing non‑ListServ Google events
     if (source === "google") {
       const calendarId = ev.extendedProps?.calendarId;
       const isListServ =
@@ -67,23 +54,15 @@ export const Calendar = () => {
         return;
       }
     }
-
     setSelectedEvent(ev);
   };
 
-  // -----------------------------------------------------------------
-  // 3️⃣  Apply filter visibility whenever the filter helper changes
-  // -----------------------------------------------------------------
+  // ----- APPLY FILTER VISIBILITY AFTER EVERY RENDER -----
   useEffect(() => {
     const api = calendarRef.current?.getApi?.();
-    if (api) {
-      applyFiltersToCalendar(api);
-    }
+    if (api) applyFiltersToCalendar(api);
   }, [applyFiltersToCalendar]);
 
-  // -----------------------------------------------------------------
-  // 4️⃣  Render FullCalendar
-  // -----------------------------------------------------------------
   return (
     <div className="app-calendar-container">
       <div className="app-calendar-wrapper">
@@ -100,7 +79,7 @@ export const Calendar = () => {
           selectMirror
           select={handleSelect}
           eventClick={handleEventClick}
-          events={events}          // <-- events come from context
+          events={events}
           height="100%"
         />
       </div>

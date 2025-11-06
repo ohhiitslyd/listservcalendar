@@ -1,11 +1,8 @@
+// src/components/Filters/Filters.jsx
 import React, { useContext } from "react";
 import { AppContext } from "../../context/AppContext";
 import "./Filters.css";
 
-/**
- * This component now renders **bubble chips** (category filter bubbles)
- * fetched from the backend.
- */
 export const Filters = () => {
   const {
     availableCats,
@@ -16,9 +13,12 @@ export const Filters = () => {
 
   const clearAll = () => setSelectedCats(new Set());
 
+  // Debug – you can remove this after it works
+  console.log('Filters → availableCats:', availableCats);
+
   if (!availableCats.length) {
     return (
-      <div style={{ color: "#9ca3", fontSize: 13 }}>
+      <div style={{ color: "#9ca3af", fontSize: 13 }}>
         (No categories available)
       </div>
     );
@@ -34,14 +34,14 @@ export const Filters = () => {
       </div>
 
       <div className="filter-bubbles">
-        {availableCats.map(cat => {
-          const key = cat.key;
+        {availableCats.map((cat) => {
+          const key   = cat.key;
           const label = cat.label || key;
           const active = selectedCats.has(key);
-          const count = categoryCounts[key] || 0;
+          const count  = categoryCounts[key] || 0;
 
           const toggle = () => {
-            setSelectedCats(prev => {
+            setSelectedCats((prev) => {
               const next = new Set(prev);
               next.has(key) ? next.delete(key) : next.add(key);
               return next;
