@@ -714,36 +714,87 @@ function App() {
               >
                 &times;
               </button>
-              
-              <h3 className="modal-title"> {/* Re-using modal-title class */}
+              {/* --- 1. TITLE --- */}
+              <h3 className="modal-title"> {}
                 {selectedEvent.title || "(No title)"}
               </h3>
               
               <div className="event-details">
+
+                {/* --- 2. ORGANIZATION --- */}
+                {selectedEvent.extendedProps?.organization && (
+                  <div className="event-details-item">
+                    <strong>Hosted by:</strong>{" "}
+                    {selectedEvent.extendedProps.organization}
+                  </div>
+                )}
+                {/* --- 3. START TIME --- */}
                 <div className="event-details-item">
                   <strong>Start:</strong>{" "}
                   {selectedEvent.start
                     ? new Date(selectedEvent.start).toLocaleString()
                     : "Not set"}
                 </div>
+                {/* --- 4. END TIME --- */}
                 {selectedEvent.end && (
                   <div className="event-details-item">
                     <strong>End:</strong>{" "}
                     {new Date(selectedEvent.end).toLocaleString()}
                   </div>
                 )}
-                {selectedEvent.extendedProps?.description && (
-                  <div className="event-details-item">
-                    <strong>Description:</strong>{" "}
-                    {selectedEvent.extendedProps.description}
-                  </div>
-                )}
+                {/* --- 5. LOCATION --- */}
                 {selectedEvent.extendedProps?.location && (
                   <div className="event-details-item">
                     <strong>Location:</strong>{" "}
                     {selectedEvent.extendedProps.location}
                   </div>
                 )}
+                {/* --- 6. DESCRIPTION --- */}
+                {selectedEvent.extendedProps?.description && (
+                  <div className="event-details-item">
+                    <strong>Description:</strong>{" "}
+                    {selectedEvent.extendedProps.description}
+                  </div>
+                )}
+                {/* --- 7. TAGS --- */}
+                {selectedEvent.extendedProps?.tags &&
+                  selectedEvent.extendedProps.tags.length > 0 && (
+                    <div className="event-details-item">
+                      <strong>Tags:</strong>
+                      <div className="event-tags-container">
+                        {selectedEvent.extendedProps.tags.map((tag, index) => (
+                          <span key={index} className="event-tag">
+                            {tag}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )
+                }
+                {/* --- 8. POSTER URL --- */}
+                {selectedEvent.extendedProps?.poster_url && (
+                  <div className="event-details-item">
+                    <strong>Attachment:</strong>
+                    {selectedEvent.extendedProps.poster_url.endsWith('.pdf') ? (
+                      <a 
+                        href={selectedEvent.extendedProps.poster_url} 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="event-poster-link"
+                      >
+                        View Poster (PDF)
+                      </a>
+                    ) : (
+                      <img 
+                        src={selectedEvent.extendedProps.poster_url} 
+                        alt="Event Poster" 
+                        className="event-poster-image" 
+                      />
+                    )}
+                  </div>
+                )}
+
+                {/* --- Event Status (Published/Draft) --- */}
                 <div className="event-status">
                   {selectedEvent.id.startsWith("draft:") ? (
                     <span className="event-status-draft">● Draft</span>
@@ -755,6 +806,7 @@ function App() {
                 </div>
               </div>
               
+              {/* --- Event Action Buttons --- */}
               <div className="event-actions">
                 {selectedEvent.id.startsWith("draft:") && (
                   <button
