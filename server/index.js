@@ -373,7 +373,7 @@ app.post('/api/drafts', ensureAuthed, (req,res)=>{
       description: description || '',
       location: location || '',
       start, 
-      end: finalEnd, 
+      end, 
       all_day: allDay ? 1 : 0,
       organization: organization || '',
       tags: JSON.stringify(tags || []), // Store tags as a JSON string
@@ -417,7 +417,6 @@ app.post('/api/events/:compoundId/publish', ensureAuthed, async (req,res)=>{
       description:row.description||'', 
       location:row.location||'',
       // --- ADDED --- Store custom data in extendedProperties
-      // do we need the extended properties???
       extendedProperties: {
         shared: {
           organization: row.organization || '',
