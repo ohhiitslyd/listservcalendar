@@ -748,12 +748,6 @@ function App() {
               </div>
               
               <div className="event-actions">
-                <button
-                  className="button button-cancel"
-                  onClick={() => setSelectedEvent(null)} // Updated logic
-                >
-                  Close
-                </button>
                 {selectedEvent.id.startsWith("draft:") && (
                   <button
                     className="button button-primary"
