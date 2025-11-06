@@ -368,6 +368,10 @@ function App() {
       start: selectionInfo.startStr,
       end: selectionInfo.endStr,
       allDay: eventForm.allDay,
+      organization: eventForm.organization || "",
+      poster_url: eventForm.poster_url || "",
+      // Convert the tags string into an array, removing empty spaces
+      tags: eventForm.tags.split(',').map(tag => tag.trim()).filter(Boolean)
     };
 
     if (publishImmediately) {
