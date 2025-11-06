@@ -1,0 +1,21 @@
+/* src/components/Calendar/Calendar.css */
+
+/* The container that holds FullCalendar */
+.app-calendar-container {
+  flex: 1;                       /* take the remaining horizontal space */
+  overflow: hidden;
+}
+
+/* Wrapper gives a little padding around the calendar */
+.app-calendar-wrapper {
+  height: 100%;
+  padding: 8px;
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+/* Make FullCalendar fill the whole wrapper */
+.fc {
+  height: 100% !important;
+}

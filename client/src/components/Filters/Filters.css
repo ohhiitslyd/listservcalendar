@@ -1,0 +1,65 @@
+/* src/components/Filters/Filters.css */
+
+/* Wrapper – left panel */
+.app-left-panel {
+  width: 260px;
+  max-width: 30%;
+  min-width: 200px;
+  padding: 16px;
+  overflow-y: auto;
+}
+
+/* Title row */
+.app-left-panel h3 {
+  margin: 0 0 8px 0;
+  font-size: 1.1rem;
+}
+
+/* “Clear” button */
+.clear-filters-btn {
+  font-size: 0.85rem;
+  border: 1px solid #e5e7eb;
+  background: #fff;
+  border-radius: 8px;
+  padding: 4px 8px;
+  cursor: pointer;
+}
+.clear-filters-btn:hover {
+  background: #f3f4f6;
+}
+
+/* The bubble chips */
+.filter-bubbles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+.filter-chip {
+  display: flex;
+  align-items: center;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 999px;
+  padding: 4px 8px;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+.filter-chip:hover {
+  background: #f3f4f6;
+}
+.filter-chip.selected {
+  background: #eff6ff;          /* blue‑100 */
+  border-color: #3b82f6;
+  color: #1d4ed8;               /* blue‑700 */
+}
+.filter-chip .chip-label {
+  margin-right: 4px;
+}
+
+.filter-chip .chip-count {
+  background: #f3f4f6;
+  border-radius: 999px;
+  padding: 0 4px;
+  font-size: 0.75rem;
+}

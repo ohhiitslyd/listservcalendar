@@ -1,0 +1,97 @@
+/* src/components/EventDetails/EventDetails.css */
+
+/* Right‑hand panel */
+.app-right-panel {
+  width: 300px;
+  max-width: 30%;
+  min-width: 250px;
+  padding: 16px;
+  overflow-y: auto;
+  background: #fafafa;
+  border-left: 1px solid #e5e7eb;
+}
+
+/* Card that appears when an event is selected */
+.event-details-card {
+  position: relative;
+  background: #fff;
+  border-radius: 8px;
+  padding: 16px;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+}
+
+/* Close (×) button on the top‑right of the card */
+.close-panel-button {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background: transparent;
+  border: none;
+  font-size: 1.2rem;
+  line-height: 1;
+  cursor: pointer;
+  color: #6b7280;
+}
+.close-panel-button:hover {
+  color: #111827;
+}
+
+/* Title inside the card */
+.modal-title {
+  margin: 0 0 12px 0;
+  font-size: 1.2rem;
+  font-weight: 600;
+}
+
+/* Individual details rows */
+.event-details-item {
+  margin-bottom: 6px;
+  font-size: 0.9rem;
+}
+
+/* Status badge */
+.event-status {
+  margin-top: 12px;
+}
+.event-status-draft {
+  color: #d97706;               /* amber‑600 */
+}
+.event-status-published {
+  color: #059669;               /* emerald‑600 */
+}
+
+/* Action buttons */
+.event-actions {
+  margin-top: 16px;
+  display: flex;
+  gap: 8px;
+}
+.button {
+  flex: 1;
+  padding: 6px 12px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+.button-primary {
+  background: #3b82f6;          /* blue‑500 */
+  color: #fff;
+}
+.button-primary:hover {
+  background: #2563eb;
+}
+.button-danger {
+  background:ef4444;          /* red‑500 */
+  color: #fff;
+}
+.button-danger:hover {
+  background: #dc2626;
+}
+.button-secondary {
+  background: #e5e7eb;          /* gray‑200 */
+  color: #111827;
+}
+.button-secondary:hover {
+  background: #d1d5db;
+}

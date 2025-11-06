@@ -1,0 +1,42 @@
+// Your original static CATEGORIES object – kept untouched.
+export const CATEGORIES = {
+  "Career Development (by field/major)": [
+    "Finance",
+    "Engineering",
+    "Pre-Med",
+    "Computer Science",
+  ],
+  "Greek Life Events": ["On night events (drinks 21+)", "Phil events"],
+  "Dartmouth Related Research Opportunities": [
+    "Evergreen AI",
+    "URad opportunities",
+  ],
+  "Music / Arts": [
+    "Acapella",
+    "Orchestra",
+    "Bands",
+    "DJ Set",
+    "Dance Shows",
+    "Visual Art",
+    "Movie Screenings",
+    "Museum Exhibits",
+    "Hood",
+    "BVAC",
+  ],
+  " Food": ["Free Food"],
+  "Outdoors / Nature": ["DOC events"],
+  "News / Politics": ["DPU", "Political Talks"],
+  "House Community Events": [
+    "Allen House",
+    "West House",
+    "East Wheelock House",
+    "North Park House",
+    "School House",
+    "South House",
+    "Community Dinners",
+    "Community Trips",
+  ],
+  "Cultural / Religion / Theological": ["AQ", "Hillel", "KSA", "DCSA"],
+  "Dartmouth Related Academia": ["Dean Emails", "Termly Reminders"],
+  "Department Based (by department)": [],
+};
