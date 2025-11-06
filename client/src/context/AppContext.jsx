@@ -4,42 +4,35 @@ import React, {
   useState,
   useEffect,
   useCallback,
-  useMemo, // <-- added
+  useMemo,
 } from "react";
 
 import { api } from "../api/calendarApi";
 import { useCategories } from "../hooks/useCategories";
 import { useMemoizedCounts } from "../utils/memoizedCounts";
 
-/* --------------------------------------------------------------
-   Create the context – any component that calls `useContext(AppContext)`
-   will receive the object we expose below.
-   -------------------------------------------------------------- */
 export const AppContext = createContext(null);
 
-/* --------------------------------------------------------------
-   Provider component – holds **all** global state and actions.
-   -------------------------------------------------------------- */
 export const AppProvider = ({ children }) => {
-  // ---------- Auth ----------
+  // ---- Auth ----
   const [user, setUser] = useState(null);
 
-  // ---------- Calendars ----------
+  // ---- Calendars ----
   const [calendars, setCalendars] = useState([]);
-  const [visibleCalendars, setVisibleCalendars = useState(new Set());
+  const [visibleCalendars, setVisibleCalendars] = useState(new Set());
   const [listservCalendarId, setListservCalendarId] = useState(null);
 
-  // ---------- Events ----------
+  // ---- Events ----
   const [events, setEvents] = useState([]);
 
-  // ---------- Category bubbles ----------
-  const { availableCats, fetchCategories } = useCategories(); // loads from /api/event-categories
+  // ---- Category bubbles ----
+  const { availableCats, fetchCategories } = useCategories();
   const [selectedCats, setSelectedCats] = useState(new Set());
 
-  // ---------- Old‑style filters (still used in a few places) ----------
+  // ---- Old‑style filters (still used somewhere) ----
   const [activeFilters, setActiveFilters] = useState(new Set());
 
-  // ---------- Modal & form state ----------
+  // ---- Modal / form ----
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [selectionInfo, setSelectionInfo] = useState(null);
   const [eventForm, setEventForm] = useState({
@@ -50,84 +43,67 @@ export const AppProvider = ({ children }) => {
   });
   const [selectedEvent, setSelectedEvent] = useState(null);
 
-  // ---------- Helper: query‑string for category filtering ----------
+  // ---- Derived helpers ----------
   const categoriesParam = useMemo(() => {
     if (!selectedCats.size) return "";
     const s = Array.from(selectedCats).join(",");
     return `&categories=${encodeURIComponent(s)}`;
   }, [selectedCats]);
 
-  // ---------- Memoised count of events per category (bubble badges) ----------
   const categoryCounts = useMemoizedCounts(events, listservCalendarId);
 
-  // -----------------------------------------------------------------
-  // Auth helpers
-  // -----------------------------------------------------------------
+  // ---- Auth helpers ----
   const fetchMe = async () => {
     const data = await api.fetchMe();
     setUser(data.user);
   };
-
-  const login = () => {
-    window.location.href = "/auth/google";
-  };
+  const login = () => (window.location.href = "/auth/google");
   const logout = async () => {
     await fetch("/auth/logout", { method: "POST", credentials: "include" });
     setUser(null);
- setEvents([]);
+    setEvents([]);
   };
 
-  // -----------------------------------------------------------------
-  // Calendar fetching
-  // -----------------------------------------------------------------
+  // ---- Calendar helpers ----
   const fetchCalendars = async () => {
     const data = await api.fetchCalendars();
     const items = data.calendars || [];
     setCalendars(items);
 
-    // ---- find ListServ calendar id (if it exists) ----
-    const ls =items.find(
+    // find ListServ id
+    const ls = items.find(
       (c) => c.summary?.toLowerCase() === "listserv events"
     );
     if (ls) setListservCalendarId(ls.id);
 
-    // ---- default visible calendars: primary + ListServ (if any) ----
+    // default visible calendars (primary + ListServ)
     const defaults = items
       .filter(
         (c) => c.primary || c.summary?.toLowerCase() === "listserv events"
       )
       .map((c) => c.id);
-
-    if (!defaults.length) defaults.push("primary"); // fallback
-
+    if (!defaults.length) defaults.push("primary");
     setVisibleCalendars(new Set(defaults));
 
-    // ---- fetch events for the default set of calendars ----
     await fetchEvents(defaults);
   };
 
-  // -----------------------------------------------------------------
-  // Optional: fetch the working calendar (used only to set ListServ id)
-  // -----------------------------------------------------------------
   const fetchWorkingCalendar = async () => {
     const data = await api.fetchWorkingCalendar();
     if (data?.id) setListservCalendarId(data.id);
   };
 
-  // -----------------------------------------------------------------
-  // Event fetching (includes optional category filter)
-  // -----------------------------------------------------------------
+  // ---- Event fetching ----
   const fetchEvents = useCallback(
     async (calendarIds) => {
       const ids = calendarIds || Array.from(visibleCalendars);
       const base =
         ids.length > 0
           ? `?calendarIds=${encodeURIComponent(ids.join(","))}`
-          : "?"; // keep leading ? for categoriesParam
+          : "?";
       const url = `/api/events${base}${categoriesParam}`;
       const data = await api.fetchEvents({ calendarIds: ids, categoriesParam });
 
-      // Transform events for FullCalendar – keep extendedProps intact
       const transformed = (data.events || []).map((ev) => ({
         ...ev,
         extendedProps: {
@@ -145,25 +121,24 @@ export const AppProvider = ({ children }) => {
   );
 
   // -----------------------------------------------------------------
-  // Re‑fetch events when selected categories change
+  // Effects
   // -----------------------------------------------------------------
-  useEffect(() => {
-    if (user) {
-      fetchEvents(Array.from(visibleCalendars));
-    }
-  }, [categoriesParam, user, visibleCalendars, fetchEvents]);
-
-  // -----------------------------------------------------------------
-  // Initial load auth + category list
-  // -----------------------------------------------------------------
+  // 1️⃣ Load user & categories on mount
   useEffect(() => {
     fetchMe();
-    fetchCategories(); // load bubble categories once
   }, []);
 
-  // -----------------------------------------------------------------
-  // Load calendars & ListServ info when a user becomes available
-  // -----------------------------------------------------------------
+  // 2️⃣ Load categories *after* we know the user (auth cookie present)
+  useEffect(() => {
+    if (user) {
+      fetchCategories(user);
+    } else {
+      // optional clear when logged out
+      fetchCategories(null);
+    }
+  }, [user, fetchCategories]);
+
+  // 3️⃣ When user becomes known, load calendars & working calendar
   useEffect(() => {
     if (user) {
       fetchCalendars();
@@ -177,43 +152,51 @@ export const AppProvider = ({ children }) => {
     }
   }, [user]);
 
+  // 4️⃣ Refetch events when the category filter changes
+  useEffect(() => {
+    if (user) fetchEvents(Array.from(visibleCalendars));
+  }, [categoriesParam, user, visibleCalendars, fetchEvents]);
+
   // -----------------------------------------------------------------
   // Helper to toggle calendar visibility
   // -----------------------------------------------------------------
   const toggleCalendar = async (calId) => {
     const newSet = new Set(visibleCalendars);
-    if (newSet.has(calId)) newSet.delete(calId);
-    else newSet.add(calId);
-
+    newSet.has(calId) ? newSet.delete(calId) : newSet.add(calId);
     setVisibleCalendars(newSet);
     await fetchEvents(Array.from(newSet));
   };
 
   // -----------------------------------------------------------------
-  // Build the context value that will be provided to children
+  // Build the context value
   // -----------------------------------------------------------------
   const contextValue = {
     // auth
     user,
     login,
     logout,
+
     // calendars
     calendars,
     visibleCalendars,
     toggleCalendar,
     listservCalendarId,
+
     // events
     events,
     fetchEvents,
-    // category bubbles
+
+    // categories (bubbles)
     availableCats,
     selectedCats,
     setSelectedCats,
     categoryCounts,
-    // old filter UI
+
+    // old filters
     activeFilters,
     setActiveFilters,
-    // modal & form
+
+    // modal / form state
     createModalOpen,
     setCreateModalOpen,
     selectionInfo,
@@ -222,11 +205,9 @@ export const AppProvider = ({ children }) => {
     setEventForm,
     selectedEvent,
     setSelectedEvent,
-    // misc
-    // (you can add weeklyCounts, etc., here if you need them elsewhere)
   };
 
-  (
+  return (
     <AppContext.Provider value={contextValue}>{children}</AppContext.Provider>
   );
 };

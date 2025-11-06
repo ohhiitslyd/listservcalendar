@@ -10,7 +10,7 @@ export const useCategories = () => {
     async (user) => {
       if (!user) {
         // Not logged in – skip the request
-        setCats([]);
+        setAvailableCats([]);
         return;
       }
 
