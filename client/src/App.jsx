@@ -117,13 +117,19 @@ function App() {
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [selectionInfo, setSelectionInfo] = useState(null);
 
-  // Form state for creating events
-  const [eventForm, setEventForm] = useState({
+
+  const initialEventForm = {
     title: "",
-    description: "",
+    organization: "",
     location: "",
+    description: "",
     allDay: false,
-  });
+    tags: "", // We'll use a comma-separated string for the input
+    poster_url: "",
+  };
+
+  // Form state for creating events
+  const [eventForm, setEventForm] = useState(initialEventForm);
 
   const fetchMe = async () => {
     const res = await fetch("/api/me", { credentials: "include" });
@@ -343,9 +349,7 @@ function App() {
     if (!user) return;
     setSelectionInfo(selectionInfo);
     setEventForm({
-      title: "",
-      description: "",
-      location: "",
+      ...initialEventForm,
       allDay: selectionInfo.allDay,
     });
     setCreateModalOpen(true);
@@ -813,15 +817,15 @@ function App() {
               />
             </div>
             <div className="form-group">
-              <label className="form-label">Description</label>
-              <textarea
-                className="form-textarea"
-                value={eventForm.description}
+              <label className="form-label">Organization</label>
+              <input
+                type="text"
+                className="form-input"
+                value={eventForm.organization}
                 onChange={(e) =>
-                  setEventForm({ ...eventForm, description: e.target.value })
+                  setEventForm({ ...eventForm, organization: e.target.value })
                 }
-                placeholder="Event description (optional)"
-                rows={3}
+                placeholder="Hosting organization (optional)"
               />
             </div>
             <div className="form-group">
@@ -834,6 +838,42 @@ function App() {
                   setEventForm({ ...eventForm, location: e.target.value })
                 }
                 placeholder="Location (optional)"
+              />
+            </div>
+            <div className="form-group">
+              <label className="form-label">Description</label>
+              <textarea
+                className="form-textarea"
+                value={eventForm.description}
+                onChange={(e) =>
+                  setEventForm({ ...eventForm, description: e.target.value })
+                }
+                placeholder="Event description (optional)"
+                rows={3}
+              />
+            </div>
+            <div className="form-group">
+              <label className="form-label">Tags</label>
+              <input
+                type="text"
+                className="form-input"
+                value={eventForm.tags}
+                onChange={(e) =>
+                  setEventForm({ ...eventForm, tags: e.target.value })
+                }
+                placeholder="Comma-separated, e.g., talk, free food"
+              />
+            </div>
+            <div className="form-group">
+              <label className="form-label">Poster/Image URL</label>
+              <input
+                type="text"
+                className="form-input"
+                value={eventForm.poster_url}
+                onChange={(e) =>
+                  setEventForm({ ...eventForm, poster_url: e.target.value })
+                }
+                placeholder="https://.../poster.png (optional)"
               />
             </div>
             <div className="form-group" style={{ marginBottom: "20px" }}>
