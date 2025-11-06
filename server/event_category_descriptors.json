@@ -44,7 +44,7 @@
         },
         "News/Politics": {
             "label": "News/Politics",
-            "must_include_any": ["DPU", "Politics", "Republican", "Democrat", "Conservative", "Liberal", "Political Debate", "Symposium"],
+            "must_include_any": ["The Dartmouth", "News", "DPU", "Politics", "Republican", "Democrat", "Conservative", "Liberal", "Political Debate", "Symposium"],
             "description": "Events which are being hosted in order to discuss/further politcal views."
         },
         "House Community Events": {
