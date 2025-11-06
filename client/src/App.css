@@ -306,3 +306,64 @@
   border-color: #93c5fd;
   color: #1e3a8a;
 }
+/* Below is Right Event Panel css */
+
+.app-right-panel {
+  /* This ensures the content doesn't just overflow */
+  padding: 20px;
+  overflow-y: auto;
+}
+
+.event-details-card {
+  position: relative;
+  background-color: #fff;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  padding: 20px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.close-panel-button {
+  position: absolute;
+  top: 10px;
+  right: 15px;
+  background: none;
+  border: none;
+  font-size: 24px;
+  font-weight: bold;
+  color: #aaa;
+  cursor: pointer;
+  line-height: 1;
+}
+
+.close-panel-button:hover {
+  color: #333;
+}
+
+.event-details-placeholder {
+  text-align: center;
+  color: #888;
+  margin-top: 40px;
+}
+
+/* --- Optional: Adjust styles copied from modal --- */
+/* You might want to remove the fixed width from the modal content */
+.modal-title {
+  margin-top: 0; /* Already a class, just ensure it looks good */
+}
+
+.event-details {
+  margin-bottom: 15px;
+}
+
+.event-actions {
+  /* Make buttons stack nicely in the panel */
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.event-actions .button {
+  width: 100%;
+  margin: 0; /* Remove any old margins */
+}

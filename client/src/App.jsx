@@ -113,7 +113,7 @@ function App() {
 
   // Modal states
   const [createModalOpen, setCreateModalOpen] = useState(false);
-  const [eventModalOpen, setEventModalOpen] = useState(false);
+//  const [eventModalOpen, setEventModalOpen] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [selectionInfo, setSelectionInfo] = useState(null);
 
@@ -433,7 +433,7 @@ function App() {
     }
 
     setSelectedEvent(ev);
-    setEventModalOpen(true);
+//    setEventModalOpen(true);
   };
 
   const handlePublishEvent = async () => {
@@ -447,7 +447,7 @@ function App() {
     if (!res.ok) {
       alert("Failed to publish event");
     } else {
-      setEventModalOpen(false);
+//      setEventModalOpen(false);
       setSelectedEvent(null);
       await fetchEvents(Array.from(visibleCalendars));
     }
@@ -461,7 +461,7 @@ function App() {
       method: "DELETE",
       credentials: "include",
     });
-    setEventModalOpen(false);
+//    setEventModalOpen(false);
     setSelectedEvent(null);
     await fetchEvents(Array.from(visibleCalendars));
   };
@@ -695,10 +695,92 @@ function App() {
           </div>
         </div>
 
-        {/* Right Panel - Event Details (Future) */}
+        {/* Right Panel - Event Details */}
         <div className="app-right-panel">
-          <h3>Event Details</h3>
-          <p>Event card display placeholder</p>
+          {/* Check if an event is selected */}
+          {selectedEvent ? (
+            <div className="event-details-card">
+              <button
+                className="close-panel-button"
+                onClick={() => setSelectedEvent(null)}
+              >
+                &times;
+              </button>
+              
+              <h3 className="modal-title"> {/* Re-using modal-title class */}
+                {selectedEvent.title || "(No title)"}
+              </h3>
+              
+              <div className="event-details">
+                <div className="event-details-item">
+                  <strong>Start:</strong>{" "}
+                  {selectedEvent.start
+                    ? new Date(selectedEvent.start).toLocaleString()
+                    : "Not set"}
+                </div>
+                {selectedEvent.end && (
+                  <div className="event-details-item">
+                    <strong>End:</strong>{" "}
+                    {new Date(selectedEvent.end).toLocaleString()}
+                  </div>
+                )}
+                {selectedEvent.extendedProps?.description && (
+                  <div className="event-details-item">
+                    <strong>Description:</strong>{" "}
+                    {selectedEvent.extendedProps.description}
+                  </div>
+                )}
+                {selectedEvent.extendedProps?.location && (
+                  <div className="event-details-item">
+                    <strong>Location:</strong>{" "}
+                    {selectedEvent.extendedProps.location}
+                  </div>
+                )}
+                <div className="event-status">
+                  {selectedEvent.id.startsWith("draft:") ? (
+                    <span className="event-status-draft">● Draft</span>
+                  ) : (
+                    <span className="event-status-published">
+                      ● Published to Google Calendar
+                    </span>
+                  )}
+                </div>
+              </div>
+              
+              <div className="event-actions">
+                <button
+                  className="button button-cancel"
+                  onClick={() => setSelectedEvent(null)} // Updated logic
+                >
+                  Close
+                </button>
+                {selectedEvent.id.startsWith("draft:") && (
+                  <button
+                    className="button button-primary"
+                    onClick={handlePublishEvent}
+                  >
+                    Publish to Google Calendar
+                  </button>
+                )}
+                {(selectedEvent.id.startsWith("draft:") ||
+                  (selectedEvent.extendedProps?.calendarId ===
+                    listservCalendarId &&
+                    listservCalendarId)) && (
+                  <button
+                    className="button button-danger"
+                    onClick={handleDeleteEvent}
+                  >
+                    Delete
+                  </button>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div className="event-details-placeholder">
+              <h3>Event Details</h3>
+              <p>Click an event to see its details here.</p>
+            </div>
+          )}
         </div>
       </div>
 
@@ -797,89 +879,6 @@ function App() {
               >
                 Publish to Google Calendar
               </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Event Details Modal */}
-      {eventModalOpen && selectedEvent && (
-        <div
-          className="modal-overlay"
-          onClick={() => {
-            setEventModalOpen(false);
-            setSelectedEvent(null);
-          }}
-        >
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-            <h3 className="modal-title">
-              {selectedEvent.title || "(No title)"}
-            </h3>
-            <div className="event-details">
-              <div className="event-details-item">
-                <strong>Start:</strong>{" "}
-                {selectedEvent.start
-                  ? new Date(selectedEvent.start).toLocaleString()
-                  : "Not set"}
-              </div>
-              {selectedEvent.end && (
-                <div className="event-details-item">
-                  <strong>End:</strong>{" "}
-                  {new Date(selectedEvent.end).toLocaleString()}
-                </div>
-              )}
-              {selectedEvent.extendedProps?.description && (
-                <div className="event-details-item">
-                  <strong>Description:</strong>{" "}
-                  {selectedEvent.extendedProps.description}
-                </div>
-              )}
-              {selectedEvent.extendedProps?.location && (
-                <div className="event-details-item">
-                  <strong>Location:</strong>{" "}
-                  {selectedEvent.extendedProps.location}
-                </div>
-              )}
-              <div className="event-status">
-                {selectedEvent.id.startsWith("draft:") ? (
-                  <span className="event-status-draft">● Draft</span>
-                ) : (
-                  <span className="event-status-published">
-                    ● Published to Google Calendar
-                  </span>
-                )}
-              </div>
-            </div>
-            <div className="event-actions">
-              <button
-                className="button button-cancel"
-                onClick={() => {
-                  setEventModalOpen(false);
-                  setSelectedEvent(null);
-                }}
-              >
-                Close
-              </button>
-              {selectedEvent.id.startsWith("draft:") && (
-                <button
-                  className="button button-primary"
-                  onClick={handlePublishEvent}
-                >
-                  Publish to Google Calendar
-                </button>
-              )}
-              {/* Only show delete for drafts or ListServ events */}
-              {(selectedEvent.id.startsWith("draft:") ||
-                (selectedEvent.extendedProps?.calendarId ===
-                  listservCalendarId &&
-                  listservCalendarId)) && (
-                <button
-                  className="button button-danger"
-                  onClick={handleDeleteEvent}
-                >
-                  Delete
-                </button>
-              )}
             </div>
           </div>
         </div>
