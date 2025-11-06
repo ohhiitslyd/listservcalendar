@@ -1,0 +1,67 @@
+{
+    "categories": {
+        "Career Development": {
+            "label": "Career Development",
+            "must_include_any": ["career", "recruiting", "resume", "internship", "networking", "finance", "engineering", "Pre-Med", "Computer Science"],
+            "exclude_if_any": ["concert", "trivia", "party"],
+            "description": "Events aimed at preparing students for professional paths or job opportunities."
+        },
+        "Greek Life Events": {
+            "label": "Greek Life Events",
+            "must_include_any": ["sae", "sig nu", "tabard", "fraternity", "sorority", "drinks 21+", "Phi Delt", "AXA", "Chi Gam", "KDE", "Pi Kap", "BG", "Zete", "TDX", "Chi Delt", "Kappa"],
+            "exclude_if_any": ["collis", "museum", "lecture"],
+            "description": "Events hosted by or located in Greek houses, including social, philanthropic, and music events."
+        },
+        "Dartmouth Related Research Opportunities": {
+            "label": "Dartmouth Related Research Opportunities",
+            "must_include_any": ["Evergreen", "URad", "Research"],
+            "exclude_if_any": [],
+            "description": "Events centered around exposing students to Research opportunities."
+        }, 
+        "Music": {
+            "label": "Music",
+            "must_include_any": ["concert", "dj", "band", "a cappella", "dance show"],
+            "exclude_if_any": ["lecture", "film", "workshop"],
+            "description": "Events featuring live or recorded musical performances."
+        },
+        "Visual Art": {
+            "label": "Visual Art", 
+            "must_include_any": ["gallery", "exhibit", "museum", "art show", "visual art", "fashion show", 
+        "design showcase", "film screening", "movie", "cinema", "photography", "painting"],
+            "exclude_if_any": ["concert", "dj", "band", "a cappella"], 
+            "description": "Events that's main focus is the visual arts and not the auditory arts."
+        },
+        "Free Food": {
+            "label": "Free Food",
+            "must_include_any": ["free", "pizza", "food", "ice cream", "snack", "refreshments"],
+            "exclude_if_any": ["purchase", "cash", "discount"],
+            "description": "Events offering complimentary food or bevearges to attendees."
+        },
+        "OutDoors/Nature": {
+            "label": "Outdoors/Nature",
+            "must_include_any": ["DOC", "Dartmouth Outdoor Club"],
+            "description": "Events which are being sponsored, hosted, or co-hosted by the DOC."
+        },
+        "News/Politics": {
+            "label": "News/Politics",
+            "must_include_any": ["DPU", "Politics", "Republican", "Democrat", "Conservative", "Liberal", "Political Debate", "Symposium"],
+            "description": "Events which are being hosted in order to discuss/further politcal views."
+        },
+        "House Community Events": {
+            "Label": "House Community Events",
+            "must_include_any": ["Allen House", "West House", "East Wheelock House", "North Park House",
+        "School House", "South House", "Community Dinners", "Community Trips"],
+            "description": "Events which are being hosted, co-hosted, or sponsored by a Dartmouth Housing Community."
+        },
+        "Cultural/Religion/Theological": {
+            "Label": "Cultural/Religion/Theological",
+            "must_include_any": ["AQ", "Hillel", "KSA", "DCSA"],
+            "description": "Events which are being hosted by a cultural/religious/theological group."
+        },
+        "Dartmouth Related Academia": {
+            "Label": "Dartmouth Related Academia",
+            "must_include_any": ["Dean", "Termly Reminders", "Week Reminder"], 
+            "description": ["Events which are centered around general academic advice for students."]
+        }
+    }
+}

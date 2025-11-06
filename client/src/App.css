@@ -244,6 +244,68 @@
   margin-top: 24px;
 }
 
+/* ----- Filter bubble styles ----- */
+.filter-bubbles {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;                 
+}
+
+.filter-chip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+
+  width: 100%;
+  border-radius: 999px;     
+  padding: 10px 12px;
+  border: 1px solid #e5e7eb;
+  background: #fff;
+  color: #111827;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1.2;
+
+  transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
+}
+
+.filter-chip:hover {
+  border-color: #cbd5e1;
+  background: #f9fafb;
+}
+
+.filter-chip.selected {
+  /* light blue background when selected */
+  background: #eff6ff;      
+  /* blue border */
+  border-color: #3b82f6;     
+  /* darker blue text */
+  color: #1d4ed8;            
+}
+
+.filter-chip .chip-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.filter-chip .chip-count {
+  font-size: 12px;
+  min-width: 26px;
+  text-align: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #f3f4f6;
+  border: 1px solid #e5e7eb;
+}
+
+/* When selected, make the count badge lightly blue too */
+.filter-chip.selected .chip-count {
+  background: #dbeafe;
+  border-color: #93c5fd;
+  color: #1e3a8a;
+}
 /* Below is Right Event Panel css */
 
 .app-right-panel {
