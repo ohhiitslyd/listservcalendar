@@ -9,59 +9,25 @@ import { AppContext } from "../../context/AppContext";
 import { useEvents } from "../../hooks/useEvents";
 import "./Calendar.css";
 
-export const Calendar = () => {
+// 1. ACCEPT the props from App.jsx here
+export const Calendar = ({ onSelect, onEventClick, scrollTime }) => {
+  // 2. CLEAN UP: We only need `events` and `calendarRef` from context now.
+  //    The other variables were only for the handlers you're deleting.
   const {
-    user,
     events,
-    setSelectionInfo,
-    setEventForm,
-    setCreateModalOpen,
-    setSelectedEvent,
-    listservCalendarId,
-    calendarRef,          // <-- now comes from context
+    calendarRef,
   } = useContext(AppContext);
 
   const { applyFiltersToCalendar } = useEvents();
 
-  // ----- SELECT (drag‑to‑create) -----
-  const handleSelect = (selectionInfo) => {
-    if (!user) return;
-    setSelectionInfo(selectionInfo);
-    setEventForm({
-      title: "",
-      description: "",
-      location: "",
-      allDay: selectionInfo.allDay,
-    });
-    setCreateModalOpen(true);
-  };
-
-  // ----- CLICK ON EXISTING EVENT -----
-  const handleEventClick = (clickInfo) => {
-    const ev = clickInfo.event;
-    const source =
-      ev.extendedProps?.source ||
-      (ev.id?.startsWith("draft:") ? "draft" : "google");
-
-    if (source === "google") {
-      const calendarId = ev.extendedProps?.calendarId;
-      const isListServ =
-        listservCalendarId && calendarId === listservCalendarId;
-      if (!isListServ) {
-        window.alert(
-          "This event is not part of the ListServ Events calendar. Edits are only allowed for ListServ Events."
-        );
-        return;
-      }
-    }
-    setSelectedEvent(ev);
-  };
+  // 3. DELETE the local `handleSelect` and `handleEventClick` functions.
+  //    They are now correctly passed in as props from InnerApp.
 
   // ----- APPLY FILTER VISIBILITY AFTER EVERY RENDER -----
   useEffect(() => {
     const api = calendarRef.current?.getApi?.();
     if (api) applyFiltersToCalendar(api);
-  }, [applyFiltersToCalendar]);
+  }, [applyFiltersToCalendar, calendarRef]); // Added calendarRef to dependency array
 
   return (
     <div className="app-calendar-container">
@@ -77,10 +43,13 @@ export const Calendar = () => {
           initialView="timeGridWeek"
           selectable
           selectMirror
-          select={handleSelect}
-          eventClick={handleEventClick}
           events={events}
           height="100%"
+
+          // 4. USE the props from App.jsx
+          select={onSelect}
+          eventClick={onEventClick}
+          scrollTime={scrollTime}
         />
       </div>
     </div>

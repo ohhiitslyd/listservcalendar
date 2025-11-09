@@ -124,6 +124,7 @@ const InnerApp = () => {
         <Calendar
           onSelect={handleSelect}
           onEventClick={handleEventClick}
+          scrollTime="09:00"
         />
 
         {/* RIGHT PANEL – event details */}
