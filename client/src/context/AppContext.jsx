@@ -23,6 +23,8 @@ export const AppProvider = ({ children }) => {
   const [visibleCalendars, setVisibleCalendars] = useState(new Set());
   const [listservCalendarId, setListservCalendarId] = useState(null);
   const [events, setEvents] = useState([]);
+  // Holds ALL events for the current visible calendars (NO category filter).
+  const [allEventsForCounts, setAllEventsForCounts] = useState([]);
 
   const { availableCats, fetchCategories } = useCategories(); // ← custom hook
   const [selectedCats, setSelectedCats] = useState(new Set());
@@ -50,7 +52,8 @@ export const AppProvider = ({ children }) => {
     return `&categories=${encodeURIComponent(s)}`;
   }, [selectedCats]);
 
-  const categoryCounts = useMemoizedCounts(events, listservCalendarId);
+  const categoryCounts = useMemoizedCounts(allEventsForCounts, listservCalendarId);
+
 
   /* -------------------------------------------------
      3️⃣  AUTH HELPERS
@@ -123,6 +126,37 @@ export const AppProvider = ({ children }) => {
       setEvents(transformed);
     },
     [visibleCalendars, categoriesParam]
+  );
+
+  // Fetch events for counts ONLY (NO categoriesParam). This keeps a stable, unfiltered snapshot.
+  const fetchEventsForCounts = useCallback(
+    async (calendarIds) => {
+      const ids = calendarIds || Array.from(visibleCalendars);
+      const base =
+        ids.length > 0
+          ? `?calendarIds=${encodeURIComponent(ids.join(","))}`
+          : "?";
+
+      const url = `/api/events${base}`;
+      console.log("🔎 fetchEventsForCounts →", url);
+
+      const data = await api.fetchEvents({ calendarIds: ids });
+
+      const transformed = (data.events || []).map((ev) => ({
+        ...ev,
+        extendedProps: {
+          description: ev.description ?? "",
+          location: ev.location ?? "",
+          source: ev.source,
+          calendarId: ev.calendarId ?? null,
+          filter: ev.filter ?? ev.tag ?? null,
+          categories: ev.categories ?? [],
+        },
+      }));
+
+      setAllEventsForCounts(transformed);
+    },
+    [visibleCalendars]
   );
 
   /* -------------------------------------------------
@@ -229,9 +263,19 @@ export const AppProvider = ({ children }) => {
       setVisibleCalendars(new Set());
       setEvents([]);
       setListservCalendarId(null);
+      setAllEventsForCounts([]);
       // No need to call fetchCategories(null) – the hook already clears its state when `user` is falsy
     }
   }, [user, fetchCategories]); // `fetchCategories` should be memoised (useCallback) inside the hook
+
+  // 6.2 B Maintain the unfiltered snapshot for counts (no dependency on categoriesParam).
+  useEffect(() => {
+    if (user) {
+      fetchEventsForCounts(Array.from(visibleCalendars));
+    } else {
+      setAllEventsForCounts([]);
+    }
+  }, [user, visibleCalendars, fetchEventsForCounts]);
 
   // 6.3 Refetch events when the selected category filter changes
   useEffect(() => {
