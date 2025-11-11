@@ -1,438 +1,69 @@
-import React, { useEffect, useState, useCallback, useRef, useMemo } from "react"; //added useMemo
-import FullCalendarReact from "@fullcalendar/react";
-import dayGridPlugin from "@fullcalendar/daygrid";
-import timeGridPlugin from "@fullcalendar/timegrid";
-import interactionPlugin from "@fullcalendar/interaction";
+/* -------------------------------------------------
+   src/App.jsx – entry point for the React app
+   ------------------------------------------------- */
+
+import React, { useContext } from "react";
+import { AppProvider, AppContext } from "./context/AppContext";
+
+import { Header } from "./components/Header/Header";
+import { Filters } from "./components/Filters/Filters";
+import { Calendar } from "./components/Calendar/Calendar";
+import { EventDetails } from "./components/EventDetails/EventDetails";
+import { CreateEventModal } from "./components/CreateEventModal/CreateEventModal";
+
 import "./App.css";
 
+/* -------------------------------------------------
+   InnerApp – UI that consumes the context.
+   It **does NOT** export anything; it lives only
+   this file.
+   ------------------------------------------------- */
+const InnerApp = () => {
+  const {
+    user,
+    visibleCalendars,
+    listservCalendarId,
+    fetchEvents,
+    setSelectionInfo,
+    setEventForm,
+    setCreateModalOpen,
+    setSelectedEvent,
+    selectedEvent,
+    // **NOTE:** we *do not* destructure `onSelect` or `onEventClick`
+    // because we will define them locally (see below).
+  } = useContext(AppContext);
 
-function App() {
-  const [user, setUser] = useState(null);
-  const [calendars, setCalendars] = useState([]);
-  const [visibleCalendars, setVisibleCalendars] = useState(new Set());
-  const [events, setEvents] = useState([]);
-  const [listservCalendarId, setListservCalendarId] = useState(null);
-  const calendarRef = useRef();
-  // beginning of added lines 
-  //added the below two lines
-  //categories from the backend
-  const [availableCats, setAvailableCats] = useState([]); 
-  //selcted frontend/user categories
-  const [selectedCats, setSelectedCats] = useState(new Set()); 
-
-  // bubble counts (place inside App component) ---
-  // Compute counts per category from the current events in view, counting events that have been tagged by the backend 
-  // ListServ events are the ones that get filtered; non-ListServ stay visible.
-  const categoryCounts = useMemo(() => {
-    const counts = {};
-    // Ensure we know the ListServ calendar id (used by server to identify listserv events)
-    const lsId = listservCalendarId;
-
-    (events || []).forEach((ev) => {
-      // Identify ListServ events 
-      const isListServGoogle = ev.source === "google" && ev.calendarId === lsId;
-      const isListServDraft = ev.source === "draft";
-      const isListServ = isListServGoogle || isListServDraft;
-
-      // only count ListServ so counts match filtering
-      if (!isListServ) return; 
-
-      const cats = ev?.extendedProps?.categories || [];
-      cats.forEach((c) => {
-        counts[c] = (counts[c] || 0) + 1;
-      });
-    });
-    return counts;
-  }, [events, listservCalendarId]);
-
-  // Load available categories from the server to render the left panel.
-  useEffect(() => {
-    (async () => {
-      const res = await fetch('/api/event-categories', { credentials: 'include' });
-      if (res.ok) {
-        const data = await res.json();
-        setAvailableCats(data.categories || []);
-      }
-    })();
-  }, []);
-
-  // Build ?categories=... when selectedCats changes.
-  const categoriesParam = useMemo(() => {
-    if (!selectedCats.size) return '';
-    const s = Array.from(selectedCats).join(',');
-    return `&categories=${encodeURIComponent(s)}`;
-  }, [selectedCats]);
-
-  //ending of added lines
-  // Filter states
-  const [activeFilters, setActiveFilters] = useState(new Set());
-  const [weeklyCounts, setWeeklyCounts] = useState({});
-
-  // Filter categories
-  const CATEGORIES = {
-    "Career Development (by field/major)": [
-      "Finance",
-      "Engineering",
-      "Pre-Med",
-      "Computer Science",
-    ],
-    "Greek Life Events": ["On night events (drinks 21+)", "Phil events"],
-    "Dartmouth Related Research Opportunities": [
-      "Evergreen AI",
-      "URad opportunities",
-    ],
-    "Music / Arts": [
-      "Acapella",
-      "Orchestra",
-      "Bands",
-      "DJ Set",
-      "Dance Shows",
-      "Visual Art",
-      "Movie Screenings",
-      "Museum Exhibits",
-      "Hood",
-      "BVAC",
-    ],
-    "Free Food": ["Free Food"],
-    "Outdoors / Nature": ["DOC events"],
-    "News / Politics": ["DPU", "Political Talks"],
-    "House Community Events": [
-      "Allen House",
-      "West House",
-      "East Wheelock House",
-      "North Park House",
-      "School House",
-      "South House",
-      "Community Dinners",
-      "Community Trips",
-    ],
-    "Cultural / Religion / Theological": ["AQ", "Hillel", "KSA", "DCSA"],
-    "Dartmouth Related Academia": ["Dean Emails", "Termly Reminders"],
-    "Department Based (by department)": [],
-  };
-
-  // Modal states
-  const [createModalOpen, setCreateModalOpen] = useState(false);
-//  const [eventModalOpen, setEventModalOpen] = useState(false);
-  const [selectedEvent, setSelectedEvent] = useState(null);
-  const [selectionInfo, setSelectionInfo] = useState(null);
-
-
-  const initialEventForm = {
-    title: "",
-    organization: "",
-    location: "",
-    description: "",
-    allDay: false,
-    tags: "", // We'll use a comma-separated string for the input
-    poster_url: "",
-  };
-
-  // Form state for creating events
-  const [eventForm, setEventForm] = useState(initialEventForm);
-
-  const fetchMe = async () => {
-    const res = await fetch("/api/me", { credentials: "include" });
-    const data = await res.json();
-    setUser(data.user);
-  };
-
-  // Fetch calendars and set defaults
-  const fetchCalendars = async () => {
-    const res = await fetch("/api/calendars", { credentials: "include" });
-    if (!res.ok) return;
-    const data = await res.json();
-    const items = data.calendars || [];
-    setCalendars(items);
-
-    // find listserv calendar id if present
-    const ls = items.find(
-      (c) => c.summary && c.summary.toLowerCase() === "listserv events"
-    );
-    if (ls) setListservCalendarId(ls.id);
-
-    // Default visible: primary + listserv (if exists)
-    const defaults = items
-      .filter(
-        (c) =>
-          c.primary ||
-          (c.summary && c.summary.toLowerCase() === "listserv events")
-      )
-      .map((c) => c.id);
-
-    // If nothing matched (rare), default to 'primary'
-    if (defaults.length === 0) defaults.push("primary");
-
-    setVisibleCalendars(new Set(defaults));
-    // fetch events for defaults
-    await fetchEvents(defaults);
-  };
-
-  // Fetch working calendar info (optional)
-  const fetchWorkingCalendar = async () => {
-    const res = await fetch("/api/calendar", { credentials: "include" });
-    if (!res.ok) return;
-    const data = await res.json();
-    if (data && data.id) {
-      setListservCalendarId(data.id);
-    }
-  };
-
-  // Fetch events for the selected calendar IDs
-  //beginning of replaced old fetchEvents 
-  // Fetch events for the selected calendars, plus optional category filter.
-  // We append categoriesParam if any filters are selected.
-  const fetchEvents = useCallback(
-    async (calendarIds) => {
-      const ids = calendarIds || Array.from(visibleCalendars);
-      const base = (ids && ids.length)
-        ? `?calendarIds=${encodeURIComponent(ids.join(","))}`
-        : `?`; // still put a ? so categories can append cleanly
-
-      const url = `/api/events${base}${categoriesParam}`;
-      const res = await fetch(url, { credentials: "include" });
-
-      if (res.status === 401) {
-        setEvents([]);
-        return;
-      }
-      const data = await res.json();
-
-      // Transform for FullCalendar; keep extendedProps as you had
-      const transformedEvents = (data.events || []).map((ev) => ({
-        ...ev,
-        extendedProps: {
-          description: ev.description || "",
-          location: ev.location || "",
-          source: ev.source,
-          calendarId: ev.calendarId || null,
-          filter: ev.filter || ev.tag || null,
-          categories: ev.categories || [] // <- server attaches categories
-        },
-      }));
-      setEvents(transformedEvents);
-    },
-    [visibleCalendars, categoriesParam]
-  );
-  // ending of replaced fetchevents changes 
-
-  useEffect(() => {
-    fetchMe();
-  }, []);
-
-  useEffect(() => {
-    if (user) {
-      fetchCalendars();
-      fetchWorkingCalendar();
-    } else {
-      setCalendars([]);
-      setVisibleCalendars(new Set());
-      setEvents([]);
-      setListservCalendarId(null);
-    }
-  }, [user]);
-
-  //added this 
-  // Re-fetch events when selected categories change
-  useEffect(() => {
-    if (user) {
-      fetchEvents(Array.from(visibleCalendars));
-    }
-  }, [categoriesParam, user, visibleCalendars, fetchEvents]);
-  //end of additions 
-
-  const login = () => {
-    window.location.href = "/auth/google";
-  };
-
-  const logout = async () => {
-    await fetch("/auth/logout", { method: "POST", credentials: "include" });
-    setUser(null);
-    setEvents([]);
-  };
-
-  // Filter helper functions
-  const isGoogle = (e) => {
-    const id = String(e?.id || e?._def?.publicId || "");
-    return (
-      id.startsWith("google:") ||
-      e?.source === "google" ||
-      e?.provider === "google" ||
-      e?.calendarType === "google"
-    );
-  };
-
-  const getTag = (e) => {
-    const ext = e?.extendedProps || e?._def?.extendedProps || {};
-    return ext.filter || ext.tag || null;
-  };
-
-  const isCampus = (e) => !!getTag(e);
-
-  const toggleFilter = (name) => {
-    setActiveFilters((prev) => {
-      const next = new Set(prev);
-      next.has(name) ? next.delete(name) : next.add(name);
-      return next;
-    });
-  };
-
-  const clearFilters = () => setActiveFilters(new Set());
-
-  // Apply filters to calendar events
-  const applyFiltersToCalendar = useCallback(() => {
-    const api = calendarRef.current?.getApi?.();
-    if (!api) return;
-
-    const noneSelected = activeFilters.size === 0;
-
-    api.batchRendering(() => {
-      api.getEvents().forEach((evApi) => {
-        if (isGoogle(evApi)) {
-          evApi.setProp("display", "auto");
-          return;
-        }
-        if (!isCampus(evApi)) {
-          evApi.setProp("display", "auto");
-          return;
-        }
-        if (noneSelected) {
-          evApi.setProp("display", "auto");
-        } else {
-          const tag = getTag(evApi);
-          evApi.setProp("display", activeFilters.has(tag) ? "auto" : "none");
-        }
-      });
-    });
-  }, [activeFilters]);
-
-  // Calculate weekly counts for filter badges
-  useEffect(() => {
-    const api = calendarRef.current?.getApi?.();
-    const base = api?.getDate?.() ?? new Date();
-    const start = new Date(base);
-    start.setHours(0, 0, 0, 0);
-    start.setDate(start.getDate() - start.getDay());
-    const end = new Date(start);
-    end.setDate(end.getDate() + 6);
-    end.setHours(23, 59, 59, 999);
-    const counts = {};
-    Object.values(CATEGORIES)
-      .flat()
-      .forEach((f) => (counts[f] = 0));
-
-    (events || []).forEach((e) => {
-      if (!isCampus(e)) return;
-      const when = new Date(e.start || e.startStr || e.date || e.startTime);
-      if (isNaN(+when) || when < start || when > end) return;
-      const tag = getTag(e);
-      if (typeof counts[tag] === "number") counts[tag] += 1;
-    });
-    setWeeklyCounts(counts);
-  }, [events]);
-
-  // Apply filters when they change
-  useEffect(() => {
-    applyFiltersToCalendar();
-  }, [applyFiltersToCalendar, events]);
-
-  // Helper to toggle calendar visibility
-  const toggleCalendar = async (calId) => {
-    const newSet = new Set(visibleCalendars);
-    if (newSet.has(calId)) newSet.delete(calId);
-    else newSet.add(calId);
-    setVisibleCalendars(newSet);
-    await fetchEvents(Array.from(newSet));
-  };
-
-  const onSelect = (selectionInfo) => {
+  /* -------------------------------------------------
+     handleSelect – called when the user drags on the calendar
+     ------------------------------------------------- */
+  const handleSelect = (selectionInfo) => {
     if (!user) return;
+
     setSelectionInfo(selectionInfo);
     setEventForm({
-      ...initialEventForm,
+      title: "",
+      description: "",          // ← make sure this key exists
+      location: "",
       allDay: selectionInfo.allDay,
     });
     setCreateModalOpen(true);
   };
 
-  const handleCreateEvent = async (publishImmediately = false) => {
-    if (!eventForm.title.trim()) {
-      alert("Please enter an event title");
-      return;
-    }
-
-    const body = {
-      title: eventForm.title,
-      description: eventForm.description || "",
-      location: eventForm.location || "",
-      start: selectionInfo.startStr,
-      end: selectionInfo.endStr,
-      allDay: eventForm.allDay,
-      organization: eventForm.organization || "",
-      poster_url: eventForm.poster_url || "",
-      // Convert the tags string into an array, removing empty spaces
-      tags: eventForm.tags.split(',').map(tag => tag.trim()).filter(Boolean)
-    };
-
-    if (publishImmediately) {
-      // Create draft first, then immediately publish
-      const draftRes = await fetch("/api/drafts", {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      const draftData = await draftRes.json();
-      if (draftData.id) {
-        const publishRes = await fetch(
-          `/api/events/${encodeURIComponent(draftData.id)}/publish`,
-          {
-            method: "POST",
-            credentials: "include",
-          }
-        );
-        if (!publishRes.ok) {
-          alert("Failed to publish event");
-        }
-      } else {
-        alert("Failed to create event");
-      }
-    } else {
-      // Just save as draft
-      const res = await fetch("/api/drafts", {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      const data = await res.json();
-      if (!data.id) {
-        alert("Failed to create draft");
-      }
-    }
-
-    setCreateModalOpen(false);
-    setSelectionInfo(null);
-    setEventForm({ title: "", description: "", location: "", allDay: false });
-    const api = calendarRef.current?.getApi();
-    api?.unselect();
-    await fetchEvents(Array.from(visibleCalendars));
-  };
-
-  const onEventClick = (clickInfo) => {
+  /* -------------------------------------------------
+     handleEventClick – called when an event is clicked
+     ------------------------------------------------- */
+  const handleEventClick = (clickInfo) => {
     const ev = clickInfo.event;
-    const id = ev.id;
     const source =
       ev.extendedProps?.source ||
-      (id.startsWith("draft:") ? "draft" : "google");
+      (ev.id?.startsWith("draft:") ? "draft" : "google");
 
-    // If it's a Google event not from ListServ, show info only
+    // Disallow editing non‑ListServ Google events
     if (source === "google") {
       const calendarId = ev.extendedProps?.calendarId;
-      const isListServEvent =
+      const isListServ =
         listservCalendarId && calendarId === listservCalendarId;
-
-      if (!isListServEvent) {
+      if (!isListServ) {
         window.alert(
           "This event is not part of the ListServ Events calendar. Edits are only allowed for ListServ Events."
         );
@@ -441,21 +72,23 @@ function App() {
     }
 
     setSelectedEvent(ev);
-//    setEventModalOpen(true);
   };
 
+  /* -------------------------------------------------
+     Publishing / deleting a draft
+     ------------------------------------------------- */
   const handlePublishEvent = async () => {
-    const id = selectedEvent.id;
-    if (!id.startsWith("draft:")) return;
+    const id = selectedEvent?.id;
+    if (!id?.startsWith("draft:")) return;
 
-    const res = await fetch(`/api/events/${encodeURIComponent(id)}/publish`, {
-      method: "POST",
-      credentials: "include",
-    });
+    const res = await fetch(
+      `/api/events/${encodeURIComponent(id)}/publish`,
+      { method: "POST", credentials: "include" }
+    );
+
     if (!res.ok) {
       alert("Failed to publish event");
     } else {
-//      setEventModalOpen(false);
       setSelectedEvent(null);
       await fetchEvents(Array.from(visibleCalendars));
     }
@@ -464,517 +97,68 @@ function App() {
   const handleDeleteEvent = async () => {
     if (!window.confirm("Are you sure you want to delete this event?")) return;
 
-    const id = selectedEvent.id;
+    const id = selectedEvent?.id;
     await fetch(`/api/events/${encodeURIComponent(id)}`, {
       method: "DELETE",
       credentials: "include",
     });
-//    setEventModalOpen(false);
+
     setSelectedEvent(null);
     await fetchEvents(Array.from(visibleCalendars));
   };
 
-  const refresh = () => fetchEvents(Array.from(visibleCalendars));
-
+  /* -------------------------------------------------
+     Render the UI layout
+     ------------------------------------------------- */
   return (
     <div className="app-container">
-      {/* Fixed Header */}
-      <div className="app-header">
-        <h2>Calendar Sync (ListServ)</h2>
-        <div className="app-header-controls">
-          {user ? (
-            <div>
-              <span>Signed in as {user.name || user.email}</span>
-              <button className="app-header-button" onClick={logout}>
-                Logout
-              </button>
-              <button className="app-header-button" onClick={refresh}>
-                Refresh
-              </button>
-            </div>
-          ) : (
-            <button onClick={login}>Sign in with Google</button>
-          )}
-        </div>
+      <Header />
 
-        {/* Calendar Selection */}
-        {user && calendars.length > 0 && (
-          <div style={{ marginTop: 12 }}>
-            <strong>Calendars</strong>
-            <div style={{ marginTop: 8 }}>
-              {calendars.length === 0 && (
-                <div style={{ fontStyle: "italic" }}>No calendars loaded</div>
-              )}
-              {calendars.map((c) => {
-                const isListServ =
-                  c.summary && c.summary.toLowerCase() === "listserv events";
-                return (
-                  <label
-                    key={c.id}
-                    style={{
-                      marginRight: 12,
-                      display: "inline-flex",
-                      alignItems: "center",
-                    }}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={visibleCalendars.has(c.id)}
-                      onChange={() => toggleCalendar(c.id)}
-                      disabled={isListServ}
-                      style={{ marginRight: 6 }}
-                    />
-                    <span>
-                      {c.summary}
-                      {c.primary ? " (primary)" : ""}
-                      {isListServ ? " (ListServ)" : ""}
-                    </span>
-                  </label>
-                );
-              })}
-            </div>
-            <div style={{ marginTop: 6, fontSize: 13, color: "#444" }}>
-              <div>
-                Notes: Primary calendar and ListServ Events are visible by
-                default. Edits (publish/delete) are only allowed on the ListServ
-                Events calendar.
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Main Content Area with Panels */}
       <div className="app-content">
-        {/* Left Panel - Filters */}
+        {/* LEFT PANEL – filter bubbles */}
         <div className="app-left-panel">
-          <div
-            style={{ display: "flex", alignItems: "center", marginBottom: 12 }}
-          >
-            <h3 style={{ margin: 0, flex: 1 }}>Filters</h3>
-            <button
-              /* replaced the line below with the second below */
-              /* onClick={clearFilters} */
-              onClick={() => setSelectedCats(new Set())}
-              style={{
-                fontSize: 12,
-                border: "1px solid #e5e7eb",
-                background: "#fff",
-                borderRadius: 8,
-                padding: "4px 8px",
-                cursor: "pointer",
-              }}
-            >
-              Clear
-            </button>
-          </div>
-          {/* beginning of commented out to change left panel */}
-          {/*
-          {Object.entries(CATEGORIES).map(([cat, items]) => (
-            <div key={cat} style={{ marginBottom: 16 }}>
-              <div
-                style={{
-                  fontSize: 12,
-                  fontWeight: 800,
-                  color: "#374151",
-                  marginBottom: 8,
-                  textTransform: "uppercase",
-                  letterSpacing: "0.04em",
-                }}
-              >
-                {cat}
-              </div>
-              {items.length === 0 ? (
-                <div style={{ color: "#9ca3af", fontSize: 13 }}>
-                  (No filters yet)
-                </div>
-              ) : (
-                items.map((name) => {
-                  const active = activeFilters.has(name);
-                  const count = weeklyCounts[name] ?? 0;
-                  return (
-                    <button
-                      key={name}
-                      onClick={() => toggleFilter(name)}
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "space-between",
-                        width: "100%",
-                        borderRadius: 10,
-                        padding: "8px 10px",
-                        border: active
-                          ? "1px solid #3b82f6"
-                          : "1px solid #e5e7eb",
-                        background: active ? "#eff6ff" : "#fff",
-                        color: active ? "#1d4ed8" : "#111827",
-                        cursor: "pointer",
-                        fontSize: 14,
-                        marginBottom: 8,
-                      }}
-                    >
-                      <span
-                        style={{
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          whiteSpace: "nowrap",
-                        }}
-                      >
-                        {name}
-                      </span>
-                      <span
-                        style={{
-                          fontSize: 12,
-                          minWidth: 26,
-                          textAlign: "center",
-                          padding: "2px 6px",
-                          borderRadius: 999,
-                          background: "#f3f4f6",
-                          border: "1px solid #e5e7eb",
-                        }}
-                      >
-                        {count}
-                      </span>
-                    </button>
-                  );
-                })
-              )}
-            </div> 
-          ))} {/* end of commented out */} 
-          {/* beginning of replaced left tab */}
-          {/* bubbles as filters */}
-          {availableCats.length === 0 ? (
-            <div style={{ color: "#9ca3af", fontSize: 13 }}>
-              (No categories available)
-            </div>
-          ) : (
-            <div className="filter-bubbles">
-              {availableCats.map((cat) => {
-                const key = cat.key;                 // server sends { key, label, description }
-                const label = cat.label || key;
-                const active = selectedCats.has(key);
-                const count = categoryCounts[key] || 0; // show how many events match this category
-
-                return (
-                  <button
-                    key={key}
-                    type="button"
-                    className={`filter-chip ${active ? "selected" : ""}`}
-                    onClick={() => {
-                      // Toggle selection and trigger re-fetch via your existing effect
-                      setSelectedCats((prev) => {
-                        const next = new Set(prev);
-                        if (next.has(key)) next.delete(key);
-                        else next.add(key);
-                        return next;
-                      });
-                    }}
-                    title={cat.description || label}
-                  >
-                    <span className="chip-label">{label}</span>
-                    <span className="chip-count">{count}</span>
-                  </button>
-                );
-              })}
-            </div>
-          )}
-          {/* ending of replaced left tab */}
+          <Filters />
         </div>
 
-        {/* Calendar Container - Fixed Header, Scrollable Body */}
-        <div className="app-calendar-container">
-          <div className="app-calendar-wrapper">
-            <FullCalendarReact
-              ref={calendarRef}
-              plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
-              headerToolbar={{
-                left: "prev,next today",
-                center: "title",
-                right: "timeGridWeek,timeGridDay",
-              }}
-              initialView="timeGridWeek"
-              selectable={true}
-              selectMirror={true}
-              select={onSelect}
-              events={events}
-              eventClick={onEventClick}
-              height="100%"
-            />
-          </div>
-        </div>
+        {/* MAIN CALENDAR – we forward the handlers with the names FullCalendar expects */}
+        <Calendar
+          onSelect={handleSelect}
+          onEventClick={handleEventClick}
+        />
 
-        {/* Right Panel - Event Details */}
+        {/* RIGHT PANEL – event details */}
         <div className="app-right-panel">
-          {/* Check if an event is selected */}
-          {selectedEvent ? (
-            <div className="event-details-card">
-              <button
-                className="close-panel-button"
-                onClick={() => setSelectedEvent(null)}
-              >
-                &times;
-              </button>
-              {/* --- 1. TITLE --- */}
-              <h3 className="modal-title"> {}
-                {selectedEvent.title || "(No title)"}
-              </h3>
-              
-              <div className="event-details">
-
-                {/* --- 2. ORGANIZATION --- */}
-                {selectedEvent.extendedProps?.organization && (
-                  <div className="event-details-item">
-                    <strong>Hosted by:</strong>{" "}
-                    {selectedEvent.extendedProps.organization}
-                  </div>
-                )}
-                {/* --- 3. START TIME --- */}
-                <div className="event-details-item">
-                  <strong>Start:</strong>{" "}
-                  {selectedEvent.start
-                    ? new Date(selectedEvent.start).toLocaleString()
-                    : "Not set"}
-                </div>
-                {/* --- 4. END TIME --- */}
-                {selectedEvent.end && (
-                  <div className="event-details-item">
-                    <strong>End:</strong>{" "}
-                    {new Date(selectedEvent.end).toLocaleString()}
-                  </div>
-                )}
-                {/* --- 5. LOCATION --- */}
-                {selectedEvent.extendedProps?.location && (
-                  <div className="event-details-item">
-                    <strong>Location:</strong>{" "}
-                    {selectedEvent.extendedProps.location}
-                  </div>
-                )}
-                {/* --- 6. DESCRIPTION --- */}
-                {selectedEvent.extendedProps?.description && (
-                  <div className="event-details-item">
-                    <strong>Description:</strong>{" "}
-                    {selectedEvent.extendedProps.description}
-                  </div>
-                )}
-                {/* --- 7. TAGS --- */}
-                {selectedEvent.extendedProps?.tags &&
-                  selectedEvent.extendedProps.tags.length > 0 && (
-                    <div className="event-details-item">
-                      <strong>Tags:</strong>
-                      <div className="event-tags-container">
-                        {selectedEvent.extendedProps.tags.map((tag, index) => (
-                          <span key={index} className="event-tag">
-                            {tag}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  )
-                }
-                {/* --- 8. POSTER URL --- */}
-                {selectedEvent.extendedProps?.poster_url && (
-                  <div className="event-details-item">
-                    <strong>Attachment:</strong>
-                    {selectedEvent.extendedProps.poster_url.endsWith('.pdf') ? (
-                      <a 
-                        href={selectedEvent.extendedProps.poster_url} 
-                        target="_blank" 
-                        rel="noopener noreferrer"
-                        className="event-poster-link"
-                      >
-                        View Poster (PDF)
-                      </a>
-                    ) : (
-                      <img 
-                        src={selectedEvent.extendedProps.poster_url} 
-                        alt="Event Poster" 
-                        className="event-poster-image" 
-                      />
-                    )}
-                  </div>
-                )}
-
-                {/* --- Event Status (Published/Draft) --- */}
-                <div className="event-status">
-                  {selectedEvent.id.startsWith("draft:") ? (
-                    <span className="event-status-draft">● Draft</span>
-                  ) : (
-                    <span className="event-status-published">
-                      ● Published to Google Calendar
-                    </span>
-                  )}
-                </div>
-              </div>
-              
-              {/* --- Event Action Buttons --- */}
-              <div className="event-actions">
-                {selectedEvent.id.startsWith("draft:") && (
-                  <button
-                    className="button button-primary"
-                    onClick={handlePublishEvent}
-                  >
-                    Publish to Google Calendar
-                  </button>
-                )}
-                {(selectedEvent.id.startsWith("draft:") ||
-                  (selectedEvent.extendedProps?.calendarId ===
-                    listservCalendarId &&
-                    listservCalendarId)) && (
-                  <button
-                    className="button button-danger"
-                    onClick={handleDeleteEvent}
-                  >
-                    Delete
-                  </button>
-                )}
-              </div>
-            </div>
-          ) : (
-            <div className="event-details-placeholder">
-              <h3>Event Details</h3>
-              <p>Click an event to see its details here.</p>
-            </div>
-          )}
+          <EventDetails
+            selectedEvent={selectedEvent}
+            setSelectedEvent={setSelectedEvent}
+            handlePublishEvent={handlePublishEvent}
+            handleDeleteEvent={handleDeleteEvent}
+            listservCalendarId={listservCalendarId}
+          />
         </div>
       </div>
 
-      {/* Fixed Footer */}
+      {/* FOOTER */}
       <div className="app-footer">
         <p>
-          Click and drag on the calendar to create an event. Click any event to
-          view details and manage it.
+          Click and drag on the calendar to create an event. Click any event
+          to view details and manage it.
         </p>
       </div>
 
-      {/* Create Event Modal */}
-      {createModalOpen && (
-        <div
-          className="modal-overlay"
-          onClick={() => {
-            setCreateModalOpen(false);
-            setSelectionInfo(null);
-            const api = calendarRef.current?.getApi();
-            api?.unselect();
-          }}
-        >
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-            <h3 className="modal-title">Create Event</h3>
-            <div className="form-group">
-              <label className="form-label">Title *</label>
-              <input
-                type="text"
-                className="form-input"
-                value={eventForm.title}
-                onChange={(e) =>
-                  setEventForm({ ...eventForm, title: e.target.value })
-                }
-                placeholder="Event title"
-                autoFocus
-              />
-            </div>
-            <div className="form-group">
-              <label className="form-label">Organization</label>
-              <input
-                type="text"
-                className="form-input"
-                value={eventForm.organization}
-                onChange={(e) =>
-                  setEventForm({ ...eventForm, organization: e.target.value })
-                }
-                placeholder="Hosting organization (optional)"
-              />
-            </div>
-            <div className="form-group">
-              <label className="form-label">Location</label>
-              <input
-                type="text"
-                className="form-input"
-                value={eventForm.location}
-                onChange={(e) =>
-                  setEventForm({ ...eventForm, location: e.target.value })
-                }
-                placeholder="Location (optional)"
-              />
-            </div>
-            <div className="form-group">
-              <label className="form-label">Description</label>
-              <textarea
-                className="form-textarea"
-                value={eventForm.description}
-                onChange={(e) =>
-                  setEventForm({ ...eventForm, description: e.target.value })
-                }
-                placeholder="Event description (optional)"
-                rows={3}
-              />
-            </div>
-            <div className="form-group">
-              <label className="form-label">Tags</label>
-              <input
-                type="text"
-                className="form-input"
-                value={eventForm.tags}
-                onChange={(e) =>
-                  setEventForm({ ...eventForm, tags: e.target.value })
-                }
-                placeholder="Comma-separated, e.g., talk, free food"
-              />
-            </div>
-            <div className="form-group">
-              <label className="form-label">Poster/Image URL</label>
-              <input
-                type="text"
-                className="form-input"
-                value={eventForm.poster_url}
-                onChange={(e) =>
-                  setEventForm({ ...eventForm, poster_url: e.target.value })
-                }
-                placeholder="https://.../poster.png (optional)"
-              />
-            </div>
-            <div className="form-group" style={{ marginBottom: "20px" }}>
-              <label className="form-checkbox-label">
-                <input
-                  type="checkbox"
-                  className="form-checkbox"
-                  checked={eventForm.allDay}
-                  onChange={(e) =>
-                    setEventForm({ ...eventForm, allDay: e.target.checked })
-                  }
-                />
-                <span>All-day event</span>
-              </label>
-            </div>
-            <div className="button-group">
-              <button
-                className="button button-cancel"
-                onClick={() => {
-                  setCreateModalOpen(false);
-                  setSelectionInfo(null);
-                  const api = calendarRef.current?.getApi();
-                  api?.unselect();
-                }}
-              >
-                Cancel
-              </button>
-              <button
-                className="button button-secondary"
-                onClick={() => handleCreateEvent(false)}
-              >
-                Save as Draft
-              </button>
-              <button
-                className="button button-primary"
-                onClick={() => handleCreateEvent(true)}
-              >
-                Publish to Google Calendar
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* MODAL – create event */}
+      <CreateEventModal />
     </div>
   );
-}
+};
 
-export default App;
+/* -------------------------------------------------
+   Export the top‑level component that Vite mounts.
+   ------------------------------------------------- */
+export default function App() {
+  return (
+    <AppProvider>
+      <InnerApp />
+    </AppProvider>
+  );
+}

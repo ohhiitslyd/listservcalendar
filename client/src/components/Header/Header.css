@@ -1,0 +1,37 @@
+/* src/components/Header/Header.css */
+
+/* Dark header – white text */
+.app-header {
+  background: #1f2937;   /* dark‑gray */
+  color: #000000;        /* almost white – good contrast on dark bg */
+  padding: 12px 24px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
+}
+
+/* Title (still inherits the .app-header color) */
+.app-header h2 {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 600;
+  display: inline-block;
+}
+
+/* Controls on the right side */
+.app-header-controls {
+  float: right;
+}
+
+/* Buttons – blue background, white text */
+.app-header-button {
+  background: #3b82f6;   /* blue‑500 */
+  color: #fff;           /* white text */
+  border: none;
+  border-radius: 4px;
+  padding: 6px 12px;
+  margin-left: 8px;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+.app-header-button:hover {
+  background: #2563eb;   /* blue‑600 */
+}
