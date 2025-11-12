@@ -22,6 +22,7 @@ type Event = {
   filter?: string;
   tag?: string;
   categories?: string[];
+  orgCategories?: string[]; 
   // any other fields you get from the backend
 };
 
@@ -46,6 +47,10 @@ type CategoriesResponse = {
   categories: { key: string; label?: string; description?: string }[];
 };
 
+type OrgCategoriesResponse = {
+  categories: { key: string; label?: string; level?: string }[];
+};
+
 /**
  * All API calls return a **Promise** resolves to the parsed JSON
  * (or the raw `Response` for calls that don’t have a JSON body).
@@ -67,22 +72,26 @@ export const api = {
     fetch("/api/calendar", { credentials: "include" }).then(r => r.json()),
 
   /* -----------------------------------------------------------------
-   * Events – optional `categoriesParam` is a pre‑built query string fragment,
-   * e.g. `&categories=Finance,Engineering`
-   * ----------------------------------------------------------------- */
+  * Events – optional `categoriesParam` and `orgCategoriesParam` are
+  * pre-built query fragments, e.g. `&categories=Finance&orgCategories=music:a_cappella`
+  * ----------------------------------------------------------------- */
   fetchEvents: async ({
     calendarIds = [],
     categoriesParam = "",
+    orgCategoriesParam = "",
   }: {
     calendarIds?: string[];
     categoriesParam?: string;
+    orgCategoriesParam?: string; 
   } = {}): Promise<EventsResponse> => {
     const idsQuery = calendarIds.length
       ? `?calendarIds=${encodeURIComponent(calendarIds.join(","))}`
-      : "?"; // we always start the query string with a `?` so `categoriesParam`
-    const url = `/api/events${idsQuery}${categoriesParam}`;
+      : "?";
 
-    return fetch(url, { credentials: "include" }).then(r => r.json());
+    // IMPORTANT: append both params if present
+    const url = `/api/events${idsQuery}${categoriesParam}${orgCategoriesParam}`;
+
+    return fetch(url, { credentials: "include" }).then((r) => r.json());
   },
 
   /* -----------------------------------------------------------------
@@ -113,6 +122,13 @@ export const api = {
    * ----------------------------------------------------------------- */
   fetchCategories: async (): Promise<CategoriesResponse> =>
     fetch("/api/event-categories", { credentials: "include" }).then(r =>
+      r.json()
+    ),
+  /* -----------------------------------------------------------------
+  * Organization categories (type / subcategory / org)
+  * ----------------------------------------------------------------- */
+  fetchOrgCategories: async (): Promise<OrgCategoriesResponse> =>
+    fetch("/api/org-categories", { credentials: "include" }).then((r) =>
       r.json()
     ),
 };

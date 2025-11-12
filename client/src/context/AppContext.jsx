@@ -29,6 +29,10 @@ export const AppProvider = ({ children }) => {
   const { availableCats, fetchCategories } = useCategories(); // ← custom hook
   const [selectedCats, setSelectedCats] = useState(new Set());
 
+  // --- Org categories (type/subtype/org) ---
+  const [availableOrgCats, setAvailableOrgCats] = useState([]);
+  const [selectedOrgCats, setSelectedOrgCats] = useState(new Set());
+
   const [activeFilters, setActiveFilters] = useState(new Set());
 
   const [createModalOpen, setCreateModalOpen] = useState(false);
@@ -52,7 +56,31 @@ export const AppProvider = ({ children }) => {
     return `&categories=${encodeURIComponent(s)}`;
   }, [selectedCats]);
 
+  const orgCategoriesParam = useMemo(() => {
+    if (!selectedOrgCats.size) return "";
+    const s = Array.from(selectedOrgCats).join(",");
+    return `&orgCategories=${encodeURIComponent(s)}`;
+  }, [selectedOrgCats]);
+
   const categoryCounts = useMemoizedCounts(allEventsForCounts, listservCalendarId);
+
+  //computing org counts
+  const orgCategoryCounts = useMemo(() => {
+    const counts = {};
+    const lsId = listservCalendarId;
+
+    (allEventsForCounts || []).forEach((ev) => {
+      const isListServGoogle = ev.source === 'google' && ev.calendarId === lsId;
+      const isListServDraft  = ev.source === 'draft';
+      const isListServ       = isListServGoogle || isListServDraft;
+      if (!isListServ) return;
+
+      const keys = ev?.extendedProps?.orgCategories || ev.orgCategories || [];
+      keys.forEach(k => { counts[k] = (counts[k] || 0) + 1; });
+    });
+
+    return counts;
+  }, [allEventsForCounts, listservCalendarId]); 
 
 
   /* -------------------------------------------------
@@ -108,9 +136,9 @@ export const AppProvider = ({ children }) => {
         ids.length > 0
           ? `?calendarIds=${encodeURIComponent(ids.join(","))}`
           : "?";
-      const url = `/api/events${base}${categoriesParam}`;
+      const url = `/api/events${base}${categoriesParam}${orgCategoriesParam}`;
       console.log("🔎 fetchEvents →", url);
-      const data = await api.fetchEvents({ calendarIds: ids, categoriesParam });
+      const data = await api.fetchEvents({ calendarIds: ids, categoriesParam, orgCategoriesParam, });
 
       const transformed = (data.events || []).map((ev) => ({
         ...ev,
@@ -121,11 +149,12 @@ export const AppProvider = ({ children }) => {
           calendarId: ev.calendarId ?? null,
           filter: ev.filter ?? ev.tag ?? null,
           categories: ev.categories ?? [],
+          orgCategories: ev.orgCategories ?? [],
         },
       }));
       setEvents(transformed);
     },
-    [visibleCalendars, categoriesParam]
+    [visibleCalendars, categoriesParam, orgCategoriesParam] 
   );
 
   // Fetch events for counts ONLY (NO categoriesParam). This keeps a stable, unfiltered snapshot.
@@ -151,6 +180,7 @@ export const AppProvider = ({ children }) => {
           calendarId: ev.calendarId ?? null,
           filter: ev.filter ?? ev.tag ?? null,
           categories: ev.categories ?? [],
+          orgCategories: ev.orgCategories ?? [],
         },
       }));
 
@@ -257,6 +287,20 @@ export const AppProvider = ({ children }) => {
 
       // b) category bubbles – `fetchCategories` expects the user (or we could just call it without args if the hook already checks `user` internally)
       fetchCategories(user);
+       // NEW: fetch org categories list
+      (async () => {
+        try {
+          const res = await fetch('/api/org-categories', { credentials: 'include' });
+          if (res.ok) {
+            const data = await res.json();
+            setAvailableOrgCats(data.categories || []);
+          } else {
+            setAvailableOrgCats([]);
+          }
+        } catch {
+          setAvailableOrgCats([]);
+        }
+      })();
     } else {
       // user logged out → clear all data
       setCalendars([]);
@@ -282,7 +326,7 @@ export const AppProvider = ({ children }) => {
     if (user) {
       fetchEvents(Array.from(visibleCalendars));
     }
-  }, [categoriesParam, user, visibleCalendars, fetchEvents]);
+  }, [categoriesParam, orgCategoriesParam, user, visibleCalendars, fetchEvents]);
 
   /* -------------------------------------------------
      7️⃣  CONTEXT VALUE
@@ -336,6 +380,12 @@ export const AppProvider = ({ children }) => {
     handleCreateEvent,
     handlePublishEvent,
     handleDeleteEvent,
+
+    // organization 
+    availableOrgCats,
+    selectedOrgCats,
+    setSelectedOrgCats,
+    orgCategoryCounts,
   };
 
   return (

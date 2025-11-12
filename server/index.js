@@ -49,6 +49,26 @@ try {
     e
   );
 }
+
+// Organization based filters (organization_events.json) 
+const ORG_DESCRIPTOR_PATH = path.join(__dirname, 'organization_events.json');
+
+let ORGANIZATION_RULES = { categories: {} };
+try {
+  const rawOrg = fs.readFileSync(ORG_DESCRIPTOR_PATH, 'utf8');
+  ORGANIZATION_RULES = JSON.parse(rawOrg);
+  console.log(
+    '[org-categories] loaded',
+    Object.keys(ORGANIZATION_RULES.categories || {}).length,
+    'top-level org categories from',
+    ORG_DESCRIPTOR_PATH
+  );
+} catch (e) {
+  console.warn(
+    'Could not read organization_events.json. Org category filtering will be empty.',
+    e
+  );
+}
 // ending of additions 
 
 // const __filename = fileURLToPath(import.meta.url);
@@ -135,6 +155,16 @@ async function getOrCreateListServCalendar(req, oauth2Client) {
 
 // beginning of additions
 
+// ---- Key normalization helpers (add near the top, after JSON loads) ----
+const slug = (s = "") =>
+  String(s)
+    .normalize("NFKD")
+    .toLowerCase()
+    .replace(/\s+/g, "_")
+    .replace(/[^a-z0-9_:]/g, ""); // keep letters, digits, underscores, and colons
+
+const lowerArray = (arr = []) => arr.map(x => String(x).toLowerCase());
+
 // --- Filtering helper Functions (event category classification) ---
 // normalize and test text
 function toTextBlob(ev) {
@@ -145,7 +175,8 @@ function toTextBlob(ev) {
 
 //is a non case sensitive match
 function matchesAnyKeyword(blob, keywords = []) {
-  return keywords.some((kw) => blob.includes(String(kw).toLowerCase())); 
+  const b = String(blob || "").toLowerCase();
+  return keywords.some(kw => b.includes(String(kw).toLowerCase()));
 }
 
 /**
@@ -172,6 +203,51 @@ function assignCategories(ev) {
 
     out.push(key); // match!
   }
+  return out;
+}
+
+// --- Organization-level classification ---
+function assignOrgCategories(ev) {
+  const blob = toTextBlob(ev);
+  const out = [];
+
+  const cats = ORGANIZATION_RULES?.categories || {};
+  for (const [typeKeyRaw, typeDef] of Object.entries(cats)) {
+    const typeKey = slug(typeKeyRaw);
+    const subcats = typeDef?.subcategories || {};
+    let sawChild = false;
+
+    // Optional: if type-level must_include_any is used
+    const typeHit = Array.isArray(typeDef?.must_include_any) &&
+                    matchesAnyKeyword(blob, lowerArray(typeDef.must_include_any));
+    if (typeHit) out.push(typeKey);
+
+    for (const [subKeyRaw, subDef] of Object.entries(subcats)) {
+      const subKey = slug(subKeyRaw);
+
+      const subHit = Array.isArray(subDef?.must_include_any) &&
+                     matchesAnyKeyword(blob, lowerArray(subDef.must_include_any));
+      if (subHit) {
+        out.push(`${typeKey}:${subKey}`);
+        sawChild = true;
+      }
+
+      const orgs = subDef?.organizations || {};
+      for (const [orgKeyRaw, orgDef] of Object.entries(orgs)) {
+        const orgKey = slug(orgKeyRaw);
+        const orgHit = Array.isArray(orgDef?.must_include_any) &&
+                       matchesAnyKeyword(blob, lowerArray(orgDef.must_include_any));
+        if (orgHit) {
+          out.push(`${typeKey}:${subKey}:${orgKey}`);
+          sawChild = true;
+        }
+      }
+    }
+
+    // If any child matched but we didn’t add the bare type yet, include it
+    if (sawChild && !out.includes(typeKey)) out.push(typeKey);
+  }
+
   return out;
 }
 
@@ -254,37 +330,57 @@ app.get('/api/events', ensureAuthed, async (req,res)=>{
     //deleted this 
    /* res.json({ events:[...drafts,...allEvents] });
   } catch(e){ console.error(e); res.status(500).json({error:'Failed to fetch events'}); } */
-    //beginning of additions 
-    const combined = [...drafts, ...allEvents];
-    // tagging events with categories from the JSON rules 
-    const tagged = combined.map(ev => ({...ev, categories: assignCategories(ev)}));
+    
+   // --- Combine and normalize tags ---
+  const combined = [...drafts, ...allEvents].map(ev => {
+    const catKeys = assignCategories(ev).map(slug);      // normalize category keys
+    const orgKeys = assignOrgCategories(ev).map(slug);   // normalize org-category keys
+    return { ...ev, categories: catKeys, orgCategories: orgKeys };
+  });
 
-    // If query parameters exist, only filter ListServ events.
-    // Non-ListServ events are ALWAYS kept, regardless of filters.
-    let filtered = tagged;
-    if (req.query.categories) {
-      const reqCats = req.query.categories
-        .split(',')
-        .map(s => s.trim())
-        .filter(Boolean);
+  // Helper: identify ListServ events so only they get filtered away
+  const isListServ = (ev) => {
+    const isDraft = ev.source === 'draft';
+    const isGoogleListServ = ev.source === 'google' && ev.calendarId === listservCalendarId;
+    return isDraft || isGoogleListServ;
+  };
 
-      filtered = tagged.filter(ev => {
-        // A "ListServ" event is either:
-        // 1) a Google event that belongs to the ListServ calendar, OR
-        // 2) a local draft (destined for ListServ).
-        const isListServGoogle = ev.source === 'google' && ev.calendarId === listservCalendarId;
-        const isListServDraft  = ev.source === 'draft';
-        const isListServ       = isListServGoogle || isListServDraft;
+  // Apply filters ONLY to ListServ events; non-ListServ always pass through
+  //let filtered = combined;
 
-        // Non-ListServ events are unaffected by filters → always keep.
-        if (!isListServ) return true;
+  // --- Normalize query params so case/space differences don't break filtering ---
+const reqCatParam = req.query.categories;
+const reqOrgParam = req.query.orgCategories;
 
-        // For ListServ events, enforce category matching.
-        return ev.categories?.some(c => reqCats.includes(c));
-      });
+const reqCats = reqCatParam
+  ? reqCatParam.split(',').map(s => slug(s.trim())).filter(Boolean)
+  : null;
+
+const reqOrgCats = reqOrgParam
+  ? reqOrgParam.split(',').map(s => slug(s.trim())).filter(Boolean)
+  : null;
+
+// Apply filters ONLY to ListServ events; non-ListServ always pass through
+let filtered = combined;
+if (reqCats || reqOrgCats) {
+  filtered = combined.filter(ev => {
+    if (!isListServ(ev)) return true; // keep non-ListServ always
+
+    if (!reqCats && !reqOrgCats) return true;
+
+    if (reqCats && !(ev.categories?.some(c => reqCats.includes(c)))) {
+      return false;
     }
 
-    res.json({ events: filtered }); 
+    if (reqOrgCats && !(ev.orgCategories?.some(c => reqOrgCats.includes(c)))) {
+      return false;
+    }
+
+    return true;
+  });
+}
+
+res.json({ events: filtered });
   } catch(e) {
     console.error(e);
     res.status(500).json({error:'Failed to reach events'}); 
@@ -294,13 +390,51 @@ app.get('/api/events', ensureAuthed, async (req,res)=>{
 //returns category labels from the JSON (left panel) - more additions
 app.get('/api/event-categories', ensureAuthed, (req, res) => {
   const cats = CATEGORY_RULES?.categories || {};
-  const list = Object.entries(cats).map(([key, def]) => ({
-    key,
-    label: def.label || key,
+  const list = Object.entries(cats).map(([rawKey, def]) => ({
+    key: slug(rawKey),                             // <- normalized key
+    label: def.label || rawKey,                    // human label stays pretty
     description: def.description || ''
   }));
   res.json({ categories: list });
-}); 
+});
+
+// --- Org categories → flat list for bubbles on the left panel
+app.get('/api/org-categories', ensureAuthed, (req, res) => {
+  const cats = ORGANIZATION_RULES?.categories || {};
+  const list = [];
+
+  for (const [typeKeyRaw, typeDef] of Object.entries(cats)) {
+    const typeKey = slug(typeKeyRaw);
+    const typeLabel = typeDef.label || typeKeyRaw;
+    list.push({ key: typeKey, label: typeLabel, level: "type" });
+
+    const subcats = typeDef.subcategories || {};
+    for (const [subKeyRaw, subDef] of Object.entries(subcats)) {
+      const subKey = slug(subKeyRaw);
+      const subLabel = subDef.label || subKeyRaw;
+      const subFlatKey = `${typeKey}:${subKey}`;
+      list.push({
+        key: subFlatKey,
+        label: `${typeLabel} • ${subLabel}`,
+        level: "subcategory",
+      });
+
+      const orgs = subDef.organizations || {};
+      for (const [orgKeyRaw, orgDef] of Object.entries(orgs)) {
+        const orgKey = slug(orgKeyRaw);
+        const orgLabel = orgDef.label || orgKeyRaw;
+        const orgFlatKey = `${typeKey}:${subKey}:${orgKey}`;
+        list.push({
+          key: orgFlatKey,
+          label: orgLabel,
+          level: "organization",
+        });
+      }
+    }
+  }
+
+  res.json({ categories: list });
+});
 
     //ending of additions 
 
