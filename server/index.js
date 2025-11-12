@@ -83,19 +83,19 @@ db.exec(`CREATE TABLE IF NOT EXISTS drafts(
   id TEXT PRIMARY KEY,
   user_id TEXT NOT NULL,
   title TEXT,
-  description TEXT,
-  location TEXT,
+  organization TEXT,
   start TEXT NOT NULL,
   end TEXT,
+  location TEXT,
   all_day INTEGER DEFAULT 0,
-  organization TEXT,
+  description TEXT,
   tags TEXT,
   poster_url TEXT,
   created_at TEXT DEFAULT CURRENT_TIMESTAMP,
   updated_at TEXT DEFAULT CURRENT_TIMESTAMP
 );`);
 
-// MIGRATING DATABASE for Issue 87-88, can delete after
+// MIGRATING DATABASE
 function runMigration() {
   console.log('[db] Checking for migrations...');
   const columns = db.pragma('table_info(drafts)').map(col => col.name);
@@ -162,8 +162,6 @@ async function getOrCreateListServCalendar(req, oauth2Client) {
   req.session.listservCalendarId = newCal.data.id;
   return { id: newCal.data.id, created: true };
 }
-
-// beginning of additions
 
 // --- Filtering helper Functions (event category classification) ---
 // normalize and test text
@@ -365,6 +363,7 @@ app.post('/api/drafts', ensureAuthed, (req,res)=>{
   try{
     const { title, description, location, start, end, allDay, organization, tags, poster_url} = req.body;
     if(!start) return res.status(400).json({error:'start required'});
+    
     const id = `draft_${crypto.randomBytes(12).toString('hex')}`;
     draftInsert.run({ 
       id, 

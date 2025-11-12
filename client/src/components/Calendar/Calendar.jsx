@@ -27,12 +27,16 @@ export const Calendar = () => {
   const handleSelect = (selectionInfo) => {
     if (!user) return;
     setSelectionInfo(selectionInfo);
-    setEventForm({
-      title: "",
-      description: "",
-      location: "",
-      allDay: selectionInfo.allDay,
+    setEventForm({ 
+      title: "", 
+      organization: "", 
+      location: "", 
+      description: "", 
+      tags: "", 
+      poster_url: "", 
+      allDay: selectionInfo.allDay
     });
+    
     setCreateModalOpen(true);
   };
 
