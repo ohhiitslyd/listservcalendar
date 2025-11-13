@@ -7,7 +7,6 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import Database from 'better-sqlite3';
 import crypto from 'crypto';
-// added
 import fs from 'fs'; 
 
 dotenv.config();
@@ -49,6 +48,26 @@ try {
     e
   );
 }
+
+// Organization based filters (organization_events.json) 
+const ORG_DESCRIPTOR_PATH = path.join(__dirname, 'organization_events.json');
+
+let ORGANIZATION_RULES = { categories: {} };
+try {
+  const rawOrg = fs.readFileSync(ORG_DESCRIPTOR_PATH, 'utf8');
+  ORGANIZATION_RULES = JSON.parse(rawOrg);
+  console.log(
+    '[org-categories] loaded',
+    Object.keys(ORGANIZATION_RULES.categories || {}).length,
+    'top-level org categories from',
+    ORG_DESCRIPTOR_PATH
+  );
+} catch (e) {
+  console.warn(
+    'Could not read organization_events.json. Org category filtering will be empty.',
+    e
+  );
+}
 // ending of additions 
 
 // const __filename = fileURLToPath(import.meta.url);
@@ -84,19 +103,50 @@ db.exec(`CREATE TABLE IF NOT EXISTS drafts(
   id TEXT PRIMARY KEY,
   user_id TEXT NOT NULL,
   title TEXT,
-  description TEXT,
-  location TEXT,
+  organization TEXT,
   start TEXT NOT NULL,
   end TEXT,
+  location TEXT,
   all_day INTEGER DEFAULT 0,
+  description TEXT,
+  tags TEXT,
+  poster_url TEXT,
   created_at TEXT DEFAULT CURRENT_TIMESTAMP,
   updated_at TEXT DEFAULT CURRENT_TIMESTAMP
 );`);
 
-const draftInsert = db.prepare(`INSERT INTO drafts(id, user_id, title, description, location, start, end, all_day)
-  VALUES(@id, @user_id, @title, @description, @location, @start, @end, @all_day)`);
+// MIGRATING DATABASE
+function runMigration() {
+  console.log('[db] Checking for migrations...');
+  const columns = db.pragma('table_info(drafts)').map(col => col.name);
+  
+  if (!columns.includes('organization')) {
+    db.exec('ALTER TABLE drafts ADD COLUMN organization TEXT');
+    console.log('[db] Added column: organization');
+  }
+  if (!columns.includes('tags')) {
+    db.exec('ALTER TABLE drafts ADD COLUMN tags TEXT');
+    console.log('[db] Added column: tags');
+  }
+  if (!columns.includes('poster_url')) {
+    db.exec('ALTER TABLE drafts ADD COLUMN poster_url TEXT');
+    console.log('[db] Added column: poster_url');
+  }
+  console.log('[db] Migrations complete.');
+}
+runMigration(); // Run the migration on startup
+
+const draftInsert = db.prepare(`INSERT INTO drafts(
+    id, user_id, title, description, location, start, end, all_day,
+    organization, tags, poster_url
+  )
+  VALUES(
+    @id, @user_id, @title, @description, @location, @start, @end, @all_day,
+    @organization, @tags, @poster_url
+  )`);
 const draftUpdate = db.prepare(`UPDATE drafts SET title=@title, description=@description, location=@location, 
-  start=@start, end=@end, all_day=@all_day, updated_at=CURRENT_TIMESTAMP WHERE id=@id AND user_id=@user_id`);
+  start=@start, end=@end, all_day=@all_day, organization=@organization, tags=@tags, poster_url=@poster_url,
+  updated_at=CURRENT_TIMESTAMP WHERE id=@id AND user_id=@user_id`);
 const draftDelete = db.prepare('DELETE FROM drafts WHERE id=@id AND user_id=@user_id');
 const draftByUser = db.prepare('SELECT * FROM drafts WHERE user_id=?');
 
@@ -135,17 +185,29 @@ async function getOrCreateListServCalendar(req, oauth2Client) {
 
 // beginning of additions
 
+// ---- Key normalization helpers (add near the top, after JSON loads) ----
+const slug = (s = "") =>
+  String(s)
+    .normalize("NFKD")
+    .toLowerCase()
+    .replace(/\s+/g, "_")
+    .replace(/[^a-z0-9_:]/g, ""); // keep letters, digits, underscores, and colons
+
+const lowerArray = (arr = []) => arr.map(x => String(x).toLowerCase());
+
 // --- Filtering helper Functions (event category classification) ---
 // normalize and test text
 function toTextBlob(ev) {
   //combining fields together
-  const { title = '', description = '', location = ''} = ev || {};
-  return `${title} ${description} ${location}`.toLowerCase(); 
+  const { title = '', description = '', location = '', organization = ''} = ev || {};
+  const tags = (ev.tags || []).join(' '); // Join tags array into the blob
+  return `${title} ${description} ${location} ${organization} ${tags}`.toLowerCase(); 
 }
 
 //is a non case sensitive match
 function matchesAnyKeyword(blob, keywords = []) {
-  return keywords.some((kw) => blob.includes(String(kw).toLowerCase())); 
+  const b = String(blob || "").toLowerCase();
+  return keywords.some(kw => b.includes(String(kw).toLowerCase()));
 }
 
 /**
@@ -172,6 +234,51 @@ function assignCategories(ev) {
 
     out.push(key); // match!
   }
+  return out;
+}
+
+// --- Organization-level classification ---
+function assignOrgCategories(ev) {
+  const blob = toTextBlob(ev);
+  const out = [];
+
+  const cats = ORGANIZATION_RULES?.categories || {};
+  for (const [typeKeyRaw, typeDef] of Object.entries(cats)) {
+    const typeKey = slug(typeKeyRaw);
+    const subcats = typeDef?.subcategories || {};
+    let sawChild = false;
+
+    // Optional: if type-level must_include_any is used
+    const typeHit = Array.isArray(typeDef?.must_include_any) &&
+                    matchesAnyKeyword(blob, lowerArray(typeDef.must_include_any));
+    if (typeHit) out.push(typeKey);
+
+    for (const [subKeyRaw, subDef] of Object.entries(subcats)) {
+      const subKey = slug(subKeyRaw);
+
+      const subHit = Array.isArray(subDef?.must_include_any) &&
+                     matchesAnyKeyword(blob, lowerArray(subDef.must_include_any));
+      if (subHit) {
+        out.push(`${typeKey}:${subKey}`);
+        sawChild = true;
+      }
+
+      const orgs = subDef?.organizations || {};
+      for (const [orgKeyRaw, orgDef] of Object.entries(orgs)) {
+        const orgKey = slug(orgKeyRaw);
+        const orgHit = Array.isArray(orgDef?.must_include_any) &&
+                       matchesAnyKeyword(blob, lowerArray(orgDef.must_include_any));
+        if (orgHit) {
+          out.push(`${typeKey}:${subKey}:${orgKey}`);
+          sawChild = true;
+        }
+      }
+    }
+
+    // If any child matched but we didn’t add the bare type yet, include it
+    if (sawChild && !out.includes(typeKey)) out.push(typeKey);
+  }
+
   return out;
 }
 
@@ -240,51 +347,106 @@ app.get('/api/events', ensureAuthed, async (req,res)=>{
     const allEvents = [];
     for(const calId of requestedIds){
       const googleResp = await calendar.events.list({ calendarId: calId, timeMin, timeMax, singleEvents:true, orderBy:'startTime' });
+
       const googleEvents = (googleResp.data.items||[]).map(ev=>{
         const isAllDay = !!ev.start?.date;
-        return { id:`google:${ev.id}`, calendarId: calId, source:'google', title:ev.summary||'(No title)', description:ev.description||'', location:ev.location||'', start:isAllDay?ev.start.date:ev.start?.dateTime, end:isAllDay?ev.end.date:ev.end?.dateTime, allDay:isAllDay };
+        const props = ev.extendedProperties?.shared || {};
+        return { 
+          id:`google:${ev.id}`,
+          calendarId: calId,
+          source:'google',
+          title:ev.summary||'(No title)',
+          description:ev.description||'',
+          location:ev.location||'',
+          start:isAllDay?ev.start.date:ev.start?.dateTime,
+          end:isAllDay?ev.end.date:ev.end?.dateTime,
+          allDay:isAllDay,
+          organization: props.organization || '',
+          tags: JSON.parse(props.tags || '[]'),
+          poster_url: props.poster_url || ''
+        };
       });
       allEvents.push(...googleEvents);
     }
 
     const drafts = draftByUser.all(req.session.user.id).map(d=>({
-      id:`draft:${d.id}`, source:'draft', title:d.title||'(Draft)', description:d.description||'', location:d.location||'', start:d.start, end:d.end, allDay:!!d.all_day
+      id:`draft:${d.id}`,
+      source:'draft',
+      title:d.title||'(Draft)',
+      description:d.description||'',
+      location:d.location||'',
+      start:d.start,
+      end:d.end,
+      allDay:!!d.all_day,
+      organization: d.organization || '',
+      tags: JSON.parse(d.tags || '[]'), // De-serialize tags from JSON string
+      poster_url: d.poster_url || ''
     }));
 
     //deleted this 
    /* res.json({ events:[...drafts,...allEvents] });
   } catch(e){ console.error(e); res.status(500).json({error:'Failed to fetch events'}); } */
-    //beginning of additions 
-    const combined = [...drafts, ...allEvents];
-    // tagging events with categories from the JSON rules 
-    const tagged = combined.map(ev => ({...ev, categories: assignCategories(ev)}));
+    
+   // --- Combine and normalize tags ---
+  const combined = [...drafts, ...allEvents].map(ev => {
+    const catKeys = assignCategories(ev).map(slug);      // normalize category keys
+    const orgKeys = assignOrgCategories(ev).map(slug);   // normalize org-category keys
+    return { ...ev, categories: catKeys, orgCategories: orgKeys };
+  });
 
-    // If query parameters exist, only filter ListServ events.
-    // Non-ListServ events are ALWAYS kept, regardless of filters.
-    let filtered = tagged;
-    if (req.query.categories) {
-      const reqCats = req.query.categories
-        .split(',')
-        .map(s => s.trim())
-        .filter(Boolean);
+  // Helper: identify ListServ events so only they get filtered away
+  const isListServ = (ev) => {
+    const isDraft = ev.source === 'draft';
+    const isGoogleListServ = ev.source === 'google' && ev.calendarId === listservCalendarId;
+    return isDraft || isGoogleListServ;
+  };
 
-      filtered = tagged.filter(ev => {
-        // A "ListServ" event is either:
-        // 1) a Google event that belongs to the ListServ calendar, OR
-        // 2) a local draft (destined for ListServ).
-        const isListServGoogle = ev.source === 'google' && ev.calendarId === listservCalendarId;
-        const isListServDraft  = ev.source === 'draft';
-        const isListServ       = isListServGoogle || isListServDraft;
+  // Apply filters ONLY to ListServ events; non-ListServ always pass through
+  //let filtered = combined;
 
-        // Non-ListServ events are unaffected by filters → always keep.
-        if (!isListServ) return true;
+// --- Normalize query params so case/space differences don't break filtering ---
+  const reqCatParam = req.query.categories;
+  const reqOrgParam = req.query.orgCategories;
 
-        // For ListServ events, enforce category matching.
-        return ev.categories?.some(c => reqCats.includes(c));
-      });
-    }
+  // These are the selected category keys (already slugified on the frontend)
+  const reqCats = reqCatParam
+    ? reqCatParam.split(',').map(s => slug(s.trim())).filter(Boolean)
+    : null;
 
-    res.json({ events: filtered }); 
+  const reqOrgCats = reqOrgParam
+    ? reqOrgParam.split(',').map(s => slug(s.trim())).filter(Boolean)
+    : null;
+
+  // Apply filters ONLY to ListServ events; non-ListServ always pass through
+  let filtered = combined;
+
+  if (reqCats || reqOrgCats) {
+    filtered = combined.filter(ev => {
+      // 1) Non-ListServ events are always kept, regardless of filters
+      if (!isListServ(ev)) return true;
+
+      // 2) If somehow we have no filters, keep the event
+      if (!reqCats && !reqOrgCats) return true;
+
+      // 3) Compute "does this event match any selected event-category filter?"
+      const matchesCat = reqCats
+        ? (ev.categories || []).some(c => reqCats.includes(c))
+        : false;
+
+      // 4) Compute "does this event match any selected org-category filter?"
+      const matchesOrg = reqOrgCats
+        ? (ev.orgCategories || []).some(c => reqOrgCats.includes(c))
+        : false;
+
+      // 5) OR logic across the two groups:
+      //    - If only `reqCats` set → matchesCat must be true
+      //    - If only `reqOrgCats` set → matchesOrg must be true
+      //    - If both set → (matchesCat || matchesOrg)
+      return matchesCat || matchesOrg;
+    });
+  }
+
+  res.json({ events: filtered });
   } catch(e) {
     console.error(e);
     res.status(500).json({error:'Failed to reach events'}); 
@@ -294,23 +456,75 @@ app.get('/api/events', ensureAuthed, async (req,res)=>{
 //returns category labels from the JSON (left panel) - more additions
 app.get('/api/event-categories', ensureAuthed, (req, res) => {
   const cats = CATEGORY_RULES?.categories || {};
-  const list = Object.entries(cats).map(([key, def]) => ({
-    key,
-    label: def.label || key,
+  const list = Object.entries(cats).map(([rawKey, def]) => ({
+    key: slug(rawKey),                             // <- normalized key
+    label: def.label || rawKey,                    // human label stays pretty
     description: def.description || ''
   }));
   res.json({ categories: list });
-}); 
+});
+
+// --- Org categories → flat list for bubbles on the left panel
+app.get('/api/org-categories', ensureAuthed, (req, res) => {
+  const cats = ORGANIZATION_RULES?.categories || {};
+  const list = [];
+
+  for (const [typeKeyRaw, typeDef] of Object.entries(cats)) {
+    const typeKey = slug(typeKeyRaw);
+    const typeLabel = typeDef.label || typeKeyRaw;
+    list.push({ key: typeKey, label: typeLabel, level: "type" });
+
+    const subcats = typeDef.subcategories || {};
+    for (const [subKeyRaw, subDef] of Object.entries(subcats)) {
+      const subKey = slug(subKeyRaw);
+      const subLabel = subDef.label || subKeyRaw;
+      const subFlatKey = `${typeKey}:${subKey}`;
+      list.push({
+        key: subFlatKey,
+        label: `${typeLabel} • ${subLabel}`,
+        level: "subcategory",
+      });
+
+      const orgs = subDef.organizations || {};
+      for (const [orgKeyRaw, orgDef] of Object.entries(orgs)) {
+        const orgKey = slug(orgKeyRaw);
+        const orgLabel = orgDef.label || orgKeyRaw;
+        const orgFlatKey = `${typeKey}:${subKey}:${orgKey}`;
+        list.push({
+          key: orgFlatKey,
+          label: orgLabel,
+          level: "organization",
+        });
+      }
+    }
+  }
+
+  res.json({ categories: list });
+});
 
     //ending of additions 
 
 // --- Drafts ---
 app.post('/api/drafts', ensureAuthed, (req,res)=>{
   try{
-    const { title, description, location, start, end, allDay } = req.body;
+    const { title, description, location, start, end, allDay, organization, tags, poster_url} = req.body;
     if(!start) return res.status(400).json({error:'start required'});
+    
     const id = `draft_${crypto.randomBytes(12).toString('hex')}`;
-    draftInsert.run({ id, user_id:req.session.user.id, title:title||'', description:description||'', location:location||'', start, end:end||null, all_day:allDay?1:0 });
+    draftInsert.run({ 
+      id, 
+      user_id: req.session.user.id,
+      title: title || '',
+      description: description || '',
+      location: location || '',
+      start, 
+      end, 
+      all_day: allDay ? 1 : 0,
+      organization: organization || '',
+      tags: JSON.stringify(tags || []), // Store tags as a JSON string
+      poster_url: poster_url || ''
+    });
+
     res.json({ok:true,id:`draft:${id}`});
   } catch(e){ console.error(e); res.status(500).json({error:'Failed to create draft'}); }
 });
@@ -335,14 +549,31 @@ app.post('/api/events/:compoundId/publish', ensureAuthed, async (req,res)=>{
   try{
     const [source,rawId] = req.params.compoundId.split(':');
     if(source!=='draft') return res.status(400).json({error:'Only drafts can be published'});
+
     const row = db.prepare(`SELECT * FROM drafts WHERE id=? AND user_id=?`).get(rawId, req.session.user.id);
     if(!row) return res.status(404).json({error:'Draft not found'});
+
     const oauth2Client = getOAuthClient(req);
     const calendar = google.calendar({ version:'v3', auth:oauth2Client });
     const { id: listservCalendarId } = await getOrCreateListServCalendar(req,oauth2Client);
-    const resource = { summary:row.title||'', description:row.description||'', location:row.location||'' };
+
+    const resource = { 
+      summary:row.title||'', 
+      description:row.description||'', 
+      location:row.location||'',
+      // --- ADDED --- Store custom data in extendedProperties
+      extendedProperties: {
+        shared: {
+          organization: row.organization || '',
+          tags: row.tags || '[]', // Pass the JSON string
+          poster_url: row.poster_url || ''
+        }
+      }
+    };
+
     if(row.all_day){ resource.start={date:row.start}; resource.end={date:row.end||row.start}; }
     else { resource.start={dateTime:row.start}; resource.end={dateTime:row.end||row.start}; }
+
     const insertResp = await calendar.events.insert({ calendarId:listservCalendarId, requestBody:resource });
     draftDelete.run({ id:rawId, user_id:req.session.user.id });
     res.json({ ok:true, published:{id:`google:${insertResp.data.id}`}});

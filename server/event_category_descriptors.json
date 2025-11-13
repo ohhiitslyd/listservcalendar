@@ -2,13 +2,13 @@
     "categories": {
         "Career Development": {
             "label": "Career Development",
-            "must_include_any": ["career", "recruiting", "resume", "internship", "networking", "finance", "engineering", "Pre-Med", "Computer Science"],
+            "must_include_any": ["career", "recruiting", "resume", "internship", "networking", "finance", "consulting", "engineering", "Pre-Med", "Computer Science"],
             "exclude_if_any": ["concert", "trivia", "party"],
             "description": "Events aimed at preparing students for professional paths or job opportunities."
         },
         "Greek Life Events": {
             "label": "Greek Life Events",
-            "must_include_any": ["sae", "sig nu", "tabard", "fraternity", "sorority", "drinks 21+", "Phi Delt", "AXA", "Chi Gam", "KDE", "Pi Kap", "BG", "Zete", "TDX", "Chi Delt", "Kappa"],
+            "must_include_any": ["greek life", "sae", "sig nu", "tabard", "fraternity", "sorority", "drinks 21+", "Phi Delt", "AXA", "Chi Gam", "KDE", "Pi Kap", "BG", "Zete", "TDX", "Chi Delt", "Kappa"],
             "exclude_if_any": ["collis", "museum", "lecture"],
             "description": "Events hosted by or located in Greek houses, including social, philanthropic, and music events."
         },
@@ -21,7 +21,7 @@
         "Music": {
             "label": "Music",
             "must_include_any": ["concert", "dj", "band", "a cappella", "dance show"],
-            "exclude_if_any": ["lecture", "film", "workshop"],
+            "exclude_if_any": ["lecture", "film"],
             "description": "Events featuring live or recorded musical performances."
         },
         "Visual Art": {
@@ -39,7 +39,7 @@
         },
         "OutDoors/Nature": {
             "label": "Outdoors/Nature",
-            "must_include_any": ["DOC", "Dartmouth Outdoor Club"],
+            "must_include_any": ["DOC", "Dartmouth Outdoor Club", "hike", "Gile", "nature", "outdoors", "hiking"],
             "description": "Events which are being sponsored, hosted, or co-hosted by the DOC."
         },
         "News/Politics": {
@@ -50,12 +50,12 @@
         "House Community Events": {
             "Label": "House Community Events",
             "must_include_any": ["Allen House", "West House", "East Wheelock House", "North Park House",
-        "School House", "South House", "Community Dinners", "Community Trips"],
+        "School House", "South House", "Community Dinners", "Community Trips", "The Cube", "The Onion", "Cube", "Onion"],
             "description": "Events which are being hosted, co-hosted, or sponsored by a Dartmouth Housing Community."
         },
         "Cultural/Religion/Theological": {
             "Label": "Cultural/Religion/Theological",
-            "must_include_any": ["AQ", "Hillel", "KSA", "DCSA"],
+            "must_include_any": ["AQ", "Hillel", "KSA", "DCSA", "Religion"],
             "description": "Events which are being hosted by a cultural/religious/theological group."
         },
         "Dartmouth Related Academia": {

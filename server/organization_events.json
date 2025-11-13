@@ -1,0 +1,73 @@
+{
+  "categories": {
+    "music": {
+      "label": "Music",
+      "subcategories": {
+        "a_cappella": {
+          "label": "A Cappella",
+          "must_include_any": ["a capella", "acapella", "a-cappella", "brovertones", "aires", "decibelles", "rockapellas",
+        "dodecaphonics", "dodecs", "subtleties"],
+          "organizations": {
+            "dartmouth_brovertones": {
+              "label": "Dartmouth Brovertones",
+              "must_include_any": ["brovertones"]
+            },
+            "dartmouth_aires": {
+              "label": "Dartmouth Aires",
+              "must_include_any": ["aires"]
+            },
+            "dartmouth_decibelles": {
+              "label": "Dartmouth Decibelles",
+              "must_include_any": ["decibelles"]
+            },
+            "dartmouth_rockapellas": {
+              "label": "Dartmouth Rockapellas",
+              "must_include_any": ["rockapellas"]
+            },
+            "dartmouth_dodecaphonics": {
+              "label": "Dartmouth Dodecaphonics",
+              "must_include_any": ["dodecaphonics", "dodecs"]
+            },
+            "dartmouth_subtleties": {
+              "label": "Dartmouth Subtleties",
+              "must_include_any": ["subtleties"]
+            }
+          }
+        },
+        "bands": {
+          "label": "Bands",
+          "must_include_any": ["band", "bands", "shark", "read receipts"],
+          "organizations": {
+            "shark": {
+              "label": "Shark",
+              "must_include_any": ["shark"]
+            },
+            "read_receipts": {
+              "label": "Read Receipts",
+              "must_include_any": ["read receipts"]
+            }
+          }
+        }
+      }
+    },
+    "sports": {
+      "label": "Sports",
+      "subcategories": {
+        "soccer": {
+          "label": "Soccer",
+          "must_include_any": ["soccer", "club soccer", "varsity soccer"],
+          "organizations": {
+            "club_soccer": {
+              "label": "Club Soccer",
+              "must_include_any": ["club soccer"]
+            },
+            "varsity_soccer": {
+              "label": "Varsity Soccer",
+              "must_include_any": ["varsity soccer"]
+            }
+          }
+        }
+      }
+    }
+  }
+}
