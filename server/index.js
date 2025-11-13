@@ -404,39 +404,49 @@ app.get('/api/events', ensureAuthed, async (req,res)=>{
   // Apply filters ONLY to ListServ events; non-ListServ always pass through
   //let filtered = combined;
 
-  // --- Normalize query params so case/space differences don't break filtering ---
-const reqCatParam = req.query.categories;
-const reqOrgParam = req.query.orgCategories;
+// --- Normalize query params so case/space differences don't break filtering ---
+  const reqCatParam = req.query.categories;
+  const reqOrgParam = req.query.orgCategories;
 
-const reqCats = reqCatParam
-  ? reqCatParam.split(',').map(s => slug(s.trim())).filter(Boolean)
-  : null;
+  // These are the selected category keys (already slugified on the frontend)
+  const reqCats = reqCatParam
+    ? reqCatParam.split(',').map(s => slug(s.trim())).filter(Boolean)
+    : null;
 
-const reqOrgCats = reqOrgParam
-  ? reqOrgParam.split(',').map(s => slug(s.trim())).filter(Boolean)
-  : null;
+  const reqOrgCats = reqOrgParam
+    ? reqOrgParam.split(',').map(s => slug(s.trim())).filter(Boolean)
+    : null;
 
-// Apply filters ONLY to ListServ events; non-ListServ always pass through
-let filtered = combined;
-if (reqCats || reqOrgCats) {
-  filtered = combined.filter(ev => {
-    if (!isListServ(ev)) return true; // keep non-ListServ always
+  // Apply filters ONLY to ListServ events; non-ListServ always pass through
+  let filtered = combined;
 
-    if (!reqCats && !reqOrgCats) return true;
+  if (reqCats || reqOrgCats) {
+    filtered = combined.filter(ev => {
+      // 1) Non-ListServ events are always kept, regardless of filters
+      if (!isListServ(ev)) return true;
 
-    if (reqCats && !(ev.categories?.some(c => reqCats.includes(c)))) {
-      return false;
-    }
+      // 2) If somehow we have no filters, keep the event
+      if (!reqCats && !reqOrgCats) return true;
 
-    if (reqOrgCats && !(ev.orgCategories?.some(c => reqOrgCats.includes(c)))) {
-      return false;
-    }
+      // 3) Compute "does this event match any selected event-category filter?"
+      const matchesCat = reqCats
+        ? (ev.categories || []).some(c => reqCats.includes(c))
+        : false;
 
-    return true;
-  });
-}
+      // 4) Compute "does this event match any selected org-category filter?"
+      const matchesOrg = reqOrgCats
+        ? (ev.orgCategories || []).some(c => reqOrgCats.includes(c))
+        : false;
 
-res.json({ events: filtered });
+      // 5) OR logic across the two groups:
+      //    - If only `reqCats` set → matchesCat must be true
+      //    - If only `reqOrgCats` set → matchesOrg must be true
+      //    - If both set → (matchesCat || matchesOrg)
+      return matchesCat || matchesOrg;
+    });
+  }
+
+  res.json({ events: filtered });
   } catch(e) {
     console.error(e);
     res.status(500).json({error:'Failed to reach events'}); 
