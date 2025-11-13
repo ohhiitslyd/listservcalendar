@@ -30,7 +30,7 @@ export const CreateEventModal = () => {
 
         {/* Title */}
         <div className="form-group">
-          <label className="form-label">Title *</label>
+          <label className="form-label">Title</label>
           <input
             type="text"
             className="form-input"
@@ -38,8 +38,36 @@ export const CreateEventModal = () => {
             onChange={e =>
               setEventForm({ ...eventForm, title: e.target.value })
             }
-            placeholder="Event title"
+            placeholder="Event title (optional)"
             autoFocus
+          />
+        </div>
+
+        {/* Organization */}
+        <div className="form-group">
+          <label className="form-label">Organization</label>
+          <input
+            type="text"
+            className="form-input"
+            value={eventForm.organization}
+            onChange={e =>
+              setEventForm({ ...eventForm, organization: e.target.value })
+            }
+            placeholder="Organization (optional)"
+          />
+        </div>
+
+        {/* Location */}
+        <div className="form-group">
+          <label className="form-label">Location</label>
+          <input
+            type="text"
+            className="form-input"
+            value={eventForm.location}
+            onChange={e =>
+              setEventForm({ ...eventForm, location: e.target.value })
+            }
+            placeholder="Location (optional)"
           />
         </div>
 
@@ -57,18 +85,32 @@ export const CreateEventModal = () => {
           />
         </div>
 
-        {/* Location */}
+        {/* Tags */}
         <div className="form-group">
-          <label className="form-label">Location</label>
-          <input
-            type="text"
-            className="form-input"
-            value={eventForm.location}
-            onChange={e =>
-              setEventForm({ ...eventForm, location: e.target.value })
-            }
-            placeholder="Location (optional)"
-          />
+              <label className="form-label">Tags</label>
+              <input
+                type="text"
+                className="form-input"
+                value={eventForm.tags}
+                onChange={(e) =>
+                  setEventForm({ ...eventForm, tags: e.target.value })
+                }
+                placeholder="Comma-separated, e.g., guest lecture, free food"
+              />
+        </div>
+
+        {/* Poster URL */}
+        <div className="form-group">
+              <label className="form-label">Poster/Image URL</label>
+              <input
+                type="text"
+                className="form-input"
+                value={eventForm.poster_url}
+                onChange={(e) =>
+                  setEventForm({ ...eventForm, poster_url: e.target.value })
+                }
+                placeholder="https://.../poster.png (optional)"
+              />
         </div>
 
         {/* All‑day toggle */}

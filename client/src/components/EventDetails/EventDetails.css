@@ -95,3 +95,26 @@
 .button-secondary:hover {
   background: #d1d5db;
 }
+
+.event-tags-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 5px;
+}
+
+.event-tag {
+  background-color: #eee;
+  padding: 3px 8px;
+  border-radius: 12px;
+  font-size: 0.85em;
+  color: #333;
+}
+
+.event-poster-image {
+  width: 100%;
+  max-height: 300px;
+  object-fit: cover;
+  border-radius: 4px;
+  margin-top: 8px;
+}

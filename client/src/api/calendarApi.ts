@@ -23,6 +23,9 @@ type Event = {
   tag?: string;
   categories?: string[];
   orgCategories?: string[]; 
+  organization?: string;
+  tags?: string[];
+  poster_url?: string;
   // any other fields you get from the backend
 };
 

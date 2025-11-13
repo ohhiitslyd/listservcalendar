@@ -39,9 +39,12 @@ export const AppProvider = ({ children }) => {
   const [selectionInfo, setSelectionInfo] = useState(null);
   const [eventForm, setEventForm] = useState({
     title: "",
-    description: "",
+    organization: "",
     location: "",
     allDay: false,
+    description: "",
+    tags: "", // We'll use a comma-separated string for the input
+    poster_url: "",
   });
   const [selectedEvent, setSelectedEvent] = useState(null);
 
@@ -143,6 +146,9 @@ export const AppProvider = ({ children }) => {
       const transformed = (data.events || []).map((ev) => ({
         ...ev,
         extendedProps: {
+          organization: ev.organization ?? "",
+          tags: ev.tags ?? "",
+          poster_url: ev.poster_url ?? "",
           description: ev.description ?? "",
           location: ev.location ?? "",
           source: ev.source,
@@ -193,14 +199,15 @@ export const AppProvider = ({ children }) => {
      5️⃣  EVENT‑CREATION / PUBLISH / DELETE HELPERS
      ------------------------------------------------- */
   const handleCreateEvent = async (publishImmediately = false) => {
-    if (!eventForm.title.trim()) {
-      alert("Please enter an event title");
-      return;
-    }
     const body = {
-      title: eventForm.title,
-      description: eventForm.description || "",
+      title: eventForm.title || "",
+      organization: eventForm.organization || "",
       location: eventForm.location || "",
+      description: eventForm.description || "",
+      tags: eventForm.tags
+        ? eventForm.tags.split(",").map((t) => t.trim())
+        : [],
+      poster_url: eventForm.poster_url || "",
       start: selectionInfo.startStr,
       end: selectionInfo.endStr,
       allDay: eventForm.allDay,
@@ -236,7 +243,14 @@ export const AppProvider = ({ children }) => {
     // UI clean‑up
     setCreateModalOpen(false);
     setSelectionInfo(null);
-    setEventForm({ title: "", description: "", location: "", allDay: false });
+    setEventForm({ 
+      title: "", 
+      organization: "", 
+      location: "", 
+      description: "", 
+      tags: "", 
+      poster_url: "", 
+      allDay: false });
     if (calendarRef.current?.getApi) {
       calendarRef.current.getApi().unselect();
     }

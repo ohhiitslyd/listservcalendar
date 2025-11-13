@@ -7,7 +7,6 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import Database from 'better-sqlite3';
 import crypto from 'crypto';
-// added
 import fs from 'fs'; 
 
 dotenv.config();
@@ -104,19 +103,50 @@ db.exec(`CREATE TABLE IF NOT EXISTS drafts(
   id TEXT PRIMARY KEY,
   user_id TEXT NOT NULL,
   title TEXT,
-  description TEXT,
-  location TEXT,
+  organization TEXT,
   start TEXT NOT NULL,
   end TEXT,
+  location TEXT,
   all_day INTEGER DEFAULT 0,
+  description TEXT,
+  tags TEXT,
+  poster_url TEXT,
   created_at TEXT DEFAULT CURRENT_TIMESTAMP,
   updated_at TEXT DEFAULT CURRENT_TIMESTAMP
 );`);
 
-const draftInsert = db.prepare(`INSERT INTO drafts(id, user_id, title, description, location, start, end, all_day)
-  VALUES(@id, @user_id, @title, @description, @location, @start, @end, @all_day)`);
+// MIGRATING DATABASE
+function runMigration() {
+  console.log('[db] Checking for migrations...');
+  const columns = db.pragma('table_info(drafts)').map(col => col.name);
+  
+  if (!columns.includes('organization')) {
+    db.exec('ALTER TABLE drafts ADD COLUMN organization TEXT');
+    console.log('[db] Added column: organization');
+  }
+  if (!columns.includes('tags')) {
+    db.exec('ALTER TABLE drafts ADD COLUMN tags TEXT');
+    console.log('[db] Added column: tags');
+  }
+  if (!columns.includes('poster_url')) {
+    db.exec('ALTER TABLE drafts ADD COLUMN poster_url TEXT');
+    console.log('[db] Added column: poster_url');
+  }
+  console.log('[db] Migrations complete.');
+}
+runMigration(); // Run the migration on startup
+
+const draftInsert = db.prepare(`INSERT INTO drafts(
+    id, user_id, title, description, location, start, end, all_day,
+    organization, tags, poster_url
+  )
+  VALUES(
+    @id, @user_id, @title, @description, @location, @start, @end, @all_day,
+    @organization, @tags, @poster_url
+  )`);
 const draftUpdate = db.prepare(`UPDATE drafts SET title=@title, description=@description, location=@location, 
-  start=@start, end=@end, all_day=@all_day, updated_at=CURRENT_TIMESTAMP WHERE id=@id AND user_id=@user_id`);
+  start=@start, end=@end, all_day=@all_day, organization=@organization, tags=@tags, poster_url=@poster_url,
+  updated_at=CURRENT_TIMESTAMP WHERE id=@id AND user_id=@user_id`);
 const draftDelete = db.prepare('DELETE FROM drafts WHERE id=@id AND user_id=@user_id');
 const draftByUser = db.prepare('SELECT * FROM drafts WHERE user_id=?');
 
@@ -169,8 +199,9 @@ const lowerArray = (arr = []) => arr.map(x => String(x).toLowerCase());
 // normalize and test text
 function toTextBlob(ev) {
   //combining fields together
-  const { title = '', description = '', location = ''} = ev || {};
-  return `${title} ${description} ${location}`.toLowerCase(); 
+  const { title = '', description = '', location = '', organization = ''} = ev || {};
+  const tags = (ev.tags || []).join(' '); // Join tags array into the blob
+  return `${title} ${description} ${location} ${organization} ${tags}`.toLowerCase(); 
 }
 
 //is a non case sensitive match
@@ -316,15 +347,40 @@ app.get('/api/events', ensureAuthed, async (req,res)=>{
     const allEvents = [];
     for(const calId of requestedIds){
       const googleResp = await calendar.events.list({ calendarId: calId, timeMin, timeMax, singleEvents:true, orderBy:'startTime' });
+
       const googleEvents = (googleResp.data.items||[]).map(ev=>{
         const isAllDay = !!ev.start?.date;
-        return { id:`google:${ev.id}`, calendarId: calId, source:'google', title:ev.summary||'(No title)', description:ev.description||'', location:ev.location||'', start:isAllDay?ev.start.date:ev.start?.dateTime, end:isAllDay?ev.end.date:ev.end?.dateTime, allDay:isAllDay };
+        const props = ev.extendedProperties?.shared || {};
+        return { 
+          id:`google:${ev.id}`,
+          calendarId: calId,
+          source:'google',
+          title:ev.summary||'(No title)',
+          description:ev.description||'',
+          location:ev.location||'',
+          start:isAllDay?ev.start.date:ev.start?.dateTime,
+          end:isAllDay?ev.end.date:ev.end?.dateTime,
+          allDay:isAllDay,
+          organization: props.organization || '',
+          tags: JSON.parse(props.tags || '[]'),
+          poster_url: props.poster_url || ''
+        };
       });
       allEvents.push(...googleEvents);
     }
 
     const drafts = draftByUser.all(req.session.user.id).map(d=>({
-      id:`draft:${d.id}`, source:'draft', title:d.title||'(Draft)', description:d.description||'', location:d.location||'', start:d.start, end:d.end, allDay:!!d.all_day
+      id:`draft:${d.id}`,
+      source:'draft',
+      title:d.title||'(Draft)',
+      description:d.description||'',
+      location:d.location||'',
+      start:d.start,
+      end:d.end,
+      allDay:!!d.all_day,
+      organization: d.organization || '',
+      tags: JSON.parse(d.tags || '[]'), // De-serialize tags from JSON string
+      poster_url: d.poster_url || ''
     }));
 
     //deleted this 
@@ -441,10 +497,24 @@ app.get('/api/org-categories', ensureAuthed, (req, res) => {
 // --- Drafts ---
 app.post('/api/drafts', ensureAuthed, (req,res)=>{
   try{
-    const { title, description, location, start, end, allDay } = req.body;
+    const { title, description, location, start, end, allDay, organization, tags, poster_url} = req.body;
     if(!start) return res.status(400).json({error:'start required'});
+    
     const id = `draft_${crypto.randomBytes(12).toString('hex')}`;
-    draftInsert.run({ id, user_id:req.session.user.id, title:title||'', description:description||'', location:location||'', start, end:end||null, all_day:allDay?1:0 });
+    draftInsert.run({ 
+      id, 
+      user_id: req.session.user.id,
+      title: title || '',
+      description: description || '',
+      location: location || '',
+      start, 
+      end, 
+      all_day: allDay ? 1 : 0,
+      organization: organization || '',
+      tags: JSON.stringify(tags || []), // Store tags as a JSON string
+      poster_url: poster_url || ''
+    });
+
     res.json({ok:true,id:`draft:${id}`});
   } catch(e){ console.error(e); res.status(500).json({error:'Failed to create draft'}); }
 });
@@ -469,14 +539,31 @@ app.post('/api/events/:compoundId/publish', ensureAuthed, async (req,res)=>{
   try{
     const [source,rawId] = req.params.compoundId.split(':');
     if(source!=='draft') return res.status(400).json({error:'Only drafts can be published'});
+
     const row = db.prepare(`SELECT * FROM drafts WHERE id=? AND user_id=?`).get(rawId, req.session.user.id);
     if(!row) return res.status(404).json({error:'Draft not found'});
+
     const oauth2Client = getOAuthClient(req);
     const calendar = google.calendar({ version:'v3', auth:oauth2Client });
     const { id: listservCalendarId } = await getOrCreateListServCalendar(req,oauth2Client);
-    const resource = { summary:row.title||'', description:row.description||'', location:row.location||'' };
+
+    const resource = { 
+      summary:row.title||'', 
+      description:row.description||'', 
+      location:row.location||'',
+      // --- ADDED --- Store custom data in extendedProperties
+      extendedProperties: {
+        shared: {
+          organization: row.organization || '',
+          tags: row.tags || '[]', // Pass the JSON string
+          poster_url: row.poster_url || ''
+        }
+      }
+    };
+
     if(row.all_day){ resource.start={date:row.start}; resource.end={date:row.end||row.start}; }
     else { resource.start={dateTime:row.start}; resource.end={dateTime:row.end||row.start}; }
+
     const insertResp = await calendar.events.insert({ calendarId:listservCalendarId, requestBody:resource });
     draftDelete.run({ id:rawId, user_id:req.session.user.id });
     res.json({ ok:true, published:{id:`google:${insertResp.data.id}`}});

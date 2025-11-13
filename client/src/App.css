@@ -137,6 +137,48 @@
   margin-bottom: 20px;
 }
 
+/* Event Card Details */
+.event-details-item {
+  margin-bottom: 12px; /* Add some spacing between fields */
+  word-wrap: break-word; /* Prevents long URLs from breaking layout */
+}
+
+.event-tags-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 5px;
+}
+
+.event-tag {
+  background-color: #eee;
+  padding: 3px 8px;
+  border-radius: 12px;
+  font-size: 0.85em;
+  color: #333;
+}
+
+.event-poster-image {
+  width: 100%;
+  max-height: 300px;
+  object-fit: cover;
+  border-radius: 4px;
+  margin-top: 8px;
+  border: 1px solid #ddd;
+}
+
+.event-poster-link {
+  display: inline-block;
+  margin-top: 8px;
+  color: #0056b3;
+  text-decoration: none;
+  font-weight: bold;
+}
+
+.event-poster-link:hover {
+  text-decoration: underline;
+}
+
 /* Form Elements */
 .form-group {
   margin-bottom: 16px;
