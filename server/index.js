@@ -92,11 +92,14 @@ db.exec(`CREATE TABLE IF NOT EXISTS drafts(
   id TEXT PRIMARY KEY,
   user_id TEXT NOT NULL,
   title TEXT,
-  description TEXT,
-  location TEXT,
+  organization TEXT,
   start TEXT NOT NULL,
   end TEXT,
+  location TEXT,
   all_day INTEGER DEFAULT 0,
+  description TEXT,
+  tags TEXT,
+  poster_url TEXT,
   created_at TEXT DEFAULT CURRENT_TIMESTAMP,
   updated_at TEXT DEFAULT CURRENT_TIMESTAMP
 );`);
@@ -213,6 +216,16 @@ async function getOrCreateListServCalendar(req, oauth2Client) {
 
 // beginning of additions
 
+// ---- Key normalization helpers (add near the top, after JSON loads) ----
+const slug = (s = "") =>
+  String(s)
+    .normalize("NFKD")
+    .toLowerCase()
+    .replace(/\s+/g, "_")
+    .replace(/[^a-z0-9_:]/g, ""); // keep letters, digits, underscores, and colons
+
+const lowerArray = (arr = []) => arr.map(x => String(x).toLowerCase());
+
 // --- Filtering helper Functions (event category classification) ---
 // normalize and test text
 function toTextBlob(ev) {
@@ -250,6 +263,51 @@ function assignCategories(ev) {
 
     out.push(key); // match!
   }
+  return out;
+}
+
+// --- Organization-level classification ---
+function assignOrgCategories(ev) {
+  const blob = toTextBlob(ev);
+  const out = [];
+
+  const cats = ORGANIZATION_RULES?.categories || {};
+  for (const [typeKeyRaw, typeDef] of Object.entries(cats)) {
+    const typeKey = slug(typeKeyRaw);
+    const subcats = typeDef?.subcategories || {};
+    let sawChild = false;
+
+    // Optional: if type-level must_include_any is used
+    const typeHit = Array.isArray(typeDef?.must_include_any) &&
+                    matchesAnyKeyword(blob, lowerArray(typeDef.must_include_any));
+    if (typeHit) out.push(typeKey);
+
+    for (const [subKeyRaw, subDef] of Object.entries(subcats)) {
+      const subKey = slug(subKeyRaw);
+
+      const subHit = Array.isArray(subDef?.must_include_any) &&
+                     matchesAnyKeyword(blob, lowerArray(subDef.must_include_any));
+      if (subHit) {
+        out.push(`${typeKey}:${subKey}`);
+        sawChild = true;
+      }
+
+      const orgs = subDef?.organizations || {};
+      for (const [orgKeyRaw, orgDef] of Object.entries(orgs)) {
+        const orgKey = slug(orgKeyRaw);
+        const orgHit = Array.isArray(orgDef?.must_include_any) &&
+                       matchesAnyKeyword(blob, lowerArray(orgDef.must_include_any));
+        if (orgHit) {
+          out.push(`${typeKey}:${subKey}:${orgKey}`);
+          sawChild = true;
+        }
+      }
+    }
+
+    // If any child matched but we didn’t add the bare type yet, include it
+    if (sawChild && !out.includes(typeKey)) out.push(typeKey);
+  }
+
   return out;
 }
 

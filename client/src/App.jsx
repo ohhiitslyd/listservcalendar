@@ -40,11 +40,14 @@ const InnerApp = () => {
     if (!user) return;
 
     setSelectionInfo(selectionInfo);
-    setEventForm({
-      title: "",
-      description: "",          // ← make sure this key exists
-      location: "",
-      allDay: selectionInfo.allDay,
+    setEventForm({ 
+      title: "", 
+      organization: "", 
+      location: "", 
+      description: "", 
+      tags: "", 
+      poster_url: "", 
+      allDay: selectionInfo.allDay
     });
     setCreateModalOpen(true);
   };
@@ -124,6 +127,7 @@ const InnerApp = () => {
         <Calendar
           onSelect={handleSelect}
           onEventClick={handleEventClick}
+          scrollTime="09:00"
         />
 
         {/* RIGHT PANEL – event details */}
