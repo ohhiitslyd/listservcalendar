@@ -10,7 +10,7 @@ import { useEvents } from "../../hooks/useEvents";
 import "./Calendar.css";
 
 // 1. ACCEPT the props from App.jsx here
-export const Calendar = ({ onSelect, onEventClick, scrollTime }) => {
+export const Calendar = ({ onSelect, onEventClick, onDatesSet, scrollTime }) => {
   // 2. CLEAN UP: We only need `events` and `calendarRef` from context now.
   //    The other variables were only for the handlers you're deleting.
   const {
@@ -49,6 +49,7 @@ export const Calendar = ({ onSelect, onEventClick, scrollTime }) => {
           // 4. USE the props from App.jsx
           select={onSelect}
           eventClick={onEventClick}
+          datesSet={onDatesSet} 
           scrollTime={scrollTime}
         />
       </div>

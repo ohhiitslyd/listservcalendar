@@ -29,6 +29,8 @@ const InnerApp = () => {
     setCreateModalOpen,
     setSelectedEvent,
     selectedEvent,
+
+    setCurrentViewRange,
     // **NOTE:** we *do not* destructure `onSelect` or `onEventClick`
     // because we will define them locally (see below).
   } = useContext(AppContext);
@@ -75,6 +77,20 @@ const InnerApp = () => {
     }
 
     setSelectedEvent(ev);
+  };
+
+  /* -------------------------------------------------
+    handleDatesSet – called when the calendar view changes
+    (e.g. user goes to next/prev week). We store the visible
+    start/end so the filter-bubble counts only consider events
+    in that range.
+    ------------------------------------------------- */
+  const handleDatesSet = (arg) => {
+    // `arg.start` and `arg.end` are Date objects from FullCalendar
+    setCurrentViewRange({
+      start: arg.start.toISOString(),
+      end: arg.end.toISOString(),
+    });
   };
 
   /* -------------------------------------------------
@@ -127,6 +143,7 @@ const InnerApp = () => {
         <Calendar
           onSelect={handleSelect}
           onEventClick={handleEventClick}
+          onDatesSet={handleDatesSet}
           scrollTime="09:00"
         />
 
