@@ -54,6 +54,26 @@ try {
   );
 }
 
+// Organization based filters (organization_events.json)
+const ORG_DESCRIPTOR_PATH = path.join(__dirname, "organization_events.json");
+
+let ORGANIZATION_RULES = { categories: {} };
+try {
+  const rawOrg = fs.readFileSync(ORG_DESCRIPTOR_PATH, "utf8");
+  ORGANIZATION_RULES = JSON.parse(rawOrg);
+  console.log(
+    "[org-categories] loaded",
+    Object.keys(ORGANIZATION_RULES.categories || {}).length,
+    "top-level org categories from",
+    ORG_DESCRIPTOR_PATH
+  );
+} catch (e) {
+  console.warn(
+    "Could not read organization_events.json. Org category filtering will be empty.",
+    e
+  );
+}
+
 const {
   PORT = 3000,
   SESSION_SECRET = "dev-secret",
@@ -97,6 +117,27 @@ db.exec(`CREATE TABLE IF NOT EXISTS drafts(
   created_at TEXT DEFAULT CURRENT_TIMESTAMP,
   updated_at TEXT DEFAULT CURRENT_TIMESTAMP
 );`);
+
+// MIGRATING DATABASE
+function runMigration() {
+  console.log("[db] Checking for migrations...");
+  const columns = db.pragma("table_info(drafts)").map((col) => col.name);
+
+  if (!columns.includes("organization")) {
+    db.exec("ALTER TABLE drafts ADD COLUMN organization TEXT");
+    console.log("[db] Added column: organization");
+  }
+  if (!columns.includes("tags")) {
+    db.exec("ALTER TABLE drafts ADD COLUMN tags TEXT");
+    console.log("[db] Added column: tags");
+  }
+  if (!columns.includes("poster_url")) {
+    db.exec("ALTER TABLE drafts ADD COLUMN poster_url TEXT");
+    console.log("[db] Added column: poster_url");
+  }
+  console.log("[db] Migrations complete.");
+}
+runMigration(); // Run the migration on startup
 
 const draftInsert =
   db.prepare(`INSERT INTO drafts(id, user_id, title, description, location, start, end, all_day, organization, tags, poster_url)
@@ -432,6 +473,7 @@ app.get("/api/events", ensureAuthed, async (req, res) => {
       });
       const googleEvents = (googleResp.data.items || []).map((ev) => {
         const isAllDay = !!ev.start?.date;
+        const props = ev.extendedProperties?.shared || {};
         return {
           id: `google:${ev.id}`,
           calendarId: calId,
@@ -442,6 +484,9 @@ app.get("/api/events", ensureAuthed, async (req, res) => {
           start: isAllDay ? ev.start.date : ev.start?.dateTime,
           end: isAllDay ? ev.end.date : ev.end?.dateTime,
           allDay: isAllDay,
+          organization: props.organization || "",
+          tags: JSON.parse(props.tags || "[]"),
+          poster_url: props.poster_url || "",
         };
       });
       allEvents.push(...googleEvents);
@@ -457,38 +502,27 @@ app.get("/api/events", ensureAuthed, async (req, res) => {
       end: d.end,
       allDay: !!d.all_day,
       organization: d.organization || "",
-      tags: d.tags
-        ? typeof d.tags === "string"
-          ? d.tags
-              .split(",")
-              .map((t) => t.trim())
-              .filter(Boolean)
-          : d.tags
-        : [],
+      tags: JSON.parse(d.tags || "[]"), // De-serialize tags from JSON string
       poster_url: d.poster_url || "",
     }));
 
-    //deleted this
-    /* res.json({ events:[...drafts,...allEvents] });
-  } catch(e){ console.error(e); res.status(500).json({error:'Failed to fetch events'}); } */
-    //beginning of additions
-    const combined = [...drafts, ...allEvents];
-    // tagging events with categories from the JSON rules
-    const tagged = combined.map((ev) => ({
-      ...ev,
-      categories: assignCategories(ev),
-    }));
+    // --- Combine and normalize tags ---
+    const combined = [...drafts, ...allEvents].map((ev) => {
+      const catKeys = assignCategories(ev).map(slug); // normalize category keys
+      const orgKeys = assignOrgCategories(ev).map(slug); // normalize org-category keys
+      return { ...ev, categories: catKeys, orgCategories: orgKeys };
+    });
 
     // If query parameters exist, only filter ListServ events.
     // Non-ListServ events are ALWAYS kept, regardless of filters.
-    let filtered = tagged;
+    let filtered = combined;
     if (req.query.categories) {
       const reqCats = req.query.categories
         .split(",")
         .map((s) => s.trim())
         .filter(Boolean);
 
-      filtered = tagged.filter((ev) => {
+      filtered = combined.filter((ev) => {
         // A "ListServ" event is either:
         // 1) a Google event that belongs to the ListServ calendar, OR
         // 2) a local draft (destined for ListServ).
