@@ -29,23 +29,16 @@ function htmlToText(html) {
 
 /**
  * Extract date/time patterns from text
- * Supports formats like: "Nov 6, 2025, 8:00 AM", "TONIGHT", "5:00 - 7:00 PM", etc.
  */
 function extractDateTime(text, emailDate = null) {
   const patterns = [
-    // Time range: "5:00 - 7:00 PM" or "5:00 PM - 7:00 PM"
     /(\d{1,2}:\d{2}\s*(?:AM|PM)?\s*-\s*\d{1,2}:\d{2}\s*(?:AM|PM))/i,
-    // Single time: "5:00 PM" or "5:00 - 7:00 PM"
     /(\d{1,2}:\d{2}\s*(?:AM|PM))/i,
-    // "Nov 6, 2025, 8:00 AM" or "November 6, 2025, 8:00 AM"
     /(?:when|date|time)[:\s]*([A-Za-z]+\s+\d{1,2},?\s+\d{4}(?:,\s+\d{1,2}:\d{2}\s*(?:AM|PM))?)/i,
-    // "11/6/2025 8:00 AM"
     /(\d{1,2}\/\d{1,2}\/\d{4}\s+\d{1,2}:\d{2}\s*(?:AM|PM)?)/i,
-    // "Nov 6, 2025"
     /([A-Za-z]+\s+\d{1,2},?\s+\d{4})/,
   ];
 
-  // Check for relative dates first
   const relativeDatePatterns = [
     /(?:tonight|this evening|today)/i,
     /(?:tomorrow|tmr)/i,
@@ -53,19 +46,15 @@ function extractDateTime(text, emailDate = null) {
 
   let relativeDate = null;
   for (const pattern of relativeDatePatterns) {
-    if (pattern.test(text)) {
-      const match = text.match(pattern);
-      if (match) {
-        relativeDate = match[0].toLowerCase();
-        break;
-      }
+    const match = text.match(pattern);
+    if (match) {
+      relativeDate = match[0].toLowerCase();
+      break;
     }
   }
 
-  // Extract time if present
   let timeMatch = null;
   for (const pattern of patterns.slice(0, 2)) {
-    // Check time patterns first
     const match = text.match(pattern);
     if (match) {
       timeMatch = match[1];
@@ -73,20 +62,17 @@ function extractDateTime(text, emailDate = null) {
     }
   }
 
-  // If we have a relative date, use email date as base
   if (relativeDate && emailDate) {
     const baseDate = new Date(emailDate);
     if (relativeDate.includes("tomorrow")) {
       baseDate.setDate(baseDate.getDate() + 1);
     }
-    // If we have a time, combine them
     if (timeMatch) {
       return { relativeDate: baseDate, timeStr: timeMatch };
     }
     return { relativeDate: baseDate, timeStr: null };
   }
 
-  // Try regular date patterns
   for (const pattern of patterns.slice(2)) {
     const match = text.match(pattern);
     if (match) {
@@ -94,7 +80,6 @@ function extractDateTime(text, emailDate = null) {
     }
   }
 
-  // If we only found a time, use email date
   if (timeMatch && emailDate) {
     return { relativeDate: new Date(emailDate), timeStr: timeMatch };
   }
@@ -108,16 +93,13 @@ function extractDateTime(text, emailDate = null) {
 function parseDate(dateInput) {
   if (!dateInput) return null;
 
-  // Handle object with relativeDate and timeStr
   if (typeof dateInput === "object" && dateInput.relativeDate) {
     const baseDate = new Date(dateInput.relativeDate);
     if (dateInput.timeStr) {
-      // Parse time range or single time
       const timeRangeMatch = dateInput.timeStr.match(
         /(\d{1,2}):(\d{2})\s*(AM|PM)?\s*-\s*(\d{1,2}):(\d{2})\s*(AM|PM)?/i
       );
       if (timeRangeMatch) {
-        // Extract start time
         let hours = parseInt(timeRangeMatch[1]);
         const minutes = parseInt(timeRangeMatch[2]);
         const ampm = timeRangeMatch[3] || timeRangeMatch[6];
@@ -130,7 +112,6 @@ function parseDate(dateInput) {
         baseDate.setHours(hours, minutes, 0, 0);
         return { start: baseDate, end: parseEndTime(baseDate, timeRangeMatch) };
       } else {
-        // Single time
         const timeMatch = dateInput.timeStr.match(
           /(\d{1,2}):(\d{2})\s*(AM|PM)?/i
         );
@@ -152,16 +133,15 @@ function parseDate(dateInput) {
     return baseDate;
   }
 
-  // Handle string dates
   if (typeof dateInput !== "string") return null;
 
   const formats = [
-    "MMMM d, yyyy, h:mm a", // November 6, 2025, 8:00 AM
-    "MMM d, yyyy, h:mm a", // Nov 6, 2025, 8:00 AM
-    "MMMM d, yyyy", // November 6, 2025
-    "MMM d, yyyy", // Nov 6, 2025
-    "M/d/yyyy h:mm a", // 11/6/2025 8:00 AM
-    "M/d/yyyy", // 11/6/2025
+    "MMMM d, yyyy, h:mm a",
+    "MMM d, yyyy, h:mm a",
+    "MMMM d, yyyy",
+    "MMM d, yyyy",
+    "M/d/yyyy h:mm a",
+    "M/d/yyyy",
   ];
 
   for (const fmt of formats) {
@@ -171,11 +151,10 @@ function parseDate(dateInput) {
         return parsed;
       }
     } catch (e) {
-      // Try next format
+      // Continue to next format
     }
   }
 
-  // Fallback: try native Date parsing
   try {
     const parsed = new Date(dateInput);
     if (isValid(parsed)) {
@@ -221,10 +200,7 @@ function extractLocation(text) {
   for (const pattern of locationPatterns) {
     const match = text.match(pattern);
     if (match && match[1]) {
-      let location = match[1].trim();
-      // Clean up common prefixes
-      location = location.replace(/^the\s+/i, "");
-      return location;
+      return match[1].trim().replace(/^the\s+/i, "");
     }
   }
 
@@ -235,13 +211,11 @@ function extractLocation(text) {
  * Extract title from subject or body
  */
 function extractTitle(subject, bodyText) {
-  // Clean subject
   let title = subject
     .replace(/^(re|fwd?):\s*/i, "")
     .replace(/\s+/g, " ")
     .trim();
 
-  // If subject is too short or unclear, try to extract from body
   if (title.length < 5 || title.toLowerCase().includes("campus events")) {
     const titlePatterns = [
       /^([A-Z][^\n]{10,100})/m,
@@ -264,20 +238,16 @@ function extractTitle(subject, bodyText) {
  * Extract description from body
  */
 function extractDescription(bodyText, title) {
-  // Remove title if it appears at the start
   let desc = bodyText;
   if (title && desc.toLowerCase().startsWith(title.toLowerCase())) {
     desc = desc.substring(title.length).trim();
   }
 
-  // Remove common prefixes
   desc = desc.replace(/^(dear|hello|hi)[^\n]*\n/i, "");
 
-  // Take first few sentences or paragraphs
   const sentences = desc.split(/[.!?]\s+/).slice(0, 3);
   desc = sentences.join(". ").trim();
 
-  // Limit length
   if (desc.length > 500) {
     desc = desc.substring(0, 500) + "...";
   }
@@ -290,19 +260,15 @@ function extractDescription(bodyText, title) {
  */
 function calculateConfidence(event) {
   let score = 0;
-
   if (event.title && event.title.length > 5) score += 0.3;
   if (event.startDate) score += 0.4;
   if (event.startTime) score += 0.2;
   if (event.location) score += 0.1;
-
   return Math.min(score, 1.0);
 }
 
 /**
  * Parse email and extract event information
- * @param {Object} emailData - Email data from database
- * @returns {Array<Object>} Array of extracted events
  */
 export function parseEmailForEvents(emailData) {
   const events = [];
@@ -312,21 +278,17 @@ export function parseEmailForEvents(emailData) {
   }
 
   const { subject, bodyText, bodyHtml, received_date } = emailData;
-
-  // Convert HTML to text if needed
   const text = bodyText || htmlToText(bodyHtml || "");
 
   if (!text && !subject) {
     return events;
   }
 
-  // Extract basic information
   const title = extractTitle(subject, text);
   const description = extractDescription(text, title);
   const location = extractLocation(text);
   const dateTimeData = extractDateTime(text, received_date);
 
-  // Parse date/time
   let startDate = null;
   let startTime = null;
   let endDate = null;
@@ -337,7 +299,6 @@ export function parseEmailForEvents(emailData) {
     const parsed = parseDate(dateTimeData);
 
     if (parsed) {
-      // Handle time range object
       if (typeof parsed === "object" && parsed.start && parsed.end) {
         startDate = format(parsed.start, "yyyy-MM-dd");
         startTime = format(parsed.start, "HH:mm:ss");
@@ -345,10 +306,8 @@ export function parseEmailForEvents(emailData) {
         endTime = format(parsed.end, "HH:mm:ss");
         allDay = false;
       } else {
-        // Single date/time
         startDate = format(parsed, "yyyy-MM-dd");
 
-        // Check if it has time
         const hasTime =
           (typeof dateTimeData === "object" && dateTimeData.timeStr) ||
           (typeof dateTimeData === "string" &&
@@ -358,7 +317,6 @@ export function parseEmailForEvents(emailData) {
           startTime = format(parsed, "HH:mm:ss");
           allDay = false;
 
-          // Default end time: 1 hour after start (if not a range)
           if (!(typeof parsed === "object" && parsed.end)) {
             const endDateTime = new Date(parsed);
             endDateTime.setHours(endDateTime.getHours() + 1);
@@ -373,7 +331,6 @@ export function parseEmailForEvents(emailData) {
     }
   }
 
-  // Create event object
   const event = {
     title,
     description,
@@ -383,12 +340,14 @@ export function parseEmailForEvents(emailData) {
     startTime: startTime || null,
     endTime: endTime || null,
     allDay: allDay || false,
+    confidenceScore: calculateConfidence({
+      title,
+      startDate,
+      startTime,
+      location,
+    }),
   };
 
-  // Calculate confidence
-  event.confidenceScore = calculateConfidence(event);
-
-  // Only add if we have at least a title and date (minimum viable event)
   if (event.title && event.startDate) {
     events.push(event);
   }

@@ -117,9 +117,9 @@ export async function fetchEmailContent(oauth2Client, messageId) {
 
       // Check if this is an inline attachment (image with Content-ID)
       const contentId = getPartHeader("Content-ID");
-      const contentDisposition = getPartHeader("Content-Disposition");
       const filename =
         getPartHeader("Content-Name") || getPartHeader("Filename");
+      const mimeType = part.mimeType || "";
 
       // Inline attachments have Content-ID and are typically images
       // Check for both direct data and attachmentId (for large attachments)
@@ -128,20 +128,18 @@ export async function fetchEmailContent(oauth2Client, messageId) {
       const isImage = mimeType.startsWith("image/");
 
       if (contentId && isImage && (hasData || hasAttachmentId)) {
-        let attachmentData = {
-          contentId: contentId.replace(/[<>]/g, ""), // Remove angle brackets
+        const attachmentData = {
+          contentId: contentId.replace(/[<>]/g, ""),
           mimeType: mimeType,
           filename: filename || `image.${mimeType.split("/")[1]}`,
           size: part.body.size || 0,
         };
 
-        // If data is directly available, use it
         if (hasData) {
           attachmentData.data = part.body.data;
         } else if (hasAttachmentId) {
-          // Mark that we need to fetch this attachment separately
           attachmentData.attachmentId = part.body.attachmentId;
-          attachmentData.messageId = msgId; // Store for later fetching
+          attachmentData.messageId = msgId;
         }
 
         attachments.push(attachmentData);
@@ -168,7 +166,6 @@ export async function fetchEmailContent(oauth2Client, messageId) {
 
     extractBody(message.payload, messageId);
 
-    // Fetch attachments that need to be downloaded separately
     for (const attachment of attachments) {
       if (attachment.attachmentId && !attachment.data) {
         try {
@@ -177,7 +174,6 @@ export async function fetchEmailContent(oauth2Client, messageId) {
             attachment.messageId,
             attachment.attachmentId
           );
-          // Clean up temporary fields
           delete attachment.attachmentId;
           delete attachment.messageId;
         } catch (error) {
@@ -185,7 +181,6 @@ export async function fetchEmailContent(oauth2Client, messageId) {
             `[emailScraper] Failed to fetch attachment ${attachment.contentId}:`,
             error.message
           );
-          // Remove attachment if we can't fetch it
           const index = attachments.indexOf(attachment);
           if (index > -1) attachments.splice(index, 1);
         }

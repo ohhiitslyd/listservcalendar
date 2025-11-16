@@ -7,14 +7,12 @@ import path from "path";
 import { fileURLToPath } from "url";
 import Database from "better-sqlite3";
 import crypto from "crypto";
-// added
 import fs from "fs";
-// Email scraping services
 import { scrapeEmails } from "./services/emailScraper.js";
 import { parseEmailForEvents } from "./services/emailParser.js";
 
 dotenv.config();
-// beginning of additions
+
 // Resolve file location relative to this index.js
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -55,10 +53,6 @@ try {
     e
   );
 }
-// ending of additions
-
-// const __filename = fileURLToPath(import.meta.url);
-// const __dirname = path.dirname(__filename);
 
 const {
   PORT = 3000,
@@ -105,11 +99,11 @@ db.exec(`CREATE TABLE IF NOT EXISTS drafts(
 );`);
 
 const draftInsert =
-  db.prepare(`INSERT INTO drafts(id, user_id, title, description, location, start, end, all_day)
-  VALUES(@id, @user_id, @title, @description, @location, @start, @end, @all_day)`);
+  db.prepare(`INSERT INTO drafts(id, user_id, title, description, location, start, end, all_day, organization, tags, poster_url)
+  VALUES(@id, @user_id, @title, @description, @location, @start, @end, @all_day, @organization, @tags, @poster_url)`);
 const draftUpdate =
   db.prepare(`UPDATE drafts SET title=@title, description=@description, location=@location, 
-  start=@start, end=@end, all_day=@all_day, updated_at=CURRENT_TIMESTAMP WHERE id=@id AND user_id=@user_id`);
+  start=@start, end=@end, all_day=@all_day, organization=@organization, tags=@tags, poster_url=@poster_url, updated_at=CURRENT_TIMESTAMP WHERE id=@id AND user_id=@user_id`);
 const draftDelete = db.prepare(
   "DELETE FROM drafts WHERE id=@id AND user_id=@user_id"
 );
@@ -132,11 +126,10 @@ db.exec(`CREATE TABLE IF NOT EXISTS scraped_emails (
   attachments TEXT
 );`);
 
-// Add attachments column if it doesn't exist (for existing databases)
 try {
   db.exec(`ALTER TABLE scraped_emails ADD COLUMN attachments TEXT`);
 } catch (e) {
-  // Column already exists, ignore error
+  // Column already exists
 }
 
 db.exec(`CREATE TABLE IF NOT EXISTS email_events (
@@ -157,17 +150,10 @@ db.exec(`CREATE TABLE IF NOT EXISTS email_events (
   FOREIGN KEY (email_id) REFERENCES scraped_emails(id)
 );`);
 
-// Email scraping prepared statements
-const emailByGmailId = db.prepare(
-  "SELECT * FROM scraped_emails WHERE gmail_message_id=?"
-);
 const emailEventInsert = db.prepare(`INSERT INTO email_events(
   id, email_id, user_id, title, description, location, start_date, end_date, 
   start_time, end_time, all_day, confidence_score, status
 ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
-const emailEventsByUser = db.prepare(
-  "SELECT * FROM email_events WHERE user_id=? ORDER BY extracted_at DESC"
-);
 
 function ensureAuthed(req, res, next) {
   if (!req.session.tokens || !req.session.user) {
@@ -224,7 +210,7 @@ const slug = (s = "") =>
     .replace(/\s+/g, "_")
     .replace(/[^a-z0-9_:]/g, ""); // keep letters, digits, underscores, and colons
 
-const lowerArray = (arr = []) => arr.map(x => String(x).toLowerCase());
+const lowerArray = (arr = []) => arr.map((x) => String(x).toLowerCase());
 
 // --- Filtering helper Functions (event category classification) ---
 // normalize and test text
@@ -278,15 +264,17 @@ function assignOrgCategories(ev) {
     let sawChild = false;
 
     // Optional: if type-level must_include_any is used
-    const typeHit = Array.isArray(typeDef?.must_include_any) &&
-                    matchesAnyKeyword(blob, lowerArray(typeDef.must_include_any));
+    const typeHit =
+      Array.isArray(typeDef?.must_include_any) &&
+      matchesAnyKeyword(blob, lowerArray(typeDef.must_include_any));
     if (typeHit) out.push(typeKey);
 
     for (const [subKeyRaw, subDef] of Object.entries(subcats)) {
       const subKey = slug(subKeyRaw);
 
-      const subHit = Array.isArray(subDef?.must_include_any) &&
-                     matchesAnyKeyword(blob, lowerArray(subDef.must_include_any));
+      const subHit =
+        Array.isArray(subDef?.must_include_any) &&
+        matchesAnyKeyword(blob, lowerArray(subDef.must_include_any));
       if (subHit) {
         out.push(`${typeKey}:${subKey}`);
         sawChild = true;
@@ -295,8 +283,9 @@ function assignOrgCategories(ev) {
       const orgs = subDef?.organizations || {};
       for (const [orgKeyRaw, orgDef] of Object.entries(orgs)) {
         const orgKey = slug(orgKeyRaw);
-        const orgHit = Array.isArray(orgDef?.must_include_any) &&
-                       matchesAnyKeyword(blob, lowerArray(orgDef.must_include_any));
+        const orgHit =
+          Array.isArray(orgDef?.must_include_any) &&
+          matchesAnyKeyword(blob, lowerArray(orgDef.must_include_any));
         if (orgHit) {
           out.push(`${typeKey}:${subKey}:${orgKey}`);
           sawChild = true;
@@ -311,8 +300,6 @@ function assignOrgCategories(ev) {
   return out;
 }
 
-// ending of additions
-
 // --- Auth ---
 app.get("/auth/google", (req, res) => {
   const oauth2Client = getOAuthClient(req);
@@ -321,7 +308,7 @@ app.get("/auth/google", (req, res) => {
     "email",
     "profile",
     "https://www.googleapis.com/auth/calendar",
-    "https://www.googleapis.com/auth/gmail.readonly", // For email scraping
+    "https://www.googleapis.com/auth/gmail.readonly",
   ];
   const url = oauth2Client.generateAuthUrl({
     access_type: "offline",
@@ -469,6 +456,16 @@ app.get("/api/events", ensureAuthed, async (req, res) => {
       start: d.start,
       end: d.end,
       allDay: !!d.all_day,
+      organization: d.organization || "",
+      tags: d.tags
+        ? typeof d.tags === "string"
+          ? d.tags
+              .split(",")
+              .map((t) => t.trim())
+              .filter(Boolean)
+          : d.tags
+        : [],
+      poster_url: d.poster_url || "",
     }));
 
     //deleted this
@@ -531,7 +528,17 @@ app.get("/api/event-categories", ensureAuthed, (req, res) => {
 // --- Drafts ---
 app.post("/api/drafts", ensureAuthed, (req, res) => {
   try {
-    const { title, description, location, start, end, allDay } = req.body;
+    const {
+      title,
+      description,
+      location,
+      start,
+      end,
+      allDay,
+      organization,
+      tags,
+      poster_url,
+    } = req.body;
     if (!start) return res.status(400).json({ error: "start required" });
     const id = `draft_${crypto.randomBytes(12).toString("hex")}`;
     draftInsert.run({
@@ -543,6 +550,9 @@ app.post("/api/drafts", ensureAuthed, (req, res) => {
       start,
       end: end || null,
       all_day: allDay ? 1 : 0,
+      organization: organization || "",
+      tags: tags ? (Array.isArray(tags) ? tags.join(",") : tags) : "",
+      poster_url: poster_url || "",
     });
     res.json({ ok: true, id: `draft:${id}` });
   } catch (e) {
@@ -635,8 +645,8 @@ app.post("/api/scrape/emails", ensureAuthed, async (req, res) => {
     const result = await scrapeEmails(oauth2Client, userId, db, {
       maxResults,
       query,
-      skipExisting: !force, // If force=true, don't skip existing
-      force, // Re-fetch and update existing emails
+      skipExisting: !force,
+      force,
     });
 
     res.json(result);
@@ -648,7 +658,14 @@ app.post("/api/scrape/emails", ensureAuthed, async (req, res) => {
   }
 });
 
-// Process emails and extract events
+function combineDateTime(date, time, allDay) {
+  if (!date) return null;
+  if (time && !allDay) {
+    return `${date}T${time}`;
+  }
+  return date;
+}
+
 app.post("/api/scrape/process", ensureAuthed, async (req, res) => {
   try {
     const userId = req.session.user.id;
@@ -682,40 +699,17 @@ app.post("/api/scrape/process", ensureAuthed, async (req, res) => {
         // If reprocessing, delete old events first
         if (reprocess) {
           db.prepare("DELETE FROM email_events WHERE email_id=?").run(email.id);
-          // Reset processed flag
           db.prepare("UPDATE scraped_emails SET processed=0 WHERE id=?").run(
             email.id
           );
         }
 
-        // Parse email for events
         const events = parseEmailForEvents(email);
 
-        // Insert events into database
         for (const event of events) {
           const eventId = `email_event_${crypto
             .randomBytes(12)
             .toString("hex")}`;
-
-          // Combine date and time for start/end
-          let start = null;
-          let end = null;
-
-          if (event.startDate) {
-            if (event.startTime && !event.allDay) {
-              start = `${event.startDate}T${event.startTime}`;
-            } else {
-              start = event.startDate;
-            }
-          }
-
-          if (event.endDate) {
-            if (event.endTime && !event.allDay) {
-              end = `${event.endDate}T${event.endTime}`;
-            } else {
-              end = event.endDate;
-            }
-          }
 
           emailEventInsert.run(
             eventId,
@@ -880,12 +874,28 @@ app.get(
       }
 
       const attachments = JSON.parse(email.attachments);
-      const attachment = attachments.find(
-        (att) =>
-          att.contentId === contentId || att.contentId?.includes(contentId)
-      );
+
+      // Try exact match first, then case-insensitive match, then partial match
+      const attachment = attachments.find((att) => {
+        if (!att.contentId) return false;
+        const attId = att.contentId.toLowerCase();
+        const searchId = contentId.toLowerCase();
+        return (
+          att.contentId === contentId ||
+          attId === searchId ||
+          attId.includes(searchId) ||
+          searchId.includes(attId)
+        );
+      });
 
       if (!attachment || !attachment.data) {
+        console.error(
+          `[attachment] Not found: emailId=${emailId}, contentId=${contentId}`
+        );
+        console.error(
+          `[attachment] Available contentIds:`,
+          attachments.map((a) => a.contentId)
+        );
         return res.status(404).json({ error: "Attachment not found" });
       }
 
@@ -914,31 +924,38 @@ app.post("/api/email-events/:eventId/to-draft", ensureAuthed, (req, res) => {
       return res.status(404).json({ error: "Event not found" });
     }
 
-    // Combine date and time
-    let start = null;
-    let end = null;
+    // Get the source email to check for attachments
+    const email = db
+      .prepare("SELECT * FROM scraped_emails WHERE id=? AND user_id=?")
+      .get(event.email_id, userId);
 
-    if (event.start_date) {
-      if (event.start_time && !event.all_day) {
-        start = `${event.start_date}T${event.start_time}`;
-      } else {
-        start = event.start_date;
+    // Generate poster_url from first attachment if available
+    let posterUrl = "";
+    if (email && email.attachments) {
+      try {
+        const attachments = JSON.parse(email.attachments);
+        if (attachments && attachments.length > 0) {
+          const firstAttachment = attachments[0];
+          // Generate URL to serve the image
+          const baseUrl = `${req.protocol}://${req.get("host")}`;
+          posterUrl = `${baseUrl}/api/scraped-emails/${email.id}/attachments/${firstAttachment.contentId}`;
+        }
+      } catch (e) {
+        console.error("[to-draft] Error parsing attachments:", e);
       }
     }
 
-    if (event.end_date) {
-      if (event.end_time && !event.all_day) {
-        end = `${event.end_date}T${event.end_time}`;
-      } else {
-        end = event.end_date;
-      }
-    }
+    const start = combineDateTime(
+      event.start_date,
+      event.start_time,
+      event.all_day
+    );
+    const end = combineDateTime(event.end_date, event.end_time, event.all_day);
 
     if (!start) {
       return res.status(400).json({ error: "Event missing start date" });
     }
 
-    // Create draft
     const draftId = `draft_${crypto.randomBytes(12).toString("hex")}`;
     draftInsert.run({
       id: draftId,
@@ -949,6 +966,9 @@ app.post("/api/email-events/:eventId/to-draft", ensureAuthed, (req, res) => {
       start,
       end: end || null,
       all_day: event.all_day || 0,
+      organization: "",
+      tags: "",
+      poster_url: posterUrl,
     });
 
     // Update event status
