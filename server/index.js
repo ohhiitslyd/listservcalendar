@@ -513,29 +513,59 @@ app.get("/api/events", ensureAuthed, async (req, res) => {
       return { ...ev, categories: catKeys, orgCategories: orgKeys };
     });
 
-    // If query parameters exist, only filter ListServ events.
-    // Non-ListServ events are ALWAYS kept, regardless of filters.
+    // Helper: identify ListServ events so only they get filtered away
+    const isListServ = (ev) => {
+      const isDraft = ev.source === "draft";
+      const isGoogleListServ =
+        ev.source === "google" && ev.calendarId === listservCalendarId;
+      return isDraft || isGoogleListServ;
+    };
+
+    // --- Normalize query params so case/space differences don't break filtering ---
+    const reqCatParam = req.query.categories;
+    const reqOrgParam = req.query.orgCategories;
+
+    // These are the selected category keys (already slugified on the frontend)
+    const reqCats = reqCatParam
+      ? reqCatParam
+          .split(",")
+          .map((s) => slug(s.trim()))
+          .filter(Boolean)
+      : null;
+
+    const reqOrgCats = reqOrgParam
+      ? reqOrgParam
+          .split(",")
+          .map((s) => slug(s.trim()))
+          .filter(Boolean)
+      : null;
+
+    // Apply filters ONLY to ListServ events; non-ListServ always pass through
     let filtered = combined;
-    if (req.query.categories) {
-      const reqCats = req.query.categories
-        .split(",")
-        .map((s) => s.trim())
-        .filter(Boolean);
 
+    if (reqCats || reqOrgCats) {
       filtered = combined.filter((ev) => {
-        // A "ListServ" event is either:
-        // 1) a Google event that belongs to the ListServ calendar, OR
-        // 2) a local draft (destined for ListServ).
-        const isListServGoogle =
-          ev.source === "google" && ev.calendarId === listservCalendarId;
-        const isListServDraft = ev.source === "draft";
-        const isListServ = isListServGoogle || isListServDraft;
+        // 1) Non-ListServ events are always kept, regardless of filters
+        if (!isListServ(ev)) return true;
 
-        // Non-ListServ events are unaffected by filters → always keep.
-        if (!isListServ) return true;
+        // 2) If somehow we have no filters, keep the event
+        if (!reqCats && !reqOrgCats) return true;
 
-        // For ListServ events, enforce category matching.
-        return ev.categories?.some((c) => reqCats.includes(c));
+        // 3) Compute "does this event match any selected event-category filter?"
+        const matchesCat = reqCats
+          ? (ev.categories || []).some((c) => reqCats.includes(c))
+          : false;
+
+        // 4) Compute "does this event match any selected org-category filter?"
+        const matchesOrg = reqOrgCats
+          ? (ev.orgCategories || []).some((c) => reqOrgCats.includes(c))
+          : false;
+
+        // 5) OR logic across the two groups:
+        //    - If only `reqCats` set → matchesCat must be true
+        //    - If only `reqOrgCats` set → matchesOrg must be true
+        //    - If both set → (matchesCat || matchesOrg)
+        return matchesCat || matchesOrg;
       });
     }
 
@@ -549,11 +579,49 @@ app.get("/api/events", ensureAuthed, async (req, res) => {
 //returns category labels from the JSON (left panel) - more additions
 app.get("/api/event-categories", ensureAuthed, (req, res) => {
   const cats = CATEGORY_RULES?.categories || {};
-  const list = Object.entries(cats).map(([key, def]) => ({
-    key,
-    label: def.label || key,
+  const list = Object.entries(cats).map(([rawKey, def]) => ({
+    key: slug(rawKey), // normalized key
+    label: def.label || rawKey, // human label stays pretty
     description: def.description || "",
   }));
+  res.json({ categories: list });
+});
+
+// --- Org categories → flat list for bubbles on the left panel
+app.get("/api/org-categories", ensureAuthed, (req, res) => {
+  const cats = ORGANIZATION_RULES?.categories || {};
+  const list = [];
+
+  for (const [typeKeyRaw, typeDef] of Object.entries(cats)) {
+    const typeKey = slug(typeKeyRaw);
+    const typeLabel = typeDef.label || typeKeyRaw;
+    list.push({ key: typeKey, label: typeLabel, level: "type" });
+
+    const subcats = typeDef.subcategories || {};
+    for (const [subKeyRaw, subDef] of Object.entries(subcats)) {
+      const subKey = slug(subKeyRaw);
+      const subLabel = subDef.label || subKeyRaw;
+      const subFlatKey = `${typeKey}:${subKey}`;
+      list.push({
+        key: subFlatKey,
+        label: `${typeLabel} • ${subLabel}`,
+        level: "subcategory",
+      });
+
+      const orgs = subDef.organizations || {};
+      for (const [orgKeyRaw, orgDef] of Object.entries(orgs)) {
+        const orgKey = slug(orgKeyRaw);
+        const orgLabel = orgDef.label || orgKeyRaw;
+        const orgFlatKey = `${typeKey}:${subKey}:${orgKey}`;
+        list.push({
+          key: orgFlatKey,
+          label: orgLabel,
+          level: "organization",
+        });
+      }
+    }
+  }
+
   res.json({ categories: list });
 });
 
@@ -642,6 +710,14 @@ app.post("/api/events/:compoundId/publish", ensureAuthed, async (req, res) => {
       summary: row.title || "",
       description: row.description || "",
       location: row.location || "",
+      // Store custom data in extendedProperties
+      extendedProperties: {
+        shared: {
+          organization: row.organization || "",
+          tags: row.tags || "[]", // Pass the JSON string
+          poster_url: row.poster_url || "",
+        },
+      },
     };
     if (row.all_day) {
       resource.start = { date: row.start };
