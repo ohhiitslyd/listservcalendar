@@ -26,6 +26,10 @@ export const AppProvider = ({ children }) => {
   // Holds ALL events for the current visible calendars (NO category filter).
   const [allEventsForCounts, setAllEventsForCounts] = useState([]);
 
+  // NEW: date range for the current calendar view (start/end of the week)
+  // We’ll use this to filter which events are counted in the bubbles.
+  const [currentViewRange, setCurrentViewRange] = useState(null);
+
   const { availableCats, fetchCategories } = useCategories(); // ← custom hook
   const [selectedCats, setSelectedCats] = useState(new Set());
 
@@ -65,25 +69,49 @@ export const AppProvider = ({ children }) => {
     return `&orgCategories=${encodeURIComponent(s)}`;
   }, [selectedOrgCats]);
 
-  const categoryCounts = useMemoizedCounts(allEventsForCounts, listservCalendarId);
+  // whose start time falls within the current view’s date range
+  const weekFilteredEventsForCounts = useMemo(() => {
+    // If we don’t yet know the view range, just use all events
+    if (!currentViewRange) return allEventsForCounts;
 
-  //computing org counts
+    const { start, end } = currentViewRange;
+    const startMs = new Date(start).getTime();
+    const endMs   = new Date(end).getTime();
+
+    return (allEventsForCounts || []).filter((ev) => {
+      // `ev.start` is a string like "2025-03-10T10:00:00Z" or "2025-03-10"
+      if (!ev.start) return false;
+      const evStartMs = new Date(ev.start).getTime();
+      return evStartMs >= startMs && evStartMs < endMs;
+    });
+  }, [allEventsForCounts, currentViewRange]);
+
+  // Use the *week-filtered* events when computing category counts
+  const categoryCounts = useMemoizedCounts(
+    weekFilteredEventsForCounts,
+    listservCalendarId
+  );
+
+  // Use the *same* week-filtered events for org counts
   const orgCategoryCounts = useMemo(() => {
     const counts = {};
     const lsId = listservCalendarId;
 
-    (allEventsForCounts || []).forEach((ev) => {
-      const isListServGoogle = ev.source === 'google' && ev.calendarId === lsId;
-      const isListServDraft  = ev.source === 'draft';
-      const isListServ       = isListServGoogle || isListServDraft;
+    (weekFilteredEventsForCounts || []).forEach((ev) => {
+      // Count only ListServ events, same as before
+      const isListServGoogle = ev.source === "google" && ev.calendarId === lsId;
+      const isListServDraft = ev.source === "draft";
+      const isListServ = isListServGoogle || isListServDraft;
       if (!isListServ) return;
 
       const keys = ev?.extendedProps?.orgCategories || ev.orgCategories || [];
-      keys.forEach(k => { counts[k] = (counts[k] || 0) + 1; });
+      keys.forEach((k) => {
+        counts[k] = (counts[k] || 0) + 1;
+      });
     });
 
     return counts;
-  }, [allEventsForCounts, listservCalendarId]); 
+  }, [weekFilteredEventsForCounts, listservCalendarId]);
 
 
   /* -------------------------------------------------
@@ -400,6 +428,9 @@ export const AppProvider = ({ children }) => {
     selectedOrgCats,
     setSelectedOrgCats,
     orgCategoryCounts,
+
+    currentViewRange,
+    setCurrentViewRange,
   };
 
   return (
