@@ -5,32 +5,40 @@
       "subcategories": {
         "a_cappella": {
           "label": "A Cappella",
-          "must_include_any": ["a capella", "acapella", "a-cappella", "brovertones", "aires", "decibelles", "rockapellas",
-        "dodecaphonics", "dodecs", "subtleties"],
+          "must_include_any": ["a capella", "acapella", "a-cappella", "acapela", "brovertones", "bros", "cords", "aires", "decibelles", "rockapellas",
+        "dodecaphonics", "dodecs", "subtleties", "subs", "sings", "decis", "rocks"],
           "organizations": {
             "dartmouth_brovertones": {
               "label": "Dartmouth Brovertones",
-              "must_include_any": ["brovertones"]
+              "must_include_any": ["brovertones", "bros"]
             },
             "dartmouth_aires": {
               "label": "Dartmouth Aires",
               "must_include_any": ["aires"]
             },
+            "dartmouth_cords": {
+              "label": "Dartmouth Cords",
+              "must_include_any": ["cords"]
+            },
             "dartmouth_decibelles": {
               "label": "Dartmouth Decibelles",
-              "must_include_any": ["decibelles"]
+              "must_include_any": ["decibelles", "decis"]
             },
             "dartmouth_rockapellas": {
               "label": "Dartmouth Rockapellas",
-              "must_include_any": ["rockapellas"]
+              "must_include_any": ["rockapellas", "rocks"]
             },
             "dartmouth_dodecaphonics": {
               "label": "Dartmouth Dodecaphonics",
               "must_include_any": ["dodecaphonics", "dodecs"]
             },
+            "dartmouth_sings": {
+              "label": "Dartmouth Sings",
+              "must_include_any": ["sings"]
+            },
             "dartmouth_subtleties": {
               "label": "Dartmouth Subtleties",
-              "must_include_any": ["subtleties"]
+              "must_include_any": ["subtleties", "subs"]
             }
           }
         },
