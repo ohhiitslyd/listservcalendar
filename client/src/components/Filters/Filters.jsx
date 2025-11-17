@@ -45,6 +45,11 @@ export const Filters = () => {
   const orgHierarchy = useMemo(() => {
     const hierarchy = {};
     
+    // Safety check: ensure availableOrgCats is an array
+    if (!availableOrgCats || !Array.isArray(availableOrgCats)) {
+      return hierarchy;
+    }
+    
     // Debug: log what we're receiving
     console.log('Available org cats:', availableOrgCats);
     const orgCats = availableOrgCats.filter(c => {
@@ -64,6 +69,7 @@ export const Filters = () => {
     
     // Step 1: Add all types first
     availableOrgCats.forEach(cat => {
+      if (!cat || !cat.key) return;
       const parts = cat.key.split(':');
       const level = cat.level || (parts.length === 1 ? 'type' : parts.length === 2 ? 'subcategory' : 'organization');
       
@@ -80,6 +86,7 @@ export const Filters = () => {
     
     // Step 2: Add all subcategories
     availableOrgCats.forEach(cat => {
+      if (!cat || !cat.key) return;
       const parts = cat.key.split(':');
       const level = cat.level || (parts.length === 1 ? 'type' : parts.length === 2 ? 'subcategory' : 'organization');
       
@@ -118,6 +125,7 @@ export const Filters = () => {
     
     // Step 3: Add all organizations LAST - this ensures subcategories already exist
     availableOrgCats.forEach(cat => {
+      if (!cat || !cat.key) return;
       const parts = cat.key.split(':');
       const level = cat.level || (parts.length === 1 ? 'type' : parts.length === 2 ? 'subcategory' : 'organization');
       
@@ -225,23 +233,132 @@ export const Filters = () => {
     return colors[typeKey] || '#d4e9c4'; // default green
   };
 
+  // Helper function to check if all children of a type are selected
+  const areAllTypeChildrenSelected = (type, selectedSet) => {
+    return Object.values(type.subcategories).every(sub => selectedSet.has(sub.key));
+  };
+
+  // Helper function to check if all children of a subcategory are selected
+  const areAllSubcategoryChildrenSelected = (sub, selectedSet) => {
+    return Object.values(sub.organizations).every(org => selectedSet.has(org.key));
+  };
+
+  // Helper function to update parent selection based on children
+  const updateParentSelection = (next, orgHierarchy) => {
+    // First, check all subcategories - if all organizations are selected, select the subcategory
+    Object.values(orgHierarchy).forEach(type => {
+      Object.values(type.subcategories).forEach(sub => {
+        const allOrgsSelected = areAllSubcategoryChildrenSelected(sub, next);
+        if (allOrgsSelected && Object.keys(sub.organizations).length > 0) {
+          next.add(sub.key);
+        } else {
+          // If not all organizations are selected, deselect the subcategory
+          next.delete(sub.key);
+        }
+      });
+    });
+    
+    // Then, check all types - if all subcategories are selected, select the type
+    Object.values(orgHierarchy).forEach(type => {
+      const allSubsSelected = areAllTypeChildrenSelected(type, next);
+      if (allSubsSelected && Object.keys(type.subcategories).length > 0) {
+        next.add(type.key);
+      } else {
+        // If not all subcategories are selected, deselect the type
+        next.delete(type.key);
+      }
+    });
+  };
+
   const toggleOrgCategory = (key) => {
     setSelectedOrgCats((prev) => {
       const next = new Set(prev);
-      next.has(key) ? next.delete(key) : next.add(key);
+      const isCurrentlySelected = next.has(key);
+      
+      if (isCurrentlySelected) {
+        // Deselecting: remove this key and all its children
+        next.delete(key);
+        
+        // Find and remove all children
+        Object.values(orgHierarchy).forEach(type => {
+          if (type.key === key) {
+            // Type deselected - remove all subcategories and organizations
+            Object.values(type.subcategories).forEach(sub => {
+              next.delete(sub.key);
+              Object.values(sub.organizations).forEach(org => {
+                next.delete(org.key);
+              });
+            });
+          } else {
+            // Check subcategories
+            Object.values(type.subcategories).forEach(sub => {
+              if (sub.key === key) {
+                // Subcategory deselected - remove all organizations
+                Object.values(sub.organizations).forEach(org => {
+                  next.delete(org.key);
+                });
+              }
+            });
+          }
+        });
+      } else {
+        // Selecting: add this key and handle hierarchy
+        
+        // Determine the level of this key
+        const parts = key.split(':');
+        const level = parts.length === 1 ? 'type' : parts.length === 2 ? 'subcategory' : 'organization';
+        
+        if (level === 'type') {
+          // Type selected - add type, all subcategories, and all organizations
+          next.add(key);
+          Object.values(orgHierarchy).forEach(type => {
+            if (type.key === key) {
+              Object.values(type.subcategories).forEach(sub => {
+                next.add(sub.key);
+                Object.values(sub.organizations).forEach(org => {
+                  next.add(org.key);
+                });
+              });
+            }
+          });
+        } else if (level === 'subcategory') {
+          // Subcategory selected - add subcategory and all organizations (but NOT parent type yet)
+          next.add(key);
+          
+          const [typeKey] = parts;
+          Object.values(orgHierarchy).forEach(type => {
+            if (type.key === typeKey) {
+              Object.values(type.subcategories).forEach(sub => {
+                if (sub.key === key) {
+                  Object.values(sub.organizations).forEach(org => {
+                    next.add(org.key);
+                  });
+                }
+              });
+            }
+          });
+        } else if (level === 'organization') {
+          // Organization selected - add only the organization (NOT parent subcategory or type yet)
+          next.add(key);
+        }
+      }
+      
+      // After making changes, update parent selections based on whether all children are selected
+      updateParentSelection(next, orgHierarchy);
+      
       return next;
     });
   };
 
   const toggleEventCategory = (key) => {
-    setSelectedCats((prev) => {
-      const next = new Set(prev);
-      next.has(key) ? next.delete(key) : next.add(key);
-      return next;
-    });
-  };
+            setSelectedCats((prev) => {
+              const next = new Set(prev);
+              next.has(key) ? next.delete(key) : next.add(key);
+              return next;
+            });
+          };
 
-  return (
+          return (
     <div className="filters-wrapper">
       {/* Header */}
       <div className="filters-header">
@@ -271,7 +388,7 @@ export const Filters = () => {
       <div className="filters-content">
         {activeTab === 'organizations' ? (
           <div className="org-filters-list">
-            {Object.values(orgHierarchy).map((type) => {
+            {orgHierarchy && Object.values(orgHierarchy).map((type) => {
               const typeColor = getCategoryColor(type.key);
               const typeSelected = selectedOrgCats.has(type.key);
               const isExpanded = expandedCategories.has(type.key);
@@ -330,14 +447,14 @@ export const Filters = () => {
                     const subSelected = selectedOrgCats.has(sub.key);
                     const hasOrganizations = Object.keys(sub.organizations).length > 0;
                     const isSubExpanded = expandedCategories.has(sub.key);
-                    
-                    return (
+
+            return (
                       <div key={sub.key}>
                         <div className="org-filter-item org-filter-item-indented">
                           <label className="org-filter-label">
                             {hasOrganizations && (
-                              <button
-                                type="button"
+              <button
+                type="button"
                                 className="org-filter-expand-btn"
                                 onClick={(e) => {
                                   e.stopPropagation();
@@ -355,7 +472,7 @@ export const Filters = () => {
                                 >
                                   <polyline points="6 9 12 15 18 9"></polyline>
                                 </svg>
-                              </button>
+              </button>
                             )}
                             <input
                               type="checkbox"
@@ -445,19 +562,16 @@ export const Filters = () => {
                     {count}
                   </span>
                 </div>
-              );
-            })}
-          </div>
-        )}
+            );
+          })}
+        </div>
+      )}
       </div>
 
       {/* Footer */}
       <div className="filters-footer">
         <button onClick={clearAll} className="filters-clear-all">
           Clear All
-        </button>
-        <button className="filters-apply-btn">
-          Apply
         </button>
       </div>
     </div>
