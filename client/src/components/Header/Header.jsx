@@ -141,28 +141,37 @@ export const Header = () => {
                 <h4>My Calendars</h4>
               </div>
               <div className="calendars-list">
-                {calendars.map(c => {
-                  const isListServ = c.summary?.toLowerCase() === "listserv events";
-                  const isVisible = visibleCalendars.has(c.id);
-                  return (
-                    <label key={c.id} className="calendar-item">
-                      <input
-                        type="checkbox"
-                        checked={isVisible}
-                        onChange={() => toggleCalendar(c.id)}
-                        disabled={isListServ}
-                      />
-                      <span className="calendar-name">
-                        {c.summary}
-                        {c.primary && <span className="calendar-badge">primary</span>}
-                        {isListServ && <span className="calendar-badge">ListServ</span>}
-                      </span>
-                    </label>
-                  );
-                })}
-              </div>
-              <div className="calendars-dropdown-footer">
-                <p>Primary calendar and ListServ Events are visible by default. Edits are only allowed on the ListServ Events calendar.</p>
+                {calendars
+                  .sort((a, b) => {
+                    const aIsListServ = a.summary?.toLowerCase() === "listserv events";
+                    const bIsListServ = b.summary?.toLowerCase() === "listserv events";
+                    // ListServ comes first
+                    if (aIsListServ && !bIsListServ) return -1;
+                    if (!aIsListServ && bIsListServ) return 1;
+                    return 0;
+                  })
+                  .map(c => {
+                    const isListServ = c.summary?.toLowerCase() === "listserv events";
+                    const isVisible = visibleCalendars.has(c.id);
+                    return (
+                      <label 
+                        key={c.id} 
+                        className={`calendar-item ${!isListServ ? 'calendar-item-other' : ''}`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isVisible}
+                          onChange={() => toggleCalendar(c.id)}
+                          disabled={isListServ}
+                        />
+                        <span className="calendar-name">
+                          {c.summary}
+                          {c.primary && <span className="calendar-badge">primary</span>}
+                          {isListServ && <span className="calendar-badge">ListServ</span>}
+                        </span>
+                      </label>
+                    );
+                  })}
               </div>
             </div>
           )}

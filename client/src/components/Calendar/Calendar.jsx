@@ -7,6 +7,7 @@ import interactionPlugin from "@fullcalendar/interaction";
 
 import { AppContext } from "../../context/AppContext";
 import { useEvents } from "../../hooks/useEvents";
+import { DateBar } from "../DateBar/DateBar";
 import "./Calendar.css";
 
 // 1. ACCEPT the props from App.jsx here
@@ -31,15 +32,12 @@ export const Calendar = ({ onSelect, onEventClick, onDatesSet, scrollTime }) => 
 
   return (
     <div className="app-calendar-container">
+      <DateBar />
       <div className="app-calendar-wrapper">
         <FullCalendar
           ref={calendarRef}
           plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
-          headerToolbar={{
-            left: "prev,next today",
-            center: "title",
-            right: "timeGridWeek,timeGridDay",
-          }}
+          headerToolbar={false}
           initialView="timeGridWeek"
           selectable
           selectMirror

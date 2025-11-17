@@ -218,9 +218,17 @@
   background: #f5f9f0;
 }
 
+.calendar-item-other:hover {
+  background: #f5f9f0;
+}
+
 .calendar-item input[type="checkbox"] {
   margin-right: 8px;
   cursor: pointer;
+}
+
+.calendar-item-other input[type="checkbox"]:checked {
+  accent-color: #D4E9C4;
 }
 
 .calendar-item input[type="checkbox"]:disabled {
