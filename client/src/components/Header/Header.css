@@ -14,13 +14,13 @@
 .app-header-left {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 16px;
 }
 
 .app-header-right {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 16px;
 }
 
 /* Logo Section */
