@@ -1,6 +1,6 @@
 /* src/components/Filters/Filters.css */
 
-/* Wrapper – left panel */
+/* Wrapper – left panel (kept for backward compatibility, but not used in dropdown) */
 .app-left-panel {
   width: 260px;
   max-width: 30%;
@@ -15,7 +15,233 @@
   font-size: 1.1rem;
 }
 
-/* “Clear” button */
+/* Filters component wrapper - works in dropdown */
+.filters-wrapper {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+/* Header */
+.filters-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 20px 16px 20px;
+  border-bottom: 1px solid #e5e7eb;
+  flex-shrink: 0;
+}
+
+.filters-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  font-family: 'Poppins', sans-serif;
+  color: #000000;
+}
+
+.filters-selected-count {
+  font-size: 12px;
+  font-weight: 400;
+  font-family: 'Poppins', sans-serif;
+  color: #000000;
+}
+
+/* Tabs */
+.filters-tabs {
+  display: flex;
+  gap: 0;
+  align-items: center;
+  padding: 16px 20px;
+  flex-shrink: 0;
+}
+
+.filter-tab {
+  background: #ffffff;
+  border: 1px solid #d4e9c4;
+  border-radius: 8px;
+  padding: 7px 10px;
+  font-size: 14px;
+  font-weight: 400;
+  font-family: 'Poppins', sans-serif;
+  color: #000000;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.filter-tab:first-child {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+  border-right: none;
+}
+
+.filter-tab:last-child {
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+}
+
+.filter-tab:hover {
+  background: #f5f9f0;
+}
+
+.filter-tab.active {
+  background: #d4e9c4;
+  font-weight: 500;
+}
+
+/* Content */
+.filters-content {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  flex: 1;
+  overflow-y: auto;
+  padding: 5px 20px 20px 20px;
+  min-height: 0;
+}
+
+.org-filters-list,
+.event-types-list {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.org-filter-group {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.org-filter-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 33px;
+  padding: 0;
+}
+
+.org-filter-item-indented {
+  padding-left: 30px; /* Indent subcategories */
+}
+
+.org-filter-item-double-indented {
+  padding-left: 60px; /* Indent organizations */
+}
+
+.org-filter-label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  flex: 1;
+}
+
+.org-filter-expand-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  margin-right: -4px;
+  color: #666;
+  transition: transform 0.2s ease;
+}
+
+.org-filter-expand-btn:hover {
+  color: #000;
+}
+
+.org-filter-expand-icon {
+  transition: transform 0.2s ease;
+  transform: rotate(-90deg);
+}
+
+.org-filter-expand-icon.expanded {
+  transform: rotate(0deg);
+}
+
+.org-filter-checkbox {
+  /* width: 20px;
+  height: 20px; */
+  cursor: pointer;
+  accent-color: #d4e9c4;
+}
+
+.org-filter-name {
+  font-size: 14px;
+  font-weight: 400;
+  font-family: 'Poppins', sans-serif;
+  color: #000000;
+  white-space: nowrap;
+}
+
+.org-filter-count {
+  border-radius: 15px;
+  padding: 3px 10px;
+  font-size: 12px;
+  font-weight: 500;
+  font-family: 'Poppins', sans-serif;
+  color: #000000;
+  border: 1px solid;
+  min-width: 24px;
+  text-align: center;
+  transition: all 0.2s ease;
+}
+
+.org-filter-count.selected {
+  box-shadow: none;
+}
+
+/* Footer */
+.filters-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px;
+  border-top: 1px solid #e5e7eb;
+  flex-shrink: 0;
+}
+
+.filters-clear-all {
+  background: transparent;
+  border: none;
+  font-size: 14px;
+  font-weight: 500;
+  font-family: 'Poppins', sans-serif;
+  color: #000000;
+  cursor: pointer;
+  padding: 0;
+}
+
+.filters-clear-all:hover {
+  text-decoration: underline;
+}
+
+.filters-apply-btn {
+  background: #d4e9c4;
+  border: 1px solid #d4e9c4;
+  border-radius: 8px;
+  padding: 7px 10px;
+  font-size: 14px;
+  font-weight: 500;
+  font-family: 'Poppins', sans-serif;
+  color: #000000;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.filters-apply-btn:hover {
+  background: #c4d9b4;
+}
+
+/* Legacy styles for backward compatibility */
 .clear-filters-btn {
   font-size: 0.85rem;
   border: 1px solid #e5e7eb;
@@ -28,7 +254,6 @@
   background: #f3f4f6;
 }
 
-/* The bubble chips */
 .filter-bubbles {
   display: flex;
   flex-wrap: wrap;
@@ -49,9 +274,9 @@
   background: #f3f4f6;
 }
 .filter-chip.selected {
-  background: #eff6ff;          /* blue‑100 */
+  background: #eff6ff;
   border-color: #3b82f6;
-  color: #1d4ed8;               /* blue‑700 */
+  color: #1d4ed8;
 }
 .filter-chip .chip-label {
   margin-right: 4px;

@@ -6,7 +6,6 @@ import React, { useContext } from "react";
 import { AppProvider, AppContext } from "./context/AppContext";
 
 import { Header } from "./components/Header/Header";
-import { Filters } from "./components/Filters/Filters";
 import { Calendar } from "./components/Calendar/Calendar";
 import { EventDetails } from "./components/EventDetails/EventDetails";
 import { CreateEventModal } from "./components/CreateEventModal/CreateEventModal";
@@ -134,11 +133,6 @@ const InnerApp = () => {
       <Header />
 
       <div className="app-content">
-        {/* LEFT PANEL – filter bubbles */}
-        <div className="app-left-panel">
-          <Filters />
-        </div>
-
         {/* MAIN CALENDAR – we forward the handlers with the names FullCalendar expects */}
         <Calendar
           onSelect={handleSelect}
