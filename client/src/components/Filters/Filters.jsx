@@ -45,6 +45,20 @@ export const Filters = () => {
   const orgHierarchy = useMemo(() => {
     const hierarchy = {};
     
+    // Debug: log what we're receiving
+    console.log('Available org cats:', availableOrgCats);
+    const orgCats = availableOrgCats.filter(c => {
+      const parts = c.key.split(':');
+      const level = c.level || (parts.length === 1 ? 'type' : parts.length === 2 ? 'subcategory' : 'organization');
+      return level === 'organization';
+    });
+    console.log('Organization entries:', orgCats);
+    // Check specifically for the missing ones
+    const cordsEntry = orgCats.find(c => c.key.includes('dartmouth_cords') || c.label === 'Dartmouth Cords');
+    const singsEntry = orgCats.find(c => c.key.includes('dartmouth_sings') || c.label === 'Dartmouth Sings');
+    console.log('Dartmouth Cords entry:', cordsEntry);
+    console.log('Dartmouth Sings entry:', singsEntry);
+    
     // First pass: build the structure
     availableOrgCats.forEach(cat => {
       const parts = cat.key.split(':');
@@ -62,7 +76,11 @@ export const Filters = () => {
         const [typeKey] = parts;
         if (!hierarchy[typeKey]) {
           // Find the type label from another entry
-          const typeEntry = availableOrgCats.find(c => c.key === typeKey && c.level === 'type');
+          const typeEntry = availableOrgCats.find(c => {
+            const cParts = c.key.split(':');
+            const cLevel = c.level || (cParts.length === 1 ? 'type' : cParts.length === 2 ? 'subcategory' : 'organization');
+            return c.key === typeKey && cLevel === 'type';
+          });
           hierarchy[typeKey] = {
             key: typeKey,
             label: typeEntry?.label || typeKey,
@@ -83,9 +101,21 @@ export const Filters = () => {
           count: orgCategoryCounts[cat.key] || 0,
         };
       } else if (level === 'organization') {
+        // For organization, key format is: typeKey:subKey:orgKey
+        // parts = [typeKey, subKey, orgKey]
+        if (parts.length < 3) {
+          console.warn(`Invalid organization key format: ${cat.key} (expected type:subcategory:org)`);
+          return;
+        }
         const [typeKey, subKey] = parts;
+        const orgKey = parts.slice(2).join(':'); // In case there are colons in the org key itself
+        
         if (!hierarchy[typeKey]) {
-          const typeEntry = availableOrgCats.find(c => c.key === typeKey && c.level === 'type');
+          const typeEntry = availableOrgCats.find(c => {
+            const cParts = c.key.split(':');
+            const cLevel = c.level || (cParts.length === 1 ? 'type' : cParts.length === 2 ? 'subcategory' : 'organization');
+            return c.key === typeKey && cLevel === 'type';
+          });
           hierarchy[typeKey] = {
             key: typeKey,
             label: typeEntry?.label || typeKey,
@@ -96,7 +126,11 @@ export const Filters = () => {
         }
         const subKeyFull = `${typeKey}:${subKey}`;
         if (!hierarchy[typeKey].subcategories[subKeyFull]) {
-          const subEntry = availableOrgCats.find(c => c.key === subKeyFull && c.level === 'subcategory');
+          const subEntry = availableOrgCats.find(c => {
+            const cParts = c.key.split(':');
+            const cLevel = c.level || (cParts.length === 1 ? 'type' : cParts.length === 2 ? 'subcategory' : 'organization');
+            return c.key === subKeyFull && cLevel === 'subcategory';
+          });
           const subLabel = subEntry?.label?.includes(' • ') 
             ? subEntry.label.split(' • ')[1] 
             : subEntry?.label || subKey;
@@ -108,12 +142,18 @@ export const Filters = () => {
             count: 0,
           };
         }
-        hierarchy[typeKey].subcategories[subKeyFull].organizations[cat.key] = {
-          key: cat.key,
-          label: cat.label,
-          level: 'organization',
-          count: orgCategoryCounts[cat.key] || 0,
-        };
+        // Add organization - this should always happen
+        if (!hierarchy[typeKey].subcategories[subKeyFull].organizations[cat.key]) {
+          hierarchy[typeKey].subcategories[subKeyFull].organizations[cat.key] = {
+            key: cat.key,
+            label: cat.label,
+            level: 'organization',
+            count: orgCategoryCounts[cat.key] || 0,
+          };
+          console.log(`Added organization: ${cat.label} (${cat.key}) to ${typeKey}:${subKey} (subKeyFull: ${subKeyFull})`);
+        } else {
+          console.warn(`Organization ${cat.label} (${cat.key}) already exists in hierarchy!`);
+        }
       }
     });
 
@@ -130,6 +170,26 @@ export const Filters = () => {
         typeCount += subCount;
       });
       type.count = typeCount;
+    });
+
+    // Debug: log final hierarchy
+    console.log('Final hierarchy:', hierarchy);
+    Object.values(hierarchy).forEach(type => {
+      Object.values(type.subcategories).forEach(sub => {
+        const orgNames = Object.values(sub.organizations).map(o => o.label);
+        const orgKeys = Object.keys(sub.organizations);
+        console.log(`${type.label} > ${sub.label}: ${orgNames.length} orgs - ${orgNames.join(', ')}`);
+        console.log(`  Keys: ${orgKeys.join(', ')}`);
+        // Check specifically for missing orgs
+        if (sub.label === 'A Cappella' || sub.key.includes('a_cappella')) {
+          const expectedOrgs = ['Dartmouth Brovertones', 'Dartmouth Aires', 'Dartmouth Cords', 'Dartmouth Decibelles', 
+                                'Dartmouth Rockapellas', 'Dartmouth Dodecaphonics', 'Dartmouth Sings', 'Dartmouth Subtleties'];
+          const missing = expectedOrgs.filter(name => !orgNames.includes(name));
+          if (missing.length > 0) {
+            console.error(`MISSING organizations in A Cappella: ${missing.join(', ')}`);
+          }
+        }
+      });
     });
 
     return hierarchy;
@@ -297,32 +357,36 @@ export const Filters = () => {
                           </span>
                         </div>
                         {/* Organizations - only show if subcategory is expanded */}
-                        {isSubExpanded && Object.values(sub.organizations).map((org) => {
-                          const orgSelected = selectedOrgCats.has(org.key);
-                          return (
-                            <div key={org.key} className="org-filter-item org-filter-item-double-indented">
-                              <label className="org-filter-label">
-                                <input
-                                  type="checkbox"
-                                  checked={orgSelected}
-                                  onChange={() => toggleOrgCategory(org.key)}
-                                  className="org-filter-checkbox"
-                                />
-                                <span className="org-filter-name">{org.label}</span>
-                              </label>
-                              <span 
-                                className={`org-filter-count ${orgSelected ? 'selected' : ''}`}
-                                style={{ 
-                                  backgroundColor: orgSelected ? typeColor : 'transparent',
-                                  borderColor: typeColor,
-                                  color: orgSelected ? '#000' : '#000'
-                                }}
-                              >
-                                {org.count}
-                              </span>
-                            </div>
-                          );
-                        })}
+                        {isSubExpanded && (() => {
+                          const orgs = Object.values(sub.organizations);
+                          console.log(`Rendering ${orgs.length} organizations for ${sub.label}:`, orgs.map(o => o.label));
+                          return orgs.map((org) => {
+                            const orgSelected = selectedOrgCats.has(org.key);
+                            return (
+                              <div key={org.key} className="org-filter-item org-filter-item-double-indented">
+                                <label className="org-filter-label">
+                                  <input
+                                    type="checkbox"
+                                    checked={orgSelected}
+                                    onChange={() => toggleOrgCategory(org.key)}
+                                    className="org-filter-checkbox"
+                                  />
+                                  <span className="org-filter-name">{org.label}</span>
+                                </label>
+                                <span 
+                                  className={`org-filter-count ${orgSelected ? 'selected' : ''}`}
+                                  style={{ 
+                                    backgroundColor: orgSelected ? typeColor : 'transparent',
+                                    borderColor: typeColor,
+                                    color: orgSelected ? '#000' : '#000'
+                                  }}
+                                >
+                                  {org.count}
+                                </span>
+                              </div>
+                            );
+                          });
+                        })()}
                       </div>
                     );
                   })}
