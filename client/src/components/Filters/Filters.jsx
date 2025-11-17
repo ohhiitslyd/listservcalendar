@@ -59,7 +59,10 @@ export const Filters = () => {
     console.log('Dartmouth Cords entry:', cordsEntry);
     console.log('Dartmouth Sings entry:', singsEntry);
     
-    // First pass: build the structure
+    // Process in order: types first, then subcategories, then organizations
+    // This ensures parent nodes exist and aren't overwritten
+    
+    // Step 1: Add all types first
     availableOrgCats.forEach(cat => {
       const parts = cat.key.split(':');
       const level = cat.level || (parts.length === 1 ? 'type' : parts.length === 2 ? 'subcategory' : 'organization');
@@ -72,10 +75,17 @@ export const Filters = () => {
           subcategories: {},
           count: orgCategoryCounts[cat.key] || 0,
         };
-      } else if (level === 'subcategory') {
+      }
+    });
+    
+    // Step 2: Add all subcategories
+    availableOrgCats.forEach(cat => {
+      const parts = cat.key.split(':');
+      const level = cat.level || (parts.length === 1 ? 'type' : parts.length === 2 ? 'subcategory' : 'organization');
+      
+      if (level === 'subcategory') {
         const [typeKey] = parts;
         if (!hierarchy[typeKey]) {
-          // Find the type label from another entry
           const typeEntry = availableOrgCats.find(c => {
             const cParts = c.key.split(':');
             const cLevel = c.level || (cParts.length === 1 ? 'type' : cParts.length === 2 ? 'subcategory' : 'organization');
@@ -93,14 +103,25 @@ export const Filters = () => {
         const subLabel = cat.label.includes(' • ') 
           ? cat.label.split(' • ')[1] 
           : cat.label;
-        hierarchy[typeKey].subcategories[cat.key] = {
-          key: cat.key,
-          label: subLabel,
-          level: 'subcategory',
-          organizations: {},
-          count: orgCategoryCounts[cat.key] || 0,
-        };
-      } else if (level === 'organization') {
+        // Only create if it doesn't exist to avoid overwriting organizations
+        if (!hierarchy[typeKey].subcategories[cat.key]) {
+          hierarchy[typeKey].subcategories[cat.key] = {
+            key: cat.key,
+            label: subLabel,
+            level: 'subcategory',
+            organizations: {},
+            count: orgCategoryCounts[cat.key] || 0,
+          };
+        }
+      }
+    });
+    
+    // Step 3: Add all organizations LAST - this ensures subcategories already exist
+    availableOrgCats.forEach(cat => {
+      const parts = cat.key.split(':');
+      const level = cat.level || (parts.length === 1 ? 'type' : parts.length === 2 ? 'subcategory' : 'organization');
+      
+      if (level === 'organization') {
         // For organization, key format is: typeKey:subKey:orgKey
         // parts = [typeKey, subKey, orgKey]
         if (parts.length < 3) {
