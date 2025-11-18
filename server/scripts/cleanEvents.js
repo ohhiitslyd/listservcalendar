@@ -2,6 +2,11 @@
  * Clean email-sourced events and optionally scraped emails from the database
  * Run with: node server/scripts/cleanEvents.js [--all]
  *   --all: Also delete all scraped emails (complete fresh start)
+ * 
+ * to clean gCal from console
+ *      fetch('/api/calendar/events', { method: 'DELETE', credentials: 'include' })
+       .then(r => r.json())
+       .then(data => console.log('Deleted:', data.deleted, 'events'))
  */
 
 import Database from "better-sqlite3";

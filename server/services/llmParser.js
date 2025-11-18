@@ -139,7 +139,7 @@ ${bodyPreview}${
 Extract the following information as JSON:
 {
   "title": "Event title or null",
-  "description": "Event description or null",
+  "description": "Concise summary of the event (2-3 sentences max, or null if no description available)",
   "location": "Location or null",
   "startDate": "YYYY-MM-DD or null",
   "startTime": "HH:MM:SS or null (24-hour format, or null if all-day)",
@@ -147,6 +147,8 @@ Extract the following information as JSON:
   "endTime": "HH:MM:SS or null (24-hour format, or null if all-day)",
   "allDay": true or false
 }
+
+IMPORTANT: The description field should be a brief, informative summary of what the event is about. Extract key details from the email body that would help someone understand what the event is.
 
 CRITICAL RULES FOR TIME DETECTION:
 - If ANY time is mentioned (even just "6:00 PM", "5:30", "@8PM", "6:00–8:00 PM", "6:00-8:00 PM", etc.), set allDay: false
@@ -220,7 +222,90 @@ CRITICAL RULES FOR TIME DETECTION:
       jsonStr = jsonMatch[1];
     }
 
-    const parsed = JSON.parse(jsonStr);
+    let parsed = JSON.parse(jsonStr);
+
+    // If time is missing but we have image attachments, try vision API
+    if (!parsed.startTime && !parsed.endTime && attachments && emailId) {
+      try {
+        const attachmentsList =
+          typeof attachments === "string"
+            ? JSON.parse(attachments)
+            : attachments;
+        if (Array.isArray(attachmentsList)) {
+          const imageAttachments = attachmentsList.filter(
+            (att) =>
+              att.mimeType && att.mimeType.startsWith("image/") && att.data
+          );
+
+          if (imageAttachments.length > 0) {
+            // Use first image for vision API
+            const imageData = imageAttachments[0].data;
+            const imageMimeType = imageAttachments[0].mimeType;
+
+            const visionPrompt = `Look at this event poster/image. Extract the event time information if it's visible in the image. 
+Return ONLY a JSON object with:
+{
+  "startTime": "HH:MM:SS in 24-hour format or null",
+  "endTime": "HH:MM:SS in 24-hour format or null"
+}
+If you see a time like "6:00 PM", convert it to "18:00:00". If you see a time range like "6:00-8:00 PM", extract both startTime and endTime.
+If no time is visible, return {"startTime": null, "endTime": null}.`;
+
+            const visionResponse = await fetch(
+              "https://api.openai.com/v1/chat/completions",
+              {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  Authorization: `Bearer ${apiKey}`,
+                },
+                body: JSON.stringify({
+                  model: "gpt-4o",
+                  messages: [
+                    {
+                      role: "user",
+                      content: [
+                        { type: "text", text: visionPrompt },
+                        {
+                          type: "image_url",
+                          image_url: {
+                            url: `data:${imageMimeType};base64,${imageData}`,
+                          },
+                        },
+                      ],
+                    },
+                  ],
+                  max_tokens: 200,
+                }),
+              }
+            );
+
+            if (visionResponse.ok) {
+              const visionData = await visionResponse.json();
+              const visionContent =
+                visionData.choices[0]?.message?.content?.trim();
+              if (visionContent) {
+                const visionJsonMatch = visionContent.match(/\{[\s\S]*\}/);
+                if (visionJsonMatch) {
+                  const visionParsed = JSON.parse(visionJsonMatch[0]);
+                  if (visionParsed.startTime || visionParsed.endTime) {
+                    parsed.startTime =
+                      visionParsed.startTime || parsed.startTime;
+                    parsed.endTime = visionParsed.endTime || parsed.endTime;
+                    parsed.allDay = false; // If we found time, it's not all-day
+                    console.log(
+                      `[llm-parser] Extracted time from image: startTime=${parsed.startTime}, endTime=${parsed.endTime}`
+                    );
+                  }
+                }
+              }
+            }
+          }
+        }
+      } catch (visionError) {
+        console.warn("[llm-parser] Vision API error:", visionError.message);
+      }
+    }
 
     // Debug logging
     console.log(`[llm-parser] Parsed event for "${subject}":`, {

@@ -93,9 +93,9 @@ app.use(express.json());
 app.use(cookieParser());
 app.use(
   session({
-    secret: SESSION_SECRET,
-    resave: false,
-    saveUninitialized: false,
+  secret: SESSION_SECRET,
+  resave: false,
+  saveUninitialized: false,
     cookie: { httpOnly: true, sameSite: "lax", secure: false },
   })
 );
@@ -143,10 +143,18 @@ db.exec(`CREATE TABLE IF NOT EXISTS events (
   all_day INTEGER DEFAULT 0,
   confidence_score REAL,
   status TEXT DEFAULT 'draft',
+  google_event_id TEXT,
   created_at TEXT DEFAULT CURRENT_TIMESTAMP,
   updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (email_id) REFERENCES scraped_emails(id)
 );`);
+
+// Add google_event_id column if it doesn't exist
+try {
+  db.exec(`ALTER TABLE events ADD COLUMN google_event_id TEXT`);
+} catch (e) {
+  // Column already exists
+}
 
 // Helper function for combining date and time
 function combineDateTime(date, time, allDay) {
@@ -571,9 +579,13 @@ app.get("/api/events", ensureAuthed, async (req, res) => {
         59
       ).toISOString();
 
+    // Exclude listserv calendar from Google Calendar fetch (we have local versions)
+    // This prevents duplicates - we want local events (with delete button), not Google Calendar versions
     const requestedIds = req.query.calendarIds
-      ? req.query.calendarIds.split(",")
-      : ["primary", listservCalendarId];
+      ? req.query.calendarIds
+          .split(",")
+          .filter((id) => id !== listservCalendarId)
+      : ["primary"]; // Only fetch primary calendar, not listserv calendar
 
     const allEvents = [];
     for (const calId of requestedIds) {
@@ -785,10 +797,48 @@ app.post("/api/drafts", ensureAuthed, (req, res) => {
 app.delete("/api/events/:compoundId", ensureAuthed, async (req, res) => {
   try {
     const [source, rawId] = req.params.compoundId.split(":");
+
     if (source === "draft" || source === "email") {
+      // Check if event was published to Google Calendar
+      const event = db
+        .prepare(
+          "SELECT google_event_id, status FROM events WHERE id=? AND user_id=?"
+        )
+        .get(rawId, req.session.user.id);
+
+      // Delete from Google Calendar if it was published
+      if (event && event.google_event_id && event.status === "published") {
+        try {
+      const oauth2Client = getOAuthClient(req);
+          const calendar = google.calendar({
+            version: "v3",
+            auth: oauth2Client,
+          });
+          const { id: listservCalendarId } = await getOrCreateListServCalendar(
+            req,
+            oauth2Client
+          );
+          await calendar.events.delete({
+            calendarId: listservCalendarId,
+            eventId: event.google_event_id,
+          });
+          console.log(
+            `[delete] Deleted event ${rawId} from Google Calendar (${event.google_event_id})`
+          );
+        } catch (gcalError) {
+          console.error(
+            `[delete] Failed to delete from Google Calendar:`,
+            gcalError.message
+          );
+          // Continue to delete from local DB even if Google Calendar delete fails
+        }
+      }
+
+      // Delete from local database
       eventDelete.run({ id: rawId, user_id: req.session.user.id });
       return res.json({ ok: true });
     }
+
     if (source === "google") {
       const oauth2Client = getOAuthClient(req);
       const calendar = google.calendar({ version: "v3", auth: oauth2Client });
@@ -802,10 +852,80 @@ app.delete("/api/events/:compoundId", ensureAuthed, async (req, res) => {
       });
       return res.json({ ok: true });
     }
+
     res.status(400).json({ error: "Unknown event source" });
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: "Failed to delete event" });
+  }
+});
+
+// --- Delete all events from ListServ calendar ---
+app.delete("/api/calendar/events", ensureAuthed, async (req, res) => {
+  try {
+    const oauth2Client = getOAuthClient(req);
+    const calendar = google.calendar({ version: "v3", auth: oauth2Client });
+    const { id: listservCalendarId } = await getOrCreateListServCalendar(
+      req,
+      oauth2Client
+    );
+
+    // Get all events from the listserv calendar
+    const now = new Date();
+    const timeMin = new Date(now.getFullYear() - 1, 0, 1).toISOString();
+    const timeMax = new Date(
+      now.getFullYear() + 2,
+      11,
+      31,
+      23,
+      59,
+      59
+    ).toISOString();
+
+    let nextPageToken = null;
+    let deletedCount = 0;
+    let errorCount = 0;
+
+    do {
+      const response = await calendar.events.list({
+        calendarId: listservCalendarId,
+        timeMin,
+        timeMax,
+        maxResults: 2500,
+        pageToken: nextPageToken,
+        singleEvents: true,
+      });
+
+      const events = response.data.items || [];
+      nextPageToken = response.data.nextPageToken;
+
+      // Delete each event
+      for (const event of events) {
+        try {
+          await calendar.events.delete({
+            calendarId: listservCalendarId,
+            eventId: event.id,
+          });
+          deletedCount++;
+        } catch (error) {
+          console.error(`Failed to delete event ${event.id}:`, error.message);
+          errorCount++;
+        }
+      }
+    } while (nextPageToken);
+
+    res.json({
+      success: true,
+      deleted: deletedCount,
+      errors: errorCount,
+      message: `Deleted ${deletedCount} events from Google Calendar`,
+    });
+  } catch (e) {
+    console.error("[delete-gcal] Error:", e);
+    res.status(500).json({
+      error: "Failed to delete events from Google Calendar",
+      details: e.message,
+    });
   }
 });
 
@@ -986,6 +1106,11 @@ app.post("/api/scrape/process", ensureAuthed, async (req, res) => {
 
     for (const email of emailsToProcess) {
       try {
+        // Skip if already processed (unless reprocessing)
+        if (!reprocess && email.processed) {
+          continue;
+        }
+
         // If reprocessing, delete old events first
         if (reprocess) {
           db.prepare("DELETE FROM events WHERE email_id=? AND user_id=?").run(
@@ -1043,6 +1168,39 @@ app.post("/api/scrape/process", ensureAuthed, async (req, res) => {
             end = endDate.toISOString();
           } else if (event.allDay && !end) {
             end = start;
+          }
+
+          // Check for duplicates:
+          // 1. Same email + same title + same start date = duplicate (skip)
+          // 2. Same title + same start date + same organization = duplicate (skip)
+          // 3. Same title + same start date but different organization = keep both
+          const startDateOnly = start.split("T")[0];
+
+          // First check: duplicate from same email
+          const duplicateFromSameEmail = db
+            .prepare(
+              "SELECT id FROM events WHERE user_id=? AND email_id=? AND title=? AND start LIKE ?"
+            )
+            .get(userId, email.id, event.title, `${startDateOnly}%`);
+
+          if (duplicateFromSameEmail) {
+            continue; // Skip duplicate from same email
+          }
+
+          // Second check: duplicate with same title, start date, and organization
+          const duplicateSameOrg = db
+            .prepare(
+              "SELECT id FROM events WHERE user_id=? AND title=? AND organization=? AND start LIKE ?"
+            )
+            .get(
+              userId,
+              event.title,
+              event.organization || "",
+              `${startDateOnly}%`
+            );
+
+          if (duplicateSameOrg) {
+            continue; // Skip duplicate with same organization
           }
 
           eventInsert.run({
@@ -1117,8 +1275,8 @@ app.post("/api/scrape/process", ensureAuthed, async (req, res) => {
 
               if (insertResp.data && insertResp.data.id) {
                 db.prepare(
-                  "UPDATE events SET status='published', updated_at=CURRENT_TIMESTAMP WHERE id=? AND user_id=?"
-                ).run(eventId, userId);
+                  "UPDATE events SET status='published', google_event_id=?, updated_at=CURRENT_TIMESTAMP WHERE id=? AND user_id=?"
+                ).run(insertResp.data.id, eventId, userId);
               } else {
                 console.warn(
                   `[process] Failed to auto-publish event ${eventId} to Google Calendar`
