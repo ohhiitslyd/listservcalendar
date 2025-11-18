@@ -183,10 +183,30 @@ export const AppProvider = ({ children }) => {
         // e.g., "music:a_cappella:dartmouth_cords" -> "music"
         for (const cat of orgCategories) {
           const typeKey = cat.split(":")[0];
-          if (typeKey === "music") return "#93b3ea"; // blue
-          if (typeKey === "sports") return "#eaa993"; // orange/red
+
+          // Comprehensive color map for different organization types
+          // Pastel/light colors similar to default green (#d4e9c4) for good readability
+          const colorMap = {
+            music: "#c7d9f5", // light blue - pastel
+            sports: "#f5d7c7", // light peach/orange - pastel
+            academic: "#ddd6fe", // light purple - pastel
+            cultural: "#fed7aa", // light amber - pastel
+            social: "#d4e9c4", // light green - default (keep original)
+            greek: "#fce7f3", // light pink - pastel
+            arts: "#cffafe", // light cyan - pastel
+            community: "#e9f5c7", // light lime - pastel
+            religious: "#e0e7ff", // light indigo - pastel
+            political: "#fecaca", // light red - pastel
+            professional: "#ccfbf1", // light teal - pastel
+            volunteer: "#fed7aa", // light orange - pastel
+            service: "#cffafe", // light cyan (same as arts)
+            wellness: "#d4e9c4", // light green (same as social)
+            technology: "#e0e7ff", // light indigo (same as religious)
+          };
+
+          if (colorMap[typeKey]) return colorMap[typeKey];
         }
-        return null;
+        return null; // Default to green (handled by CSS)
       };
 
       const transformed = (data.events || []).map((ev) => {
@@ -200,22 +220,14 @@ export const AppProvider = ({ children }) => {
           : null;
 
         let className = isListServ ? "fc-event-listserv" : "fc-event-other";
-        if (categoryColor) {
-          // Add a specific class for the category color
-          const colorClass =
-            categoryColor === "#93b3ea"
-              ? "fc-event-music"
-              : categoryColor === "#eaa993"
-              ? "fc-event-sports"
-              : "";
-          if (colorClass) className += ` ${colorClass}`;
-        }
 
         return {
           ...ev,
           className,
+          // Apply category color directly - this overrides the default green
           backgroundColor: categoryColor || undefined,
           borderColor: categoryColor || undefined,
+          textColor: "#000000", // Always use black text for better readability
           extendedProps: {
             organization: ev.organization ?? "",
             tags: ev.tags ?? "",

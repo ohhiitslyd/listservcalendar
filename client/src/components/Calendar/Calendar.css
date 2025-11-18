@@ -146,7 +146,7 @@
 .fc-event-listserv {
   white-space: nowrap;
   overflow: hidden;
-  background-color: #d4e9c4 !important;
+  background-color: #d4e9c4; /* Default green, can be overridden by JS */
 }
 
 .fc-event-listserv .fc-event-title {

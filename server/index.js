@@ -378,8 +378,13 @@ const lowerArray = (arr = []) => arr.map((x) => String(x).toLowerCase());
 // normalize and test text
 function toTextBlob(ev) {
   //combining fields together
-  const { title = "", description = "", location = "" } = ev || {};
-  return `${title} ${description} ${location}`.toLowerCase();
+  const {
+    title = "",
+    description = "",
+    location = "",
+    organization = "",
+  } = ev || {};
+  return `${title} ${description} ${location} ${organization}`.toLowerCase();
 }
 
 //is a non case sensitive match
@@ -1111,8 +1116,55 @@ app.post("/api/scrape/process", ensureAuthed, async (req, res) => {
           continue;
         }
 
-        // If reprocessing, delete old events first
+        // If reprocessing, delete old events first (both local and Google Calendar)
         if (reprocess) {
+          // Get events that will be deleted so we can remove them from Google Calendar
+          const eventsToDelete = db
+            .prepare(
+              "SELECT id, google_event_id, status FROM events WHERE email_id=? AND user_id=?"
+            )
+            .all(email.id, userId);
+
+          // Delete from Google Calendar if they were published
+          if (eventsToDelete.length > 0) {
+            try {
+              const oauth2Client = getOAuthClient(req);
+              const calendar = google.calendar({
+                version: "v3",
+                auth: oauth2Client,
+              });
+              const { id: listservCalendarId } =
+                await getOrCreateListServCalendar(req, oauth2Client);
+
+              for (const evt of eventsToDelete) {
+                if (evt.google_event_id && evt.status === "published") {
+                  try {
+                    await calendar.events.delete({
+                      calendarId: listservCalendarId,
+                      eventId: evt.google_event_id,
+                    });
+                    console.log(
+                      `[process] Deleted event ${evt.id} from Google Calendar (${evt.google_event_id}) during reprocess`
+                    );
+                  } catch (gcalError) {
+                    console.error(
+                      `[process] Failed to delete event ${evt.id} from Google Calendar:`,
+                      gcalError.message
+                    );
+                    // Continue even if deletion fails
+                  }
+                }
+              }
+            } catch (authError) {
+              console.error(
+                `[process] Failed to authenticate for Google Calendar deletion:`,
+                authError.message
+              );
+              // Continue with local deletion even if Google Calendar deletion fails
+            }
+          }
+
+          // Delete from local database
           db.prepare("DELETE FROM events WHERE email_id=? AND user_id=?").run(
             email.id,
             userId
@@ -1141,6 +1193,7 @@ app.post("/api/scrape/process", ensureAuthed, async (req, res) => {
             title: event.title || "",
             description: event.description || "",
             location: event.location || "",
+            organization: event.organization || "",
           };
           const catKeys = assignCategories(eventForTagging).map(slug);
           const orgKeys = assignOrgCategories(eventForTagging).map(slug);
@@ -1159,6 +1212,26 @@ app.post("/api/scrape/process", ensureAuthed, async (req, res) => {
               `[process] Skipping event ${eventId} - missing start date`
             );
             continue;
+          }
+
+          // Validate: if end date is different from start date, reset to same day
+          // Most campus events are single-day; multi-day is likely a parsing error
+          if (
+            end &&
+            event.endDate &&
+            event.startDate &&
+            event.endDate !== event.startDate
+          ) {
+            console.warn(
+              `[process] Multi-day event detected (likely parsing error), resetting end to same day:`,
+              {
+                title: event.title,
+                startDate: event.startDate,
+                endDate: event.endDate,
+              }
+            );
+            // Keep the end time but use the start date
+            end = combineDateTime(event.startDate, event.endTime, event.allDay);
           }
 
           if (event.startTime && !event.endTime && !event.allDay && start) {

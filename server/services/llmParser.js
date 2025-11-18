@@ -71,13 +71,16 @@ export async function parseEmailForEvents(emailData) {
   const {
     subject,
     bodyText,
+    body_text,
     bodyHtml,
+    body_html,
     received_date,
     from_name,
     attachments,
     id: emailId,
   } = emailData;
-  const text = bodyText || htmlToText(bodyHtml || "");
+  // Handle both camelCase and snake_case field names
+  const text = bodyText || body_text || htmlToText(bodyHtml || body_html || "");
 
   if (!text && !subject) {
     return events;
@@ -136,45 +139,65 @@ ${bodyPreview}${
     bodyTruncated ? "\n[... email continues but truncated ...]" : ""
   }
 
+WHAT IS AN EVENT?
+- An event is a gathering, meeting, performance, workshop, lecture, social activity, or similar happening that people can attend
+- Events have a specific date/time when they occur
+- DO extract: concerts, meetings, workshops, parties, lectures, performances, social gatherings, study sessions, fundraisers, etc.
+- DO NOT extract: application deadlines, survey requests, reminders, announcements without dates, parking applications, general announcements
+
 Extract the following information as JSON:
 {
-  "title": "Event title or null",
+  "title": "Event title or null (MUST extract if event exists, even if partial)",
   "description": "Concise summary of the event (2-3 sentences max, or null if no description available)",
   "location": "Location or null",
-  "startDate": "YYYY-MM-DD or null",
+  "startDate": "YYYY-MM-DD or null (REQUIRED if this is an event - extract from 'TONIGHT', 'TOMORROW', dates, deadlines if event-related)",
   "startTime": "HH:MM:SS or null (24-hour format, or null if all-day)",
   "endDate": "YYYY-MM-DD or null",
   "endTime": "HH:MM:SS or null (24-hour format, or null if all-day)",
   "allDay": true or false
 }
 
+CRITICAL: Return actual JSON null values (not the string "null"). For example:
+- CORRECT: "location": null
+- WRONG: "location": "null"
+
+CRITICAL EXTRACTION RULES:
+- ALWAYS extract a title if there's any event mentioned (even if incomplete)
+- ALWAYS extract a startDate if there's ANY date/time reference (TONIGHT, TOMORROW, specific dates, deadlines for events)
+- If the email mentions "TONIGHT", "TODAY", or "TOMORROW" - these ARE valid dates (use ${emailDateStr} as reference)
+- If only a deadline is mentioned but it's for an event (e.g., "Register by Dec 21 for event on Jan 5"), extract the EVENT date (Jan 5), not the deadline
+- If the email is ONLY about applications, surveys, or reminders with no actual event, return null for all fields
+
 IMPORTANT: The description field should be a brief, informative summary of what the event is about. Extract key details from the email body that would help someone understand what the event is.
 
 CRITICAL RULES FOR TIME DETECTION:
-- If ANY time is mentioned (even just "6:00 PM", "5:30", "@8PM", "6:00–8:00 PM", "6:00-8:00 PM", etc.), set allDay: false
-- Time formats to detect include:
-  * Standard: "6:00 PM", "5:30 PM", "11PM", "10:15 AM"
-  * With en-dash (–): "6:00–8:00 PM", "5:30–7:30 PM" (common in emails)
-  * With hyphen (-): "6:00-8:00 PM", "5:30-7:30 PM", "6-7 PM" (short ranges)
-  * With em-dash (—): "6:00—8:00 PM"
-  * Ranges: "6-8 PM", "5:30-7:30", "6:00 to 8:00 PM", "6-7 PM"
-  * Single times: "@8PM", "at 5:30", "TONIGHT @ 10PM"
-- If a time RANGE is mentioned (e.g., "6:00–8:00 PM", "6:00-8:00 PM", "6-7 PM"), extract BOTH startTime and endTime
-- If only start time is mentioned, set endTime to 1 hour after startTime
-- If ONLY a date is mentioned with NO time at all, set allDay: true
-- Look for time indicators like: ⏰, 🕐, "Time:", "WHEN:", "at", "@", etc.
-- Use relative dates correctly: "TONIGHT" = today, "TOMORROW" = next day, "Sunday" = next Sunday, "TODAY" = today
-- Date formats to recognize:
-  * "Sun, Nov 16, 2025" → "2025-11-16"
-  * "Sunday, November 16, 2025" → "2025-11-16"
-  * "Nov 16, 2025" → "2025-11-16"
-  * "11/16/2025" → "2025-11-16"
-  * Relative: "TODAY", "TOMORROW", "Sunday" (next Sunday from email date)
-- Dates should be in YYYY-MM-DD format
-- Times should be in HH:MM:SS format (24-hour, e.g., "18:00:00" for 6 PM)
-- For time ranges like "6:00–8:00 PM", "6:00-8:00 PM", or "6-7 PM", convert to: startTime="18:00:00", endTime="20:00:00" (or "19:00:00" for "6-7 PM")
-- If no event information is found, return null for all fields
-- Return ONLY valid JSON, no other text`;
+- ONLY extract times that are EXPLICITLY mentioned in the email text - NEVER guess or invent times
+- If NO time is mentioned anywhere, set allDay: true and leave startTime/endTime as null
+- If ANY time is mentioned, set allDay: false and extract the time(s)
+
+TIME EXTRACTION EXAMPLES (follow these EXACTLY):
+1. "7 - 8:30PM" → startTime: "19:00:00", endTime: "20:30:00", allDay: false
+2. "TONIGHT 10PM" → startTime: "22:00:00", endTime: null, allDay: false
+3. "6:00 PM - 8:00 PM" → startTime: "18:00:00", endTime: "20:00:00", allDay: false
+4. "@5:30" (with no AM/PM, assume PM if evening context) → startTime: "17:30:00", endTime: null, allDay: false
+5. "11/18/2025" (date only, NO time) → startTime: null, endTime: null, allDay: true
+6. "TOMORROW" (date only, NO time) → startTime: null, endTime: null, allDay: true
+
+TIME CONVERSION REFERENCE (24-hour format):
+- 12:00 AM = "00:00:00", 1:00 AM = "01:00:00", ..., 11:00 AM = "11:00:00"
+- 12:00 PM = "12:00:00" (noon)
+- 1:00 PM = "13:00:00", 2:00 PM = "14:00:00", 3:00 PM = "15:00:00"
+- 4:00 PM = "16:00:00", 5:00 PM = "17:00:00", 6:00 PM = "18:00:00"
+- 7:00 PM = "19:00:00", 8:00 PM = "20:00:00", 8:30 PM = "20:30:00"
+- 9:00 PM = "21:00:00", 10:00 PM = "22:00:00", 11:00 PM = "23:00:00"
+
+DATE EXTRACTION RULES:
+- Use relative dates correctly: "TONIGHT"/"TODAY" = ${emailDateStr}, "TOMORROW" = day after ${emailDateStr}
+- If this email is NOT about an event (only applications, surveys, reminders), return null for all fields
+- If this email IS about an event, you MUST extract title and startDate
+- Be aggressive about extracting dates from context
+
+Return ONLY valid JSON, no other text`;
 
   try {
     const response = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -223,6 +246,20 @@ CRITICAL RULES FOR TIME DETECTION:
     }
 
     let parsed = JSON.parse(jsonStr);
+
+    // Fix: LLM sometimes returns string "null" or null for boolean fields
+    // Convert all string "null" values to actual null
+    if (parsed.startTime === "null") parsed.startTime = null;
+    if (parsed.endTime === "null") parsed.endTime = null;
+    if (parsed.startDate === "null") parsed.startDate = null;
+    if (parsed.endDate === "null") parsed.endDate = null;
+    if (parsed.location === "null") parsed.location = null;
+    if (parsed.description === "null") parsed.description = null;
+    if (parsed.title === "null") parsed.title = null;
+    // Fix: allDay should always be a boolean
+    if (parsed.allDay !== true && parsed.allDay !== false) {
+      parsed.allDay = !parsed.startTime && !parsed.endTime; // Default based on time presence
+    }
 
     // If time is missing but we have image attachments, try vision API
     if (!parsed.startTime && !parsed.endTime && attachments && emailId) {
@@ -320,40 +357,146 @@ If no time is visible, return {"startTime": null, "endTime": null}.`;
     // Try to extract date from text if LLM missed it (do this early for validation)
     let extractedStartDate = parsed.startDate;
     if (!extractedStartDate) {
-      // Look for date patterns in text
-      const datePatterns = [
-        /(?:WHEN|DATE|WHEN:)\s*:?\s*(?:Sun|Mon|Tue|Wed|Thu|Fri|Sat)day?,?\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{1,2},?\s+\d{4}/i,
-        /(?:Sun|Mon|Tue|Wed|Thu|Fri|Sat)day?,?\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{1,2},?\s+\d{4}/i,
-        /\d{1,2}\/\d{1,2}\/\d{4}/,
-      ];
+      // First, check for relative dates in the text
+      const normalizedText = cleanedText.toLowerCase();
+      const emailDate = new Date(received_date);
+      const today = new Date(emailDate);
+      today.setHours(0, 0, 0, 0);
 
-      for (const pattern of datePatterns) {
-        const match = cleanedText.match(pattern);
-        if (match) {
-          try {
-            const date = new Date(match[0]);
-            if (!isNaN(date.getTime())) {
-              extractedStartDate = date.toISOString().split("T")[0];
-              console.log(
-                `[llm-parser] Extracted date from text: ${match[0]} → ${extractedStartDate}`
-              );
-              break;
+      if (
+        normalizedText.includes("tonight") ||
+        normalizedText.includes("today")
+      ) {
+        extractedStartDate = today.toISOString().split("T")[0];
+        console.log(
+          `[llm-parser] Extracted date from relative: TONIGHT/TODAY → ${extractedStartDate}`
+        );
+      } else if (normalizedText.includes("tomorrow")) {
+        const tomorrow = new Date(today);
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        extractedStartDate = tomorrow.toISOString().split("T")[0];
+        console.log(
+          `[llm-parser] Extracted date from relative: TOMORROW → ${extractedStartDate}`
+        );
+      } else {
+        // Look for date patterns in text
+        const datePatterns = [
+          /(?:WHEN|DATE|WHEN:)\s*:?\s*(?:Sun|Mon|Tue|Wed|Thu|Fri|Sat)day?,?\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{1,2},?\s+\d{4}/i,
+          /(?:Sun|Mon|Tue|Wed|Thu|Fri|Sat)day?,?\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{1,2},?\s+\d{4}/i,
+          /\d{1,2}\/\d{1,2}\/\d{4}/,
+          /\d{1,2}\/\d{1,2}\/\d{2}/, // Also try 2-digit year
+        ];
+
+        for (const pattern of datePatterns) {
+          const match = cleanedText.match(pattern);
+          if (match) {
+            try {
+              const date = new Date(match[0]);
+              if (!isNaN(date.getTime())) {
+                extractedStartDate = date.toISOString().split("T")[0];
+                console.log(
+                  `[llm-parser] Extracted date from text: ${match[0]} → ${extractedStartDate}`
+                );
+                break;
+              }
+            } catch (e) {
+              // Continue to next pattern
             }
-          } catch (e) {
-            // Continue to next pattern
           }
         }
+      }
+
+      // If we extracted a date, update parsed object
+      if (extractedStartDate) {
+        parsed.startDate = extractedStartDate;
       }
     }
 
     // Validate and format the response
-    if (!parsed.title || (!parsed.startDate && !extractedStartDate)) {
-      console.warn(`[llm-parser] Invalid event - missing title or startDate:`, {
+    // Title is optional - generate fallback from subject if missing
+    if (!parsed.title) {
+      // Try to extract a title from the subject line
+      if (subject && subject.trim()) {
+        // Clean up the subject - remove common prefixes/suffixes
+        let fallbackTitle = subject.trim();
+        // Remove common email prefixes
+        fallbackTitle = fallbackTitle.replace(
+          /^(RE|FWD|FW|Fwd|Re|Fw):\s*/i,
+          ""
+        );
+        // Remove excessive punctuation
+        fallbackTitle = fallbackTitle.replace(/[!]{2,}/g, "!");
+        // Limit length
+        if (fallbackTitle.length > 100) {
+          fallbackTitle = fallbackTitle.substring(0, 97) + "...";
+        }
+        parsed.title = fallbackTitle;
+        console.log(
+          `[llm-parser] Generated fallback title from subject: "${parsed.title}"`
+        );
+      } else {
+        // Last resort: use a generic title
+        parsed.title = "Event";
+        console.warn(
+          `[llm-parser] No title found, using generic "Event" title`
+        );
+      }
+    }
+
+    // For startDate, be more lenient - try to extract from text if LLM missed it
+    // But if we still can't find a date after all attempts, it might not be an event
+    if (!parsed.startDate && !extractedStartDate) {
+      // Check if title suggests it's not an event (applications, surveys, etc.)
+      const nonEventKeywords = [
+        "apply",
+        "application",
+        "survey",
+        "reminder",
+        "deadline",
+        "register for",
+        "sign up for",
+      ];
+      const titleLower = parsed.title.toLowerCase();
+      const isNonEvent = nonEventKeywords.some((keyword) =>
+        titleLower.includes(keyword)
+      );
+
+      if (isNonEvent) {
+        console.log(
+          `[llm-parser] Skipping non-event: "${parsed.title}" (appears to be application/survey/reminder)`
+        );
+        return []; // Likely not an event
+      }
+
+      // If it has a title but no date, and it's not clearly a non-event, we still need a date
+      // Use the email's received_date as a fallback (assume event is on the day email was received)
+      if (!extractedStartDate) {
+        const emailDate = new Date(received_date);
+        extractedStartDate = emailDate.toISOString().split("T")[0];
+        parsed.startDate = extractedStartDate;
+        console.warn(
+          `[llm-parser] Event has title but no date - using email date as fallback:`,
+          {
+            title: parsed.title,
+            fallbackDate: extractedStartDate,
+            subject: subject,
+          }
+        );
+      }
+    }
+
+    // Final validation - we must have a startDate at this point
+    if (!parsed.startDate && !extractedStartDate) {
+      console.warn(`[llm-parser] Cannot create event without date:`, {
         title: parsed.title,
-        startDate: parsed.startDate,
-        extractedStartDate: extractedStartDate,
+        subject: subject,
       });
-      return []; // Invalid event
+      return [];
+    }
+
+    // Use extracted date if we found one
+    if (extractedStartDate && !parsed.startDate) {
+      parsed.startDate = extractedStartDate;
     }
 
     // Post-process: Check if text contains time patterns that LLM might have missed
