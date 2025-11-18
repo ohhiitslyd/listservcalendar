@@ -344,16 +344,6 @@ If no time is visible, return {"startTime": null, "endTime": null}.`;
       }
     }
 
-    // Debug logging
-    console.log(`[llm-parser] Parsed event for "${subject}":`, {
-      title: parsed.title,
-      startDate: parsed.startDate,
-      startTime: parsed.startTime,
-      endTime: parsed.endTime,
-      allDay: parsed.allDay,
-      location: parsed.location,
-    });
-
     // Try to extract date from text if LLM missed it (do this early for validation)
     let extractedStartDate = parsed.startDate;
     if (!extractedStartDate) {
@@ -578,9 +568,6 @@ If no time is visible, return {"startTime": null, "endTime": null}.`;
         if (singleTimeMatch) {
           const timeStr = singleTimeMatch[0].replace(/[@at]/gi, "").trim();
           extractedStartTime = parseTimeTo24Hour(timeStr);
-          console.log(
-            `[llm-parser] Extracted single time from text: ${timeStr}`
-          );
         }
       }
     }
@@ -620,9 +607,6 @@ If no time is visible, return {"startTime": null, "endTime": null}.`;
               timeNearEmoji[5] || "PM"
             }`;
             extractedStartTime = parseTimeTo24Hour(timeStr);
-            console.log(
-              `[llm-parser] Extracted single time near emoji: ${timeStr}`
-            );
           }
         }
       }
