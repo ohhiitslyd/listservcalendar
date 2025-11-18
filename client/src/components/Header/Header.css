@@ -1,37 +1,267 @@
 /* src/components/Header/Header.css */
 
-/* Dark header – white text */
 .app-header {
-  background: #1f2937;   /* dark‑gray */
-  color: #000000;        /* almost white – good contrast on dark bg */
-  padding: 12px 24px;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
+  background: #ffffff;
+  border-bottom: 0.5px solid #d4d2d2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 40px;
+  height: 83px;
+  flex-shrink: 0;
 }
 
-/* Title (still inherits the .app-header color) */
-.app-header h2 {
+.app-header-left {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.app-header-right {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+/* Logo Section */
+.app-header-logo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.calendar-icon {
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+}
+
+.app-header-logo h2 {
   margin: 0;
-  font-size: 1.25rem;
+  font-size: 20px;
   font-weight: 600;
-  display: inline-block;
+  font-family: 'Poppins', sans-serif;
+  color: #000000;
+  line-height: 0;
 }
 
-/* Controls on the right side */
-.app-header-controls {
-  float: right;
-}
-
-/* Buttons – blue background, white text */
+/* Buttons */
 .app-header-button {
-  background: #3b82f6;   /* blue‑500 */
-  color: #fff;           /* white text */
-  border: none;
-  border-radius: 4px;
-  padding: 6px 12px;
-  margin-left: 8px;
+  background: #ffffff;
+  border: 1px solid #d4e9c4;
+  border-radius: 8px;
+  padding: 7px 10px;
   cursor: pointer;
-  font-size: 0.9rem;
+  font-size: 18px;
+  font-family: 'Poppins', sans-serif;
+  font-weight: 500;
+  color: #000000;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  transition: background-color 0.2s ease;
 }
+
 .app-header-button:hover {
-  background: #2563eb;   /* blue‑600 */
+  background: #f5f9f0;
+}
+
+.app-header-button span {
+  white-space: nowrap;
+}
+
+.app-header-button .button-text {
+  font-size: 16px;
+  font-weight: 400;
+  font-family: 'Poppins', sans-serif;
+}
+
+/* Filter Button */
+.filters-button {
+  position: relative;
+}
+
+.filter-icon {
+  width: 20px;
+  height: 20px;
+  stroke: #1e1e1e;
+}
+
+.filter-count-badge {
+  background: #d4e9c4;
+  border-radius: 15px;
+  padding: 3px 10px;
+  font-size: 12px;
+  font-weight: 500;
+  color: #000000;
+  box-shadow: inset 2px 2px 4px 0px rgba(0, 0, 0, 0.15);
+  min-width: 20px;
+  text-align: center;
+}
+
+/* Calendars Button */
+.calendars-button {
+  position: relative;
+}
+
+.dropdown-arrow {
+  width: 20px;
+  height: 20px;
+  transition: transform 0.2s ease;
+}
+
+.dropdown-arrow.open {
+  transform: rotate(180deg);
+}
+
+/* User Account */
+.user-account {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.user-avatar {
+  width: 30px;
+  height: 30px;
+  background: #d4e9c4;
+  border-radius: 35px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 400;
+  font-family: 'Poppins', sans-serif;
+  color: #000000;
+  box-shadow: inset 0px 1px 4px 0px rgba(0, 0, 0, 0.25);
+}
+
+.user-name {
+  font-size: 16px;
+  font-weight: 400;
+  font-family: 'Poppins', sans-serif;
+  color: #000000;
+  white-space: nowrap;
+}
+
+/* Icons */
+.refresh-icon,
+.logout-icon {
+  width: 15px;
+  height: 15px;
+  stroke: #1e1e1e;
+}
+
+/* Dropdown Container */
+.dropdown-container {
+  position: relative;
+}
+
+.dropdown-content {
+  position: absolute;
+  top: calc(100% + 8px);
+  background: #ffffff;
+  border: 1px solid #d4e9c4;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  z-index: 1000;
+  min-width: 300px;
+  max-height: 600px;
+  overflow-y: auto;
+}
+
+.filters-dropdown {
+  flex-direction: column;
+  display: flex;
+  left: 0;
+  min-width: 500px;
+  max-width: 500px;
+  max-height: 80vh;
+  overflow: hidden;
+  padding: 0;
+}
+
+.calendars-dropdown {
+  left: 0;
+  min-width: 280px;
+}
+
+.calendars-dropdown-header {
+  padding: 16px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.calendars-dropdown-header h4 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  font-family: 'Poppins', sans-serif;
+  color: #000000;
+}
+
+.calendars-list {
+  padding: 8px;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.calendar-item {
+  display: flex;
+  align-items: center;
+  padding: 8px 12px;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: background-color 0.2s ease;
+}
+
+.calendar-item:hover {
+  background: #f5f9f0;
+}
+
+.calendar-item-other:hover {
+  background: #f5f9f0;
+}
+
+.calendar-item input[type="checkbox"] {
+  margin-right: 8px;
+  cursor: pointer;
+}
+
+.calendar-item-other input[type="checkbox"]:checked {
+  accent-color: #D4E9C4;
+}
+
+.calendar-item input[type="checkbox"]:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.calendar-name {
+  font-size: 14px;
+  font-family: 'Poppins', sans-serif;
+  color: #000000;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.calendar-badge {
+  font-size: 11px;
+  padding: 2px 6px;
+  background: #e5e7eb;
+  border-radius: 4px;
+  color: #4b5563;
+}
+
+.calendars-dropdown-footer {
+  padding: 12px 16px;
+  border-top: 1px solid #e5e7eb;
+  background: #f9fafb;
+}
+
+.calendars-dropdown-footer p {
+  margin: 0;
+  font-size: 12px;
+  color: #6b7280;
+  line-height: 1.4;
 }
