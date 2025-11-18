@@ -46,6 +46,8 @@
   font-family: 'Poppins', sans-serif;
   border: none;
   border-radius: 0 !important;
+  display: flex;
+  flex-direction: column;
 }
 
 /* Header with colored background */
@@ -99,6 +101,8 @@
   display: flex;
   flex-direction: column;
   gap: 15px;
+  flex: 1;
+  overflow-y: auto;
 }
 
 /* Individual details rows */
@@ -212,4 +216,29 @@
 
 .event-poster-link:hover {
   text-decoration: underline;
+}
+
+/* Event actions (delete button) */
+.event-details-actions {
+  padding: 15px 17px;
+  border-top: 0.5px solid #d4d2d2;
+  margin-top: auto;
+}
+
+.event-delete-button {
+  width: 100%;
+  padding: 10px;
+  background-color: transparent;
+  border: 1px solid #d4e9c4;
+  border-radius: 8px;
+  color: #000;
+  font-family: 'Poppins', sans-serif;
+  font-size: 14px;
+  font-weight: 400;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.event-delete-button:hover {
+  background-color: #f5f9f0;
 }

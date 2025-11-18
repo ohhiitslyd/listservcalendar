@@ -146,6 +146,18 @@ export const EventDetails = () => {
           </div>
         )}
       </div>
+
+      {/* Delete button for listserv events */}
+      {isListServ && (
+        <div className="event-details-actions">
+          <button 
+            className="event-delete-button" 
+            onClick={handleDeleteEvent}
+          >
+            Delete
+          </button>
+        </div>
+      )}
     </div>
   );
 };

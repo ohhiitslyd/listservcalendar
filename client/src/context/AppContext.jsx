@@ -171,11 +171,37 @@ export const AppProvider = ({ children }) => {
       console.log("🔎 fetchEvents →", url);
       const data = await api.fetchEvents({ calendarIds: ids, categoriesParam, orgCategoriesParam, });
 
+      // Color mapping for organization categories
+      const getCategoryColor = (orgCategories) => {
+        if (!orgCategories || orgCategories.length === 0) return null;
+        
+        // Extract the type (first part before ":") from orgCategories
+        // e.g., "music:a_cappella:dartmouth_cords" -> "music"
+        for (const cat of orgCategories) {
+          const typeKey = cat.split(':')[0];
+          if (typeKey === 'music') return '#93b3ea'; // blue
+          if (typeKey === 'sports') return '#eaa993'; // orange/red
+        }
+        return null;
+      };
+
       const transformed = (data.events || []).map((ev) => {
         const isListServ = ev.calendarId === listservCalendarId || ev.source === 'draft';
+        const categoryColor = isListServ ? getCategoryColor(ev.orgCategories) : null;
+        
+        let className = isListServ ? 'fc-event-listserv' : 'fc-event-other';
+        if (categoryColor) {
+          // Add a specific class for the category color
+          const colorClass = categoryColor === '#93b3ea' ? 'fc-event-music' : 
+                           categoryColor === '#eaa993' ? 'fc-event-sports' : '';
+          if (colorClass) className += ` ${colorClass}`;
+        }
+        
         return {
           ...ev,
-          className: isListServ ? 'fc-event-listserv' : 'fc-event-other',
+          className,
+          backgroundColor: categoryColor || undefined,
+          borderColor: categoryColor || undefined,
           extendedProps: {
             organization: ev.organization ?? "",
             tags: ev.tags ?? "",

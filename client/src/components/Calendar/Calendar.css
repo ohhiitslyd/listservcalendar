@@ -137,9 +137,34 @@
   text-overflow: ellipsis;
 }
 
-/* Remove default event time display - we use custom eventContent for non-listserv events */
+/* Remove default event time display - we use custom eventContent */
 .fc-event-time {
   display: none;
+}
+
+/* Listserv events - colored based on organization category */
+.fc-event-listserv {
+  white-space: nowrap;
+  overflow: hidden;
+  background-color: #d4e9c4 !important;
+}
+
+.fc-event-listserv .fc-event-title {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Music category events - blue */
+.fc-event-music {
+  background-color: #93b3ea !important;
+  border-color: #93b3ea !important;
+}
+
+/* Sports category events - orange/red */
+.fc-event-sports {
+  background-color: #eaa993 !important;
+  border-color: #eaa993 !important;
 }
 
 /* Day grid cell styling */
