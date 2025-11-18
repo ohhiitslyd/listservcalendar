@@ -9,6 +9,34 @@
  * Example: node scripts/scrapeEmails.js 20
  * 
  * To see an image use the url: http://localhost:3000/api/scraped-emails/{email_id}/attachments/{content_id}
+ * 
+ * In Browser Console, run to scrape emails:
+ * fetch('/api/scrape/emails', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ maxResults: 20 })
+    })
+    .then(r => r.json())
+    .then(data => {
+      console.log('📧 Scraped:', data.scraped, 'new emails');
+      console.log('⏭️  Skipped:', data.skipped, '(already in DB)');
+    })
+    .catch(err => console.error('Error:', err));
+ * 
+ * to parse the emails, run:
+ * fetch('/api/scrape/process', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ reprocess: true })
+    })
+    .then(r => r.json())
+    .then(data => {
+      console.log('Processed:', data.processed, 'emails');
+      console.log('Created:', data.eventsCreated, 'events');
+    })
+    .catch(err => console.error('Error:', err));
  */
 
 import Database from "better-sqlite3";

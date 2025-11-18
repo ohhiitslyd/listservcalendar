@@ -9,7 +9,7 @@ import Database from "better-sqlite3";
 import crypto from "crypto";
 import fs from "fs";
 import { scrapeEmails } from "./services/emailScraper.js";
-import { parseEmailForEvents } from "./services/emailParser.js";
+import { parseEmailForEvents } from "./services/llmParser.js";
 
 dotenv.config();
 
@@ -100,57 +100,10 @@ app.use(
   })
 );
 
-// SQLite setup for drafts
+// SQLite setup
 const db = new Database(path.join(__dirname, "db.sqlite"));
-db.exec(`CREATE TABLE IF NOT EXISTS drafts(
-  id TEXT PRIMARY KEY,
-  user_id TEXT NOT NULL,
-  title TEXT,
-  organization TEXT,
-  start TEXT NOT NULL,
-  end TEXT,
-  location TEXT,
-  all_day INTEGER DEFAULT 0,
-  description TEXT,
-  tags TEXT,
-  poster_url TEXT,
-  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-  updated_at TEXT DEFAULT CURRENT_TIMESTAMP
-);`);
 
-// MIGRATING DATABASE
-function runMigration() {
-  console.log("[db] Checking for migrations...");
-  const columns = db.pragma("table_info(drafts)").map((col) => col.name);
-
-  if (!columns.includes("organization")) {
-    db.exec("ALTER TABLE drafts ADD COLUMN organization TEXT");
-    console.log("[db] Added column: organization");
-  }
-  if (!columns.includes("tags")) {
-    db.exec("ALTER TABLE drafts ADD COLUMN tags TEXT");
-    console.log("[db] Added column: tags");
-  }
-  if (!columns.includes("poster_url")) {
-    db.exec("ALTER TABLE drafts ADD COLUMN poster_url TEXT");
-    console.log("[db] Added column: poster_url");
-  }
-  console.log("[db] Migrations complete.");
-}
-runMigration(); // Run the migration on startup
-
-const draftInsert =
-  db.prepare(`INSERT INTO drafts(id, user_id, title, description, location, start, end, all_day, organization, tags, poster_url)
-  VALUES(@id, @user_id, @title, @description, @location, @start, @end, @all_day, @organization, @tags, @poster_url)`);
-const draftUpdate =
-  db.prepare(`UPDATE drafts SET title=@title, description=@description, location=@location, 
-  start=@start, end=@end, all_day=@all_day, organization=@organization, tags=@tags, poster_url=@poster_url, updated_at=CURRENT_TIMESTAMP WHERE id=@id AND user_id=@user_id`);
-const draftDelete = db.prepare(
-  "DELETE FROM drafts WHERE id=@id AND user_id=@user_id"
-);
-const draftByUser = db.prepare("SELECT * FROM drafts WHERE user_id=?");
-
-// Email scraping tables
+// Email scraping table (raw email data)
 db.exec(`CREATE TABLE IF NOT EXISTS scraped_emails (
   id TEXT PRIMARY KEY,
   user_id TEXT NOT NULL,
@@ -173,28 +126,188 @@ try {
   // Column already exists
 }
 
-db.exec(`CREATE TABLE IF NOT EXISTS email_events (
+// Unified events table (replaces drafts and email_events)
+db.exec(`CREATE TABLE IF NOT EXISTS events (
   id TEXT PRIMARY KEY,
-  email_id TEXT NOT NULL,
   user_id TEXT NOT NULL,
+  source TEXT NOT NULL,
+  email_id TEXT,
   title TEXT,
   description TEXT,
   location TEXT,
-  start_date TEXT,
-  end_date TEXT,
-  start_time TEXT,
-  end_time TEXT,
+  organization TEXT,
+  tags TEXT,
+  poster_url TEXT,
+  start TEXT NOT NULL,
+  end TEXT,
   all_day INTEGER DEFAULT 0,
-  extracted_at TEXT DEFAULT CURRENT_TIMESTAMP,
   confidence_score REAL,
-  status TEXT DEFAULT 'pending',
+  status TEXT DEFAULT 'draft',
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (email_id) REFERENCES scraped_emails(id)
 );`);
 
-const emailEventInsert = db.prepare(`INSERT INTO email_events(
-  id, email_id, user_id, title, description, location, start_date, end_date, 
-  start_time, end_time, all_day, confidence_score, status
-) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+// Helper function for combining date and time
+function combineDateTime(date, time, allDay) {
+  if (!date) return null;
+  if (time && !allDay) {
+    return `${date}T${time}`;
+  }
+  return date;
+}
+
+// Migration: Merge drafts and email_events into events table
+function runMigration() {
+  console.log(
+    "[db] Running migration: consolidating drafts and email_events..."
+  );
+
+  const tables = db
+    .prepare(
+      "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('drafts', 'email_events', 'events')"
+    )
+    .all()
+    .map((t) => t.name);
+
+  const hasDrafts = tables.includes("drafts");
+  const hasEmailEvents = tables.includes("email_events");
+  const hasEvents = tables.includes("events");
+
+  // Migrate drafts to events
+  if (hasDrafts && !hasEvents) {
+    console.log("[db] Migrating drafts to events table...");
+    const drafts = db.prepare("SELECT * FROM drafts").all();
+    for (const draft of drafts) {
+      db.prepare(
+        `INSERT INTO events(id, user_id, source, title, description, location, organization, tags, poster_url, start, end, all_day, status, created_at, updated_at)
+         VALUES(?, ?, 'manual', ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?)`
+      ).run(
+        draft.id,
+        draft.user_id,
+        draft.title || "",
+        draft.description || "",
+        draft.location || "",
+        draft.organization || "",
+        draft.tags || "[]",
+        draft.poster_url || "",
+        draft.start,
+        draft.end || null,
+        draft.all_day || 0,
+        draft.created_at || new Date().toISOString(),
+        draft.updated_at || new Date().toISOString()
+      );
+    }
+    console.log(`[db] Migrated ${drafts.length} drafts to events`);
+  }
+
+  // Migrate email_events to events
+  if (hasEmailEvents) {
+    console.log("[db] Migrating email_events to events table...");
+    const emailEvents = db.prepare("SELECT * FROM email_events").all();
+    for (const evt of emailEvents) {
+      // Combine date and time into ISO format
+      const start = combineDateTime(
+        evt.start_date,
+        evt.start_time,
+        evt.all_day
+      );
+      const end = combineDateTime(evt.end_date, evt.end_time, evt.all_day);
+
+      if (start) {
+        // Check if event already exists (might have been migrated from drafts)
+        const existing = db
+          .prepare("SELECT id FROM events WHERE id=?")
+          .get(evt.id);
+        if (!existing) {
+          db.prepare(
+            `INSERT INTO events(id, user_id, source, email_id, title, description, location, organization, tags, poster_url, start, end, all_day, confidence_score, status, created_at, updated_at)
+             VALUES(?, ?, 'email', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          ).run(
+            evt.id,
+            evt.user_id,
+            evt.email_id || null,
+            evt.title || "",
+            evt.description || "",
+            evt.location || "",
+            evt.organization || "",
+            evt.tags || "[]",
+            "", // poster_url will be set when converting to draft
+            start,
+            end || null,
+            evt.all_day || 0,
+            evt.confidence_score || null,
+            evt.status === "converted" ? "draft" : "draft",
+            evt.extracted_at || new Date().toISOString(),
+            evt.extracted_at || new Date().toISOString()
+          );
+        }
+      }
+    }
+    console.log(`[db] Migrated ${emailEvents.length} email_events to events`);
+  }
+
+  // Drop old tables if migration successful
+  if (hasEvents && (hasDrafts || hasEmailEvents)) {
+    console.log("[db] Dropping old tables...");
+    if (hasDrafts) {
+      try {
+        db.exec("DROP TABLE drafts");
+        console.log("[db] Dropped drafts table");
+      } catch (e) {
+        console.warn("[db] Could not drop drafts table:", e.message);
+      }
+    }
+    if (hasEmailEvents) {
+      try {
+        db.exec("DROP TABLE email_events");
+        console.log("[db] Dropped email_events table");
+      } catch (e) {
+        console.warn("[db] Could not drop email_events table:", e.message);
+      }
+    }
+  }
+
+  // Ensure events table has all required columns
+  const columns = db.pragma("table_info(events)").map((col) => col.name);
+  const requiredColumns = {
+    source: "TEXT NOT NULL DEFAULT 'manual'",
+    email_id: "TEXT",
+    confidence_score: "REAL",
+  };
+
+  for (const [col, def] of Object.entries(requiredColumns)) {
+    if (!columns.includes(col)) {
+      try {
+        db.exec(`ALTER TABLE events ADD COLUMN ${col} ${def}`);
+        console.log(`[db] Added column: ${col}`);
+      } catch (e) {
+        console.warn(`[db] Could not add column ${col}:`, e.message);
+      }
+    }
+  }
+
+  console.log("[db] Migration complete.");
+}
+
+runMigration(); // Run the migration on startup
+
+// Prepared statements for events table
+const eventInsert = db.prepare(
+  `INSERT INTO events(id, user_id, source, email_id, title, description, location, organization, tags, poster_url, start, end, all_day, confidence_score, status)
+   VALUES(@id, @user_id, @source, @email_id, @title, @description, @location, @organization, @tags, @poster_url, @start, @end, @all_day, @confidence_score, @status)`
+);
+const eventUpdate = db.prepare(
+  `UPDATE events SET title=@title, description=@description, location=@location, organization=@organization, tags=@tags, poster_url=@poster_url, 
+   start=@start, end=@end, all_day=@all_day, updated_at=CURRENT_TIMESTAMP WHERE id=@id AND user_id=@user_id`
+);
+const eventDelete = db.prepare(
+  "DELETE FROM events WHERE id=@id AND user_id=@user_id"
+);
+const eventsByUser = db.prepare("SELECT * FROM events WHERE user_id=?");
+const eventsByUserAndSource = db.prepare(
+  "SELECT * FROM events WHERE user_id=? AND source=?"
+);
 
 function ensureAuthed(req, res, next) {
   if (!req.session.tokens || !req.session.user) {
@@ -492,22 +605,22 @@ app.get("/api/events", ensureAuthed, async (req, res) => {
       allEvents.push(...googleEvents);
     }
 
-    const drafts = draftByUser.all(req.session.user.id).map((d) => ({
-      id: `draft:${d.id}`,
-      source: "draft",
-      title: d.title || "(Draft)",
-      description: d.description || "",
-      location: d.location || "",
-      start: d.start,
-      end: d.end,
-      allDay: !!d.all_day,
-      organization: d.organization || "",
-      tags: JSON.parse(d.tags || "[]"), // De-serialize tags from JSON string
-      poster_url: d.poster_url || "",
+    const localEvents = eventsByUser.all(req.session.user.id).map((e) => ({
+      id: e.source === "manual" ? `draft:${e.id}` : `email:${e.id}`,
+      source: e.source === "manual" ? "draft" : "email",
+      title: e.title || (e.source === "manual" ? "(Draft)" : "(Event)"),
+      description: e.description || "",
+      location: e.location || "",
+      start: e.start,
+      end: e.end,
+      allDay: !!e.all_day,
+      organization: e.organization || "",
+      tags: JSON.parse(e.tags || "[]"), // De-serialize tags from JSON string
+      poster_url: e.poster_url || "",
     }));
 
     // --- Combine and normalize tags ---
-    const combined = [...drafts, ...allEvents].map((ev) => {
+    const combined = [...localEvents, ...allEvents].map((ev) => {
       const catKeys = assignCategories(ev).map(slug); // normalize category keys
       const orgKeys = assignOrgCategories(ev).map(slug); // normalize org-category keys
       return { ...ev, categories: catKeys, orgCategories: orgKeys };
@@ -515,7 +628,7 @@ app.get("/api/events", ensureAuthed, async (req, res) => {
 
     // Helper: identify ListServ events so only they get filtered away
     const isListServ = (ev) => {
-      const isDraft = ev.source === "draft";
+      const isDraft = ev.source === "draft" || ev.source === "email";
       const isGoogleListServ =
         ev.source === "google" && ev.calendarId === listservCalendarId;
       return isDraft || isGoogleListServ;
@@ -627,7 +740,7 @@ app.get("/api/org-categories", ensureAuthed, (req, res) => {
 
 //ending of additions
 
-// --- Drafts ---
+// --- Drafts (now using unified events table) ---
 app.post("/api/drafts", ensureAuthed, (req, res) => {
   try {
     const {
@@ -643,18 +756,23 @@ app.post("/api/drafts", ensureAuthed, (req, res) => {
     } = req.body;
     if (!start) return res.status(400).json({ error: "start required" });
     const id = `draft_${crypto.randomBytes(12).toString("hex")}`;
-    draftInsert.run({
+    const tagsJson = Array.isArray(tags) ? JSON.stringify(tags) : tags || "[]";
+    eventInsert.run({
       id,
       user_id: req.session.user.id,
+      source: "manual",
+      email_id: null,
       title: title || "",
       description: description || "",
       location: location || "",
+      organization: organization || "",
+      tags: tagsJson,
+      poster_url: poster_url || "",
       start,
       end: end || null,
       all_day: allDay ? 1 : 0,
-      organization: organization || "",
-      tags: tags ? (Array.isArray(tags) ? tags.join(",") : tags) : "",
-      poster_url: poster_url || "",
+      confidence_score: null,
+      status: "draft",
     });
     res.json({ ok: true, id: `draft:${id}` });
   } catch (e) {
@@ -663,12 +781,12 @@ app.post("/api/drafts", ensureAuthed, (req, res) => {
   }
 });
 
-// --- Delete / Publish events ---
+// --- Delete events ---
 app.delete("/api/events/:compoundId", ensureAuthed, async (req, res) => {
   try {
     const [source, rawId] = req.params.compoundId.split(":");
-    if (source === "draft") {
-      draftDelete.run({ id: rawId, user_id: req.session.user.id });
+    if (source === "draft" || source === "email") {
+      eventDelete.run({ id: rawId, user_id: req.session.user.id });
       return res.json({ ok: true });
     }
     if (source === "google") {
@@ -694,18 +812,53 @@ app.delete("/api/events/:compoundId", ensureAuthed, async (req, res) => {
 app.post("/api/events/:compoundId/publish", ensureAuthed, async (req, res) => {
   try {
     const [source, rawId] = req.params.compoundId.split(":");
-    if (source !== "draft")
-      return res.status(400).json({ error: "Only drafts can be published" });
+    if (source !== "draft" && source !== "email")
+      return res
+        .status(400)
+        .json({ error: "Only drafts or email events can be published" });
     const row = db
-      .prepare(`SELECT * FROM drafts WHERE id=? AND user_id=?`)
+      .prepare(`SELECT * FROM events WHERE id=? AND user_id=?`)
       .get(rawId, req.session.user.id);
-    if (!row) return res.status(404).json({ error: "Draft not found" });
+    if (!row) return res.status(404).json({ error: "Event not found" });
+
     const oauth2Client = getOAuthClient(req);
     const calendar = google.calendar({ version: "v3", auth: oauth2Client });
     const { id: listservCalendarId } = await getOrCreateListServCalendar(
       req,
       oauth2Client
     );
+
+    // Validate and format dates
+    let startDate, endDate;
+    if (row.all_day) {
+      // For all-day events, ensure date is in YYYY-MM-DD format
+      startDate = row.start ? row.start.split("T")[0] : null;
+      endDate = row.end ? row.end.split("T")[0] : startDate;
+      if (!startDate) {
+        console.error(
+          `[publish] Invalid all-day event date for event ${rawId}: ${row.start}`
+        );
+        return res.status(400).json({ error: "Invalid event date" });
+      }
+    } else {
+      // For timed events, ensure ISO 8601 format
+      startDate = row.start;
+      endDate = row.end || row.start;
+      if (!startDate) {
+        console.error(
+          `[publish] Invalid timed event date for event ${rawId}: ${row.start}`
+        );
+        return res.status(400).json({ error: "Invalid event date" });
+      }
+      // Ensure it's a valid ISO datetime string
+      if (!startDate.includes("T") || isNaN(new Date(startDate).getTime())) {
+        console.error(
+          `[publish] Invalid datetime format for event ${rawId}: ${startDate}`
+        );
+        return res.status(400).json({ error: "Invalid event datetime format" });
+      }
+    }
+
     const resource = {
       summary: row.title || "",
       description: row.description || "",
@@ -719,22 +872,57 @@ app.post("/api/events/:compoundId/publish", ensureAuthed, async (req, res) => {
         },
       },
     };
+
     if (row.all_day) {
-      resource.start = { date: row.start };
-      resource.end = { date: row.end || row.start };
+      resource.start = { date: startDate };
+      resource.end = { date: endDate };
     } else {
-      resource.start = { dateTime: row.start };
-      resource.end = { dateTime: row.end || row.start };
+      resource.start = { dateTime: startDate, timeZone: "America/New_York" };
+      resource.end = { dateTime: endDate, timeZone: "America/New_York" };
     }
+
+    console.log(
+      `[publish] Publishing event ${rawId} (source: ${source}) to calendar ${listservCalendarId}`
+    );
+    console.log(`[publish] Event details:`, {
+      title: resource.summary,
+      start: resource.start,
+      end: resource.end,
+      allDay: row.all_day,
+    });
+
     const insertResp = await calendar.events.insert({
       calendarId: listservCalendarId,
       requestBody: resource,
     });
-    draftDelete.run({ id: rawId, user_id: req.session.user.id });
+
+    if (!insertResp.data || !insertResp.data.id) {
+      console.error(
+        `[publish] Google Calendar insert failed for event ${rawId}:`,
+        insertResp
+      );
+      return res
+        .status(500)
+        .json({ error: "Failed to publish event to Google Calendar" });
+    }
+
+    console.log(
+      `[publish] Successfully published event ${rawId} to Google Calendar: ${insertResp.data.id}`
+    );
+
+    // Only delete from local database after successful publish
+    eventDelete.run({ id: rawId, user_id: req.session.user.id });
     res.json({ ok: true, published: { id: `google:${insertResp.data.id}` } });
   } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: "Failed to publish draft" });
+    console.error(`[publish] Error publishing event:`, e);
+    console.error(`[publish] Error details:`, {
+      message: e.message,
+      stack: e.stack,
+      response: e.response?.data,
+    });
+    res
+      .status(500)
+      .json({ error: "Failed to publish event", details: e.message });
   }
 });
 
@@ -768,14 +956,6 @@ app.post("/api/scrape/emails", ensureAuthed, async (req, res) => {
   }
 });
 
-function combineDateTime(date, time, allDay) {
-  if (!date) return null;
-  if (time && !allDay) {
-    return `${date}T${time}`;
-  }
-  return date;
-}
-
 app.post("/api/scrape/process", ensureAuthed, async (req, res) => {
   try {
     const userId = req.session.user.id;
@@ -808,39 +988,153 @@ app.post("/api/scrape/process", ensureAuthed, async (req, res) => {
       try {
         // If reprocessing, delete old events first
         if (reprocess) {
-          db.prepare("DELETE FROM email_events WHERE email_id=?").run(email.id);
+          db.prepare("DELETE FROM events WHERE email_id=? AND user_id=?").run(
+            email.id,
+            userId
+          );
           db.prepare("UPDATE scraped_emails SET processed=0 WHERE id=?").run(
             email.id
           );
         }
 
-        const events = parseEmailForEvents(email);
+        const events = await parseEmailForEvents(email);
+
+        if (events.length === 0) {
+          console.warn(
+            `[process] No events extracted from email: ${
+              email.subject || email.id
+            }`
+          );
+        }
 
         for (const event of events) {
           const eventId = `email_event_${crypto
             .randomBytes(12)
             .toString("hex")}`;
 
-          emailEventInsert.run(
-            eventId,
-            email.id,
-            userId,
-            event.title,
-            event.description,
-            event.location,
+          const eventForTagging = {
+            title: event.title || "",
+            description: event.description || "",
+            location: event.location || "",
+          };
+          const catKeys = assignCategories(eventForTagging).map(slug);
+          const orgKeys = assignOrgCategories(eventForTagging).map(slug);
+          const tagsJson = JSON.stringify([...catKeys, ...orgKeys]);
+
+          const start = combineDateTime(
             event.startDate,
-            event.endDate,
             event.startTime,
-            event.endTime,
-            event.allDay ? 1 : 0,
-            event.confidenceScore,
-            "pending"
+            event.allDay
           );
+
+          let end = combineDateTime(event.endDate, event.endTime, event.allDay);
+
+          if (!start) {
+            console.warn(
+              `[process] Skipping event ${eventId} - missing start date`
+            );
+            continue;
+          }
+
+          if (event.startTime && !event.endTime && !event.allDay && start) {
+            const startDate = new Date(start);
+            const endDate = new Date(startDate);
+            endDate.setHours(endDate.getHours() + 1);
+            end = endDate.toISOString();
+          } else if (event.allDay && !end) {
+            end = start;
+          }
+
+          eventInsert.run({
+            id: eventId,
+            user_id: userId,
+            source: "email",
+            email_id: email.id,
+            title: event.title || "",
+            description: event.description || "",
+            location: event.location || "",
+            organization: event.organization || "",
+            tags: tagsJson,
+            poster_url: event.posterUrl || "",
+            start,
+            end: end || null,
+            all_day: event.allDay ? 1 : 0,
+            confidence_score: event.confidenceScore || null,
+            status: "draft",
+          });
+
+          // Auto-publish email-sourced events to Google Calendar
+          try {
+            const oauth2Client = getOAuthClient(req);
+            const calendar = google.calendar({
+              version: "v3",
+              auth: oauth2Client,
+            });
+            const { id: listservCalendarId } =
+              await getOrCreateListServCalendar(req, oauth2Client);
+
+            let startDate, endDate;
+            if (event.allDay) {
+              startDate = start ? start.split("T")[0] : null;
+              endDate = end ? end.split("T")[0] : startDate;
+            } else {
+              startDate = start;
+              endDate = end || start;
+            }
+
+            if (startDate) {
+              const resource = {
+                summary: event.title || "",
+                description: event.description || "",
+                location: event.location || "",
+                extendedProperties: {
+                  shared: {
+                    organization: event.organization || "",
+                    tags: tagsJson,
+                    poster_url: event.posterUrl || "",
+                  },
+                },
+              };
+
+              if (event.allDay) {
+                resource.start = { date: startDate };
+                resource.end = { date: endDate };
+              } else {
+                resource.start = {
+                  dateTime: startDate,
+                  timeZone: "America/New_York",
+                };
+                resource.end = {
+                  dateTime: endDate,
+                  timeZone: "America/New_York",
+                };
+              }
+
+              const insertResp = await calendar.events.insert({
+                calendarId: listservCalendarId,
+                requestBody: resource,
+              });
+
+              if (insertResp.data && insertResp.data.id) {
+                db.prepare(
+                  "UPDATE events SET status='published', updated_at=CURRENT_TIMESTAMP WHERE id=? AND user_id=?"
+                ).run(eventId, userId);
+              } else {
+                console.warn(
+                  `[process] Failed to auto-publish event ${eventId} to Google Calendar`
+                );
+              }
+            }
+          } catch (publishError) {
+            console.error(
+              `[process] Error auto-publishing event ${eventId}:`,
+              publishError.message
+            );
+          }
 
           eventsCreated++;
         }
 
-        // Mark email as processed
         db.prepare("UPDATE scraped_emails SET processed=1 WHERE id=?").run(
           email.id
         );
@@ -897,13 +1191,13 @@ app.get("/api/scraped-emails", ensureAuthed, (req, res) => {
   }
 });
 
-// Get extracted events from emails
+// Get extracted events from emails (now from unified events table)
 app.get("/api/email-events", ensureAuthed, (req, res) => {
   try {
     const userId = req.session.user.id;
     const { status = null, limit = 50, offset = 0 } = req.query;
 
-    let query = "SELECT * FROM email_events WHERE user_id=?";
+    let query = "SELECT * FROM events WHERE user_id=? AND source='email'";
     const params = [userId];
 
     if (status) {
@@ -911,12 +1205,18 @@ app.get("/api/email-events", ensureAuthed, (req, res) => {
       params.push(status);
     }
 
-    query += " ORDER BY extracted_at DESC LIMIT ? OFFSET ?";
+    query += " ORDER BY created_at DESC LIMIT ? OFFSET ?";
     params.push(parseInt(limit), parseInt(offset));
 
     const events = db.prepare(query).all(...params);
 
-    res.json({ events });
+    // Parse tags JSON for each event
+    const eventsWithParsedTags = events.map((event) => ({
+      ...event,
+      tags: event.tags ? JSON.parse(event.tags) : [],
+    }));
+
+    res.json({ events: eventsWithParsedTags });
   } catch (e) {
     console.error("[email-events] Error:", e);
     res.status(500).json({ error: "Failed to fetch email events" });
@@ -1021,14 +1321,16 @@ app.get(
   }
 );
 
-// Convert email event to draft (for manual review/publishing)
+// Update email event poster_url (email events are already drafts, just need to set poster)
 app.post("/api/email-events/:eventId/to-draft", ensureAuthed, (req, res) => {
   try {
     const userId = req.session.user.id;
     const eventId = req.params.eventId;
 
     const event = db
-      .prepare("SELECT * FROM email_events WHERE id=? AND user_id=?")
+      .prepare(
+        "SELECT * FROM events WHERE id=? AND user_id=? AND source='email'"
+      )
       .get(eventId, userId);
     if (!event) {
       return res.status(404).json({ error: "Event not found" });
@@ -1049,48 +1351,21 @@ app.post("/api/email-events/:eventId/to-draft", ensureAuthed, (req, res) => {
           // Generate URL to serve the image
           const baseUrl = `${req.protocol}://${req.get("host")}`;
           posterUrl = `${baseUrl}/api/scraped-emails/${email.id}/attachments/${firstAttachment.contentId}`;
+
+          // Update the event with poster_url
+          db.prepare(
+            "UPDATE events SET poster_url=? WHERE id=? AND user_id=?"
+          ).run(posterUrl, eventId, userId);
         }
       } catch (e) {
         console.error("[to-draft] Error parsing attachments:", e);
       }
     }
 
-    const start = combineDateTime(
-      event.start_date,
-      event.start_time,
-      event.all_day
-    );
-    const end = combineDateTime(event.end_date, event.end_time, event.all_day);
-
-    if (!start) {
-      return res.status(400).json({ error: "Event missing start date" });
-    }
-
-    const draftId = `draft_${crypto.randomBytes(12).toString("hex")}`;
-    draftInsert.run({
-      id: draftId,
-      user_id: userId,
-      title: event.title || "",
-      description: event.description || "",
-      location: event.location || "",
-      start,
-      end: end || null,
-      all_day: event.all_day || 0,
-      organization: "",
-      tags: "",
-      poster_url: posterUrl,
-    });
-
-    // Update event status
-    db.prepare("UPDATE email_events SET status=? WHERE id=?").run(
-      "converted",
-      eventId
-    );
-
-    res.json({ ok: true, draftId: `draft:${draftId}` });
+    res.json({ ok: true, eventId: `email:${eventId}`, poster_url: posterUrl });
   } catch (e) {
     console.error("[to-draft] Error:", e);
-    res.status(500).json({ error: "Failed to convert to draft" });
+    res.status(500).json({ error: "Failed to update event" });
   }
 });
 
