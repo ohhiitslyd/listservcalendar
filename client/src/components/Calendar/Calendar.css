@@ -4,18 +4,200 @@
 .app-calendar-container {
   flex: 1;                       /* take the remaining horizontal space */
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
 /* Wrapper gives a little padding around the calendar */
 .app-calendar-wrapper {
+  flex: 1;
   height: 100%;
-  padding: 8px;
   background: #fff;
-  border-radius: 8px;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+  overflow: hidden;
+  padding: 0px 40px 0px 40px;
 }
 
 /* Make FullCalendar fill the whole wrapper */
 .fc {
   height: 100% !important;
+  font-family: 'Poppins', sans-serif;
+}
+
+/* Remove default FullCalendar borders and shadows */
+.fc-theme-standard td,
+.fc-theme-standard th {
+  border-color: #e5e7eb;
+}
+
+/* Day header styling */
+.fc-col-header-cell {
+  padding: 12px 0 !important;
+  background: white !important;
+  border-bottom: 1px solid #e5e7eb !important;
+}
+
+.fc-col-header-cell-cushion {
+  font-family: 'Poppins', sans-serif;
+  font-weight: 400;
+  font-size: 14px;
+  color: #6b7280;
+  padding: 4px 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+/* Hide "all-day" text label but keep the row */
+.fc-timegrid-all-day .fc-col-header-cell-cushion,
+.fc-timegrid-all-day .fc-timegrid-axis-frame,
+.fc-timegrid-axis-cushion {
+  display: none !important;
+}
+
+/* Date number styling in day headers - for timeGrid views */
+.fc-timegrid-col-header .fc-col-header-cell-cushion::after {
+  content: attr(data-date);
+  font-family: 'Poppins', sans-serif;
+  font-weight: 400;
+  font-size: 16px;
+  color: #1f2937;
+  margin-top: 4px;
+}
+
+/* Highlight current day */
+.fc-day-today {
+  background-color: #f9fafb !important;
+}
+
+.fc-day-today .fc-daygrid-day-number {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background-color: #3b82f6;
+  color: white;
+  font-weight: 500;
+}
+
+/* Time axis styling */
+.fc-timegrid-slot-label {
+  font-family: 'Poppins', sans-serif;
+  font-weight: 400;
+  font-size: 12px;
+  color: #6b7280;
+  padding: 0 8px;
+}
+
+.fc-timegrid-slot-label-frame {
+  text-align: right;
+}
+
+/* Time grid column styling */
+.fc-timegrid-col {
+  border-right: 1px solid #e5e7eb;
+}
+
+.fc-timegrid-col.fc-day-today {
+  background-color: #f9fafb;
+}
+
+/* Event styling */
+.fc-event {
+  border-radius: 5px;
+  border: none;
+  padding: 4px 8px;
+  font-family: 'Poppins', sans-serif;
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.fc-event-title {
+  font-weight: 400;
+}
+
+/* Non-listserv events - white background with green border */
+.fc-event-other {
+  background-color: white !important;
+  border: 1px solid #d4e9c4 !important;
+  color: #000 !important;
+  padding: 6px;
+  overflow: hidden;
+}
+
+.fc-event-other .fc-event-title {
+  color: #000 !important;
+  font-weight: 500;
+  font-size: 10px;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Remove default event time display - we use custom eventContent for non-listserv events */
+.fc-event-time {
+  display: none;
+}
+
+/* Day grid cell styling */
+.fc-daygrid-day {
+  border-right: 1px solid #e5e7eb;
+}
+
+.fc-daygrid-day-frame {
+  min-height: 100px;
+}
+
+.fc-timegrid-slot-minor {
+  border-top: 0;
+}
+
+.fc-scrollgrid-section {
+  min-height: 0;
+}
+
+/* Scrollbar styling */
+.fc-scroller {
+  overflow-y: auto;
+}
+
+.fc-scroller::-webkit-scrollbar {
+  width: 8px;
+}
+
+.fc-scroller::-webkit-scrollbar-track {
+  background: #f3f4f6;
+}
+
+.fc-scroller::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+  border-radius: 4px;
+}
+
+.fc-scroller::-webkit-scrollbar-thumb:hover {
+  background: #9ca3af;
+}
+
+/* Remove FullCalendar default header */
+.fc-header-toolbar {
+  display: none !important;
+}
+
+/* Time grid axis */
+.fc-timegrid-axis {
+  border-right: 1px solid #e5e7eb;
+  background: white;
+}
+
+/* Week view specific styling */
+.fc-timeGridWeek-view .fc-daygrid-day-frame {
+  min-height: 0;
+}
+
+/* Day view specific styling */
+.fc-timeGridDay-view .fc-daygrid-day-frame {
+  min-height: 0;
 }

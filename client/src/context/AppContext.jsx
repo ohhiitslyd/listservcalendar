@@ -171,24 +171,28 @@ export const AppProvider = ({ children }) => {
       console.log("🔎 fetchEvents →", url);
       const data = await api.fetchEvents({ calendarIds: ids, categoriesParam, orgCategoriesParam, });
 
-      const transformed = (data.events || []).map((ev) => ({
-        ...ev,
-        extendedProps: {
-          organization: ev.organization ?? "",
-          tags: ev.tags ?? "",
-          poster_url: ev.poster_url ?? "",
-          description: ev.description ?? "",
-          location: ev.location ?? "",
-          source: ev.source,
-          calendarId: ev.calendarId ?? null,
-          filter: ev.filter ?? ev.tag ?? null,
-          categories: ev.categories ?? [],
-          orgCategories: ev.orgCategories ?? [],
-        },
-      }));
+      const transformed = (data.events || []).map((ev) => {
+        const isListServ = ev.calendarId === listservCalendarId || ev.source === 'draft';
+        return {
+          ...ev,
+          className: isListServ ? 'fc-event-listserv' : 'fc-event-other',
+          extendedProps: {
+            organization: ev.organization ?? "",
+            tags: ev.tags ?? "",
+            poster_url: ev.poster_url ?? "",
+            description: ev.description ?? "",
+            location: ev.location ?? "",
+            source: ev.source,
+            calendarId: ev.calendarId ?? null,
+            filter: ev.filter ?? ev.tag ?? null,
+            categories: ev.categories ?? [],
+            orgCategories: ev.orgCategories ?? [],
+          },
+        };
+      });
       setEvents(transformed);
     },
-    [visibleCalendars, categoriesParam, orgCategoriesParam] 
+    [visibleCalendars, categoriesParam, orgCategoriesParam, listservCalendarId] 
   );
 
   // Fetch events for counts ONLY (NO categoriesParam). This keeps a stable, unfiltered snapshot.
