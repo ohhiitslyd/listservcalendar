@@ -93,9 +93,9 @@ app.use(express.json());
 app.use(cookieParser());
 app.use(
   session({
-  secret: SESSION_SECRET,
-  resave: false,
-  saveUninitialized: false,
+    secret: SESSION_SECRET,
+    resave: false,
+    saveUninitialized: false,
     cookie: { httpOnly: true, sameSite: "lax", secure: false },
   })
 );
@@ -809,7 +809,7 @@ app.delete("/api/events/:compoundId", ensureAuthed, async (req, res) => {
       // Delete from Google Calendar if it was published
       if (event && event.google_event_id && event.status === "published") {
         try {
-      const oauth2Client = getOAuthClient(req);
+          const oauth2Client = getOAuthClient(req);
           const calendar = google.calendar({
             version: "v3",
             auth: oauth2Client,
