@@ -125,6 +125,27 @@ export const EventDetails = () => {
           </div>
         )}
 
+        {selectedEvent.extendedProps?.poster_url && (
+          <div className="event-details-poster">
+            <img
+              src={selectedEvent.extendedProps.poster_url}
+              alt={`${selectedEvent.title || "Event"} poster`}
+              className="event-poster-image"
+              onError={(e) => {
+                e.currentTarget.style.display = "none";
+              }}
+            />
+            <a
+              className="event-poster-link"
+              href={selectedEvent.extendedProps.poster_url}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              View full poster
+            </a>
+          </div>
+        )}
+
         {selectedEvent.extendedProps?.tags &&
         selectedEvent.extendedProps.tags.length > 0 && (
           <div className="event-details-row event-details-tags-row">
