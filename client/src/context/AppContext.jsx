@@ -76,7 +76,7 @@ export const AppProvider = ({ children }) => {
 
     const { start, end } = currentViewRange;
     const startMs = new Date(start).getTime();
-    const endMs   = new Date(end).getTime();
+    const endMs = new Date(end).getTime();
 
     return (allEventsForCounts || []).filter((ev) => {
       // `ev.start` is a string like "2025-03-10T10:00:00Z" or "2025-03-10"
@@ -98,10 +98,11 @@ export const AppProvider = ({ children }) => {
     const lsId = listservCalendarId;
 
     (weekFilteredEventsForCounts || []).forEach((ev) => {
-      // Count only ListServ events, same as before
+      // Count only ListServ events: drafts, email-sourced, or Google Calendar listserv events
       const isListServGoogle = ev.source === "google" && ev.calendarId === lsId;
       const isListServDraft = ev.source === "draft";
-      const isListServ = isListServGoogle || isListServDraft;
+      const isListServEmail = ev.source === "email";
+      const isListServ = isListServGoogle || isListServDraft || isListServEmail;
       if (!isListServ) return;
 
       const keys = ev?.extendedProps?.orgCategories || ev.orgCategories || [];
@@ -112,7 +113,6 @@ export const AppProvider = ({ children }) => {
 
     return counts;
   }, [weekFilteredEventsForCounts, listservCalendarId]);
-
 
   /* -------------------------------------------------
      3️⃣  AUTH HELPERS
@@ -169,39 +169,65 @@ export const AppProvider = ({ children }) => {
           : "?";
       const url = `/api/events${base}${categoriesParam}${orgCategoriesParam}`;
       console.log("🔎 fetchEvents →", url);
-      const data = await api.fetchEvents({ calendarIds: ids, categoriesParam, orgCategoriesParam, });
+      const data = await api.fetchEvents({
+        calendarIds: ids,
+        categoriesParam,
+        orgCategoriesParam,
+      });
 
       // Color mapping for organization categories
       const getCategoryColor = (orgCategories) => {
         if (!orgCategories || orgCategories.length === 0) return null;
-        
+
         // Extract the type (first part before ":") from orgCategories
         // e.g., "music:a_cappella:dartmouth_cords" -> "music"
         for (const cat of orgCategories) {
-          const typeKey = cat.split(':')[0];
-          if (typeKey === 'music') return '#93b3ea'; // blue
-          if (typeKey === 'sports') return '#eaa993'; // orange/red
+          const typeKey = cat.split(":")[0];
+
+          // Comprehensive color map for different organization types
+          // Pastel/light colors similar to default green (#d4e9c4) for good readability
+          const colorMap = {
+            music: "#c7d9f5", // light blue - pastel
+            sports: "#f5d7c7", // light peach/orange - pastel
+            academic: "#ddd6fe", // light purple - pastel
+            cultural: "#fed7aa", // light amber - pastel
+            social: "#d4e9c4", // light green - default (keep original)
+            greek: "#fce7f3", // light pink - pastel
+            arts: "#cffafe", // light cyan - pastel
+            community: "#e9f5c7", // light lime - pastel
+            religious: "#e0e7ff", // light indigo - pastel
+            political: "#fecaca", // light red - pastel
+            professional: "#ccfbf1", // light teal - pastel
+            volunteer: "#fed7aa", // light orange - pastel
+            service: "#cffafe", // light cyan (same as arts)
+            wellness: "#d4e9c4", // light green (same as social)
+            technology: "#e0e7ff", // light indigo (same as religious)
+          };
+
+          if (colorMap[typeKey]) return colorMap[typeKey];
         }
-        return null;
+        return null; // Default to green (handled by CSS)
       };
 
       const transformed = (data.events || []).map((ev) => {
-        const isListServ = ev.calendarId === listservCalendarId || ev.source === 'draft';
-        const categoryColor = isListServ ? getCategoryColor(ev.orgCategories) : null;
-        
-        let className = isListServ ? 'fc-event-listserv' : 'fc-event-other';
-        if (categoryColor) {
-          // Add a specific class for the category color
-          const colorClass = categoryColor === '#93b3ea' ? 'fc-event-music' : 
-                           categoryColor === '#eaa993' ? 'fc-event-sports' : '';
-          if (colorClass) className += ` ${colorClass}`;
-        }
-        
+        // Listserv events: drafts, email-sourced, or Google Calendar listserv events
+        const isListServ =
+          ev.calendarId === listservCalendarId ||
+          ev.source === "draft" ||
+          ev.source === "email";
+        const categoryColor = isListServ
+          ? getCategoryColor(ev.orgCategories)
+          : null;
+
+        let className = isListServ ? "fc-event-listserv" : "fc-event-other";
+
         return {
           ...ev,
           className,
+          // Apply category color directly - this overrides the default green
           backgroundColor: categoryColor || undefined,
           borderColor: categoryColor || undefined,
+          textColor: "#000000", // Always use black text for better readability
           extendedProps: {
             organization: ev.organization ?? "",
             tags: ev.tags ?? "",
@@ -218,7 +244,7 @@ export const AppProvider = ({ children }) => {
       });
       setEvents(transformed);
     },
-    [visibleCalendars, categoriesParam, orgCategoriesParam, listservCalendarId] 
+    [visibleCalendars, categoriesParam, orgCategoriesParam, listservCalendarId]
   );
 
   // Fetch events for counts ONLY (NO categoriesParam). This keeps a stable, unfiltered snapshot.
@@ -281,10 +307,10 @@ export const AppProvider = ({ children }) => {
       });
       const draftData = await draftRes.json();
       if (draftData.id) {
-        await fetch(
-          `/api/events/${encodeURIComponent(draftData.id)}/publish`,
-          { method: "POST", credentials: "include" }
-        );
+        await fetch(`/api/events/${encodeURIComponent(draftData.id)}/publish`, {
+          method: "POST",
+          credentials: "include",
+        });
       } else {
         alert("Failed to create draft");
       }
@@ -301,14 +327,15 @@ export const AppProvider = ({ children }) => {
     // UI clean‑up
     setCreateModalOpen(false);
     setSelectionInfo(null);
-    setEventForm({ 
-      title: "", 
-      organization: "", 
-      location: "", 
-      description: "", 
-      tags: "", 
-      poster_url: "", 
-      allDay: false });
+    setEventForm({
+      title: "",
+      organization: "",
+      location: "",
+      description: "",
+      tags: "",
+      poster_url: "",
+      allDay: false,
+    });
     if (calendarRef.current?.getApi) {
       calendarRef.current.getApi().unselect();
     }
@@ -318,10 +345,10 @@ export const AppProvider = ({ children }) => {
   const handlePublishEvent = async () => {
     const id = selectedEvent?.id;
     if (!id?.startsWith("draft:")) return;
-    const res = await fetch(
-      `/api/events/${encodeURIComponent(id)}/publish`,
-      { method: "POST", credentials: "include" }
-    );
+    const res = await fetch(`/api/events/${encodeURIComponent(id)}/publish`, {
+      method: "POST",
+      credentials: "include",
+    });
     if (!res.ok) alert("Failed to publish event");
     else {
       setSelectedEvent(null);
@@ -359,10 +386,12 @@ export const AppProvider = ({ children }) => {
 
       // b) category bubbles – `fetchCategories` expects the user (or we could just call it without args if the hook already checks `user` internally)
       fetchCategories(user);
-       // NEW: fetch org categories list
+      // NEW: fetch org categories list
       (async () => {
         try {
-          const res = await fetch('/api/org-categories', { credentials: 'include' });
+          const res = await fetch("/api/org-categories", {
+            credentials: "include",
+          });
           if (res.ok) {
             const data = await res.json();
             setAvailableOrgCats(data.categories || []);
@@ -398,7 +427,13 @@ export const AppProvider = ({ children }) => {
     if (user) {
       fetchEvents(Array.from(visibleCalendars));
     }
-  }, [categoriesParam, orgCategoriesParam, user, visibleCalendars, fetchEvents]);
+  }, [
+    categoriesParam,
+    orgCategoriesParam,
+    user,
+    visibleCalendars,
+    fetchEvents,
+  ]);
 
   /* -------------------------------------------------
      7️⃣  CONTEXT VALUE
@@ -453,7 +488,7 @@ export const AppProvider = ({ children }) => {
     handlePublishEvent,
     handleDeleteEvent,
 
-    // organization 
+    // organization
     availableOrgCats,
     selectedOrgCats,
     setSelectedOrgCats,

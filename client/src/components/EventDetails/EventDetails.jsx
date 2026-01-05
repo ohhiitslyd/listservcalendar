@@ -22,6 +22,7 @@ export const EventDetails = () => {
   }
 
   const isDraft = selectedEvent.id.startsWith("draft:");
+  const isEmail = selectedEvent.id.startsWith("email:");
   const isListServ =
     selectedEvent.extendedProps?.calendarId === listservCalendarId;
 
@@ -169,7 +170,7 @@ export const EventDetails = () => {
       </div>
 
       {/* Delete button for listserv events */}
-      {isListServ && (
+      {(isDraft || isEmail || isListServ) && (
         <div className="event-details-actions">
           <button 
             className="event-delete-button" 
