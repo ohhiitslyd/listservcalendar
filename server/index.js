@@ -312,9 +312,11 @@ const eventUpdate = db.prepare(
 const eventDelete = db.prepare(
   "DELETE FROM events WHERE id=@id AND user_id=@user_id"
 );
-const eventsByUser = db.prepare("SELECT * FROM events WHERE user_id=?");
+const eventsByUser = db.prepare(
+  "SELECT * FROM events WHERE user_id=? AND status != 'published'"
+);
 const eventsByUserAndSource = db.prepare(
-  "SELECT * FROM events WHERE user_id=? AND source=?"
+  "SELECT * FROM events WHERE user_id=? AND source=? AND status != 'published'"
 );
 
 function ensureAuthed(req, res, next) {
@@ -584,13 +586,11 @@ app.get("/api/events", ensureAuthed, async (req, res) => {
         59
       ).toISOString();
 
-    // Exclude listserv calendar from Google Calendar fetch (we have local versions)
-    // This prevents duplicates - we want local events (with delete button), not Google Calendar versions
+    // Fetch events from requested calendars (including listserv calendar)
+    // Published events will come from Google Calendar, drafts from local DB
     const requestedIds = req.query.calendarIds
-      ? req.query.calendarIds
-          .split(",")
-          .filter((id) => id !== listservCalendarId)
-      : ["primary"]; // Only fetch primary calendar, not listserv calendar
+      ? req.query.calendarIds.split(",")
+      : ["primary"];
 
     const allEvents = [];
     for (const calId of requestedIds) {
@@ -1035,8 +1035,11 @@ app.post("/api/events/:compoundId/publish", ensureAuthed, async (req, res) => {
       `[publish] Successfully published event ${rawId} to Google Calendar: ${insertResp.data.id}`
     );
 
-    // Only delete from local database after successful publish
-    eventDelete.run({ id: rawId, user_id: req.session.user.id });
+    // Update event status to 'published' and store google_event_id (don't delete)
+    db.prepare(
+      "UPDATE events SET status='published', google_event_id=?, updated_at=CURRENT_TIMESTAMP WHERE id=? AND user_id=?"
+    ).run(insertResp.data.id, rawId, req.session.user.id);
+
     res.json({ ok: true, published: { id: `google:${insertResp.data.id}` } });
   } catch (e) {
     console.error(`[publish] Error publishing event:`, e);
