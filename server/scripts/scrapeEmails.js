@@ -37,6 +37,11 @@
       console.log('Created:', data.eventsCreated, 'events');
     })
     .catch(err => console.error('Error:', err));
+
+    fetch('/api/scrape/auto-run', {
+      method: 'POST',
+      credentials: 'include'
+    }).then(r => r.json()).then(console.log);
  */
 
 import Database from "better-sqlite3";
