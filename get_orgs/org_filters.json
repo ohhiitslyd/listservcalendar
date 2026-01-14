@@ -7,7 +7,7 @@
   {
     "organization": "Access Dartmouth",
     "emails": ["Access.Dartmouth@dartmouth.edu"],
-    "categories": ["Wellness"]
+    "categories": [ "Wellness"]
   },
   {
     "organization": "Aegis",
@@ -1993,5 +1993,210 @@
     "organization": "Zeta Psi",
     "emails": ["Zeta.Psi@dartmouth.edu"],
     "categories": ["Greek"]
+  },
+  {
+    "organization": "African and African American Studies",
+    "emails": ["African.and.African-American.Studies@Dartmouth.EDU"],
+    "categories": ["Academic", "Identity/Cultural"]
+  },
+  {
+    "organization": "Anthropology",
+    "emails": ["Anthropology.Department@Dartmouth.EDU"],
+    "categories": ["Academic"]
+  },
+  {
+    "organization": "Art History",
+    "emails": ["Art.History@Dartmouth.EDU"],
+    "categories": ["Academic", "Art"]
+  },
+  {
+    "organization": "Asian Societies, Cultures, and Languages",
+    "emails": ["Asian.Societies.Cultures.and.Languages@dartmouth.edu"],
+    "categories": ["Academic", "Identity/Cultural"]
+  },
+  {
+    "organization": "Biological Sciences",
+    "emails": ["Biological.Sciences@Dartmouth.edu"],
+    "categories": ["Academic"]
+  },
+  {
+    "organization": "Chemistry",
+    "emails": ["Chemistry@Dartmouth.EDU"],
+    "categories": ["Academic"]
+  },
+  {
+    "organization": "Classics",
+    "emails": ["Classics.Department@Dartmouth.EDU"],
+    "categories": ["Academic"]
+  },
+  {
+    "organization": "Cognitive Science Program",
+    "emails": ["cognitive.science@Dartmouth.edu"],
+    "categories": ["Academic"]
+  },
+  {
+    "organization": "Comparative Literature Program",
+    "emails": ["Comparative.Literature@Dartmouth.EDU"],
+    "categories": ["Academic", "Literature"]
+  },
+  {
+    "organization": "Computer Science",
+    "emails": ["Computer.Science.Department@Dartmouth.EDU"],
+    "categories": ["Academic"]
+  },
+  {
+    "organization": "Earth Sciences",
+    "emails": ["Earth.Sciences@Dartmouth.EDU"],
+    "categories": ["Academic"]
+  },
+  {
+    "organization": "East European, Eurasian, and Russian Studies",
+    "emails": ["East.European.Eurasian.Russian.Studies@dartmouth.edu"],
+    "categories": ["Academic", "Identity/Cultural"]
+  },
+  {
+    "organization": "Economics",
+    "emails": ["economics@dartmouth.edu"],
+    "categories": ["Academic"]
+  },
+  {
+    "organization": "Education",
+    "emails": ["Education@Dartmouth.EDU"],
+    "categories": ["Academic"]
+  },
+  {
+    "organization": "Engineering Sciences - Thayer School of Engineering",
+    "emails": [],
+    "categories": ["Academic"]
+  },
+  {
+    "organization": "English and Creative Writing",
+    "emails": ["English.Department@Dartmouth.EDU"],
+    "categories": ["Academic", "Literature"]
+  },
+  {
+    "organization": "Environmental Studies",
+    "emails": ["Environmental.Studies@Dartmouth.EDU"],
+    "categories": ["Academic"]
+  },
+  {
+    "organization": "Film and Media Studies",
+    "emails": ["Film.Studies@Dartmouth.EDU"],
+    "categories": ["Academic", "Art", "Film"]
+  },
+  {
+    "organization": "French and Italian",
+    "emails": ["French.and.Italian@Dartmouth.EDU"],
+    "categories": ["Academic"]
+  },
+  {
+    "organization": "Geography",
+    "emails": ["Geography@Dartmouth.EDU"],
+    "categories": ["Academic"]
+  },
+  {
+    "organization": "German Studies",
+    "emails": ["German.Department@Dartmouth.EDU"],
+    "categories": ["Academic"]
+  },
+  {
+    "organization": "Government",
+    "emails": ["Government.Department@Dartmouth.EDU"],
+    "categories": ["Academic"]
+  },
+  {
+    "organization": "History",
+    "emails": ["History@Dartmouth.EDU"],
+    "categories": ["Academic"]
+  },
+  {
+    "organization": "Jewish Studies Program",
+    "emails": ["Jewish.Studies@Dartmouth.EDU"],
+    "categories": ["Academic", "Identity/Cultural", "Theological"]
+  },
+  {
+    "organization": "Latin American, Latino, and Caribbean Studies",
+    "emails": ["Latin.American.Latino.and.Caribbean.Studies@Dartmouth.EDU"],
+    "categories": ["Academic", "Identity/Cultural"]
+  },
+  {
+    "organization": "Linguistics",
+    "emails": ["linguistics@Dartmouth.edu"],
+    "categories": ["Academic"]
+  },
+  {
+    "organization": "Mathematics",
+    "emails": ["deptaa@math.dartmouth.edu"],
+    "categories": ["Academic"]
+  },
+  {
+    "organization": "Middle Eastern Studies Program",
+    "emails": ["Middle.Eastern.Studies@Dartmouth.edu"],
+    "categories": ["Academic", "Identity/Cultural"]
+  },
+  {
+    "organization": "Music",
+    "emails": ["Music@Dartmouth.EDU"],
+    "categories": ["Academic", "Music", "Art"]
+  },
+  {
+    "organization": "Native American and Indigenous Studies",
+    "emails": ["Native.American.Studies@Dartmouth.EDU"],
+    "categories": ["Academic", "Identity/Cultural"]
+  },
+  {
+    "organization": "Philosophy",
+    "emails": ["Philosophy@Dartmouth.EDU"],
+    "categories": ["Academic"]
+  },
+  {
+    "organization": "Psychological and Brain Sciences",
+    "emails": ["Psychological.and.Brain.Sciences@Dartmouth.EDU"],
+    "categories": ["Academic"]
+  },
+  {
+    "organization": "Physics and Astronomy",
+    "emails": ["Physics.Department@Dartmouth.EDU"],
+    "categories": ["Academic"]
+  },
+  {
+    "organization": "Quantitative Social Science Program",
+    "emails": ["Quantitative.Social.Science@Dartmouth.edu"],
+    "categories": ["Academic"]
+  },
+  {
+    "organization": "Religion",
+    "emails": ["Religion@Dartmouth.EDU"],
+    "categories": ["Academic", "Theological"]
+  },
+  {
+    "organization": "Sociology",
+    "emails": ["Sociology@Dartmouth.EDU"],
+    "categories": ["Academic"]
+  },
+  {
+    "organization": "Spanish and Portuguese",
+    "emails": ["Spanish.and.Portuguese@Dartmouth.EDU"],
+    "categories": ["Academic"]
+  },
+  {
+    "organization": "Studio Art",
+    "emails": ["Studio.Art.Department@Dartmouth.EDU"],
+    "categories": ["Academic", "Art"]
+  },
+  {
+    "organization": "Theater",
+    "emails": ["Department.of.Theater@Dartmouth.EDU"],
+    "categories": ["Academic", "Art", "Entertainment", "Theatre"]
+  },
+  {
+    "organization": "Women's, Gender, and Sexuality Studies Program",
+    "emails": ["Women's.Gender.and.Sexuality.Studies@Dartmouth.edu"],
+    "categories": ["Academic", "Identity/Cultural"]
+  },
+  {
+    "organization": "Writing Program",
+    "emails": ["Writing.Program@Dartmouth.EDU"],
+    "categories": ["Academic", "Literature"]
   }
 ]
