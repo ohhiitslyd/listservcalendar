@@ -7,7 +7,7 @@
   {
     "organization": "Access Dartmouth",
     "emails": ["Access.Dartmouth@dartmouth.edu"],
-    "categories": [ "Wellness"]
+    "categories": ["Wellness"]
   },
   {
     "organization": "Aegis",
@@ -82,7 +82,7 @@
   {
     "organization": "America Reads",
     "emails": ["America.Reads@dartmouth.edu"],
-    "categories": ["Academic", "Career"]
+    "categories": ["Academic", "Career", "Outreach"]
   },
   {
     "organization": "American Cancer Society: Dartmouth Undergraduate Chapter",
@@ -217,7 +217,7 @@
   {
     "organization": "Camp Kesem Dartmouth",
     "emails": ["Camp.Kesem.Dartmouth@dartmouth.edu"],
-    "categories": ["Wellness", "Entertainment"]
+    "categories": ["Outreach"]
   },
   {
     "organization": "Can't Sell Culture Comedy Collective",
@@ -567,7 +567,7 @@
   {
     "organization": "Dartmouth Generations",
     "emails": ["Dartmouth.Generations@dartmouth.edu"],
-    "categories": ["Wellness"]
+    "categories": ["Wellness", "Outreach"]
   },
   {
     "organization": "Dartmouth Gymnastics Club",
@@ -757,7 +757,7 @@
   {
     "organization": "Dartmouth Student Advocates for Legal Aid",
     "emails": ["Dartmouth.Student.Advocates.for.Legal.Aid@dartmouth.edu"],
-    "categories": ["Politics", "Career"]
+    "categories": ["Politics", "Outreach"]
   },
   {
     "organization": "Dartmouth Student Alliance for Ukraine",
@@ -787,7 +787,7 @@
   {
     "organization": "Dartmouth Student Prison Initiative",
     "emails": ["Dartmouth.Student.Prison.Initiative@dartmouth.edu"],
-    "categories": ["Politics", "Academic"]
+    "categories": ["Politics", "Outreach"]
   },
   {
     "organization": "Dartmouth Student QuizBowl Team",
@@ -927,7 +927,7 @@
   {
     "organization": "Diabetes Initiative",
     "emails": ["Diabetes.Initiative@dartmouth.edu"],
-    "categories": ["Wellness", "Academic"]
+    "categories": ["Wellness", "Academic", "Outreach"]
   },
   {
     "organization": "Displaced Theater Company",
@@ -1087,12 +1087,12 @@
   {
     "organization": "Growing Change",
     "emails": ["Growing.Change@dartmouth.edu"],
-    "categories": ["Politics", "Outdoor"]
+    "categories": ["Politics", "Outdoor", "Outreach"]
   },
   {
     "organization": "Health Access for All",
     "emails": ["Health.Access.for.All@dartmouth.edu"],
-    "categories": ["Wellness", "Politics"]
+    "categories": ["Outreach"]
   },
   {
     "organization": "Hellenic Student Association",
@@ -1207,7 +1207,7 @@
   {
     "organization": "Kidney Disease Screening and Awareness Program at Dartmouth",
     "emails": ["Kidney.Disease.Screening.and.Awareness.Program@dartmouth.edu"],
-    "categories": ["Wellness", "Academic"]
+    "categories": ["Wellness", "Academic", "Outreach"]
   },
   {
     "organization": "Korean Students Association",
@@ -1252,7 +1252,7 @@
   {
     "organization": "Marina Orth Foundation English Tutoring",
     "emails": ["Marina.Orth.Foundation.English.Tutoring@dartmouth.edu"],
-    "categories": ["Academic", "Career"]
+    "categories": ["Academic", "Career", "Outreach"]
   },
   {
     "organization": "Max Kade German Center",
@@ -1332,12 +1332,12 @@
   {
     "organization": "Musical Empowerment of the Upper Valley, Inc.",
     "emails": ["Musical.Empowerment.of.the.Upper.Valley@dartmouth.edu"],
-    "categories": ["Art", "Music"]
+    "categories": ["Art", "Music", "Outreach"]
   },
   {
     "organization": "NAACP",
     "emails": ["NAACP@dartmouth.edu"],
-    "categories": ["Politics", "Identity/Cultural"]
+    "categories": ["Identity/Cultural", "Career", "Outreach"]
   },
   {
     "organization": "Nathan Smith Society",
@@ -1572,7 +1572,7 @@
   {
     "organization": "Sexual Assault Peer Alliance",
     "emails": ["Sexual.Assault.Peer.Alliance@dartmouth.edu"],
-    "categories": ["Wellness", "Politics"]
+    "categories": ["Wellness"]
   },
   {
     "organization": "Shabazz Center for Intellectual Inquiry",
@@ -1712,12 +1712,12 @@
   {
     "organization": "Students for a Fossil Free Dartmouth",
     "emails": ["Students.for.a.Fossil.Free.Dartmouth@dartmouth.edu"],
-    "categories": ["Politics", "Outdoor"]
+    "categories": ["Politics", "Outdoor", "Outreach"]
   },
   {
     "organization": "Students for Letters of Love at Dartmouth",
     "emails": ["Students.for.Letters.of.Love@dartmouth.edu"],
-    "categories": ["Wellness"]
+    "categories": ["Outreach"]
   },
   {
     "organization": "Sugarplum",
@@ -1817,7 +1817,7 @@
   {
     "organization": "The Hidden Opponent - Dartmouth Students",
     "emails": ["The.Hidden.Opponent.Dartmouth.Students@dartmouth.edu"],
-    "categories": ["Wellness", "Sport"]
+    "categories": ["Wellness", "Outreach"]
   },
   {
     "organization": "The Tabard",
