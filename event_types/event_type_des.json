@@ -1,0 +1,320 @@
+{
+    "tags": {
+      "Free Food": {
+        "description": "Food or drinks provided to attendees for free.",
+        "rules": "Tag only if the email indicates attendees receive food/drink at no cost. Do NOT tag if the email is about donating/collecting food, potlucks where you bring food, or meeting at a restaurant without saying it's covered.",
+        "keywords": [
+          "free food",
+          "food provided",
+          "pizza provided",
+          "lunch provided",
+          "dinner provided",
+          "snacks provided",
+          "refreshments provided",
+          "catering provided",
+          "come hungry",
+          "on us",
+          "covered",
+          "meal is covered",
+          "we will be ordering",
+          "free chinese food",
+          "free han",
+          "Han Fusion",
+          "Lou's",
+          "Boloco",
+          "The Works Cafe",
+          "Lui Lui",
+          "Tuk Tuk",
+          "Base Camp",
+          "Sushiya"
+        ],
+        "examples_should_tag": [
+          "Free pizza will be provided.",
+          "We’re ordering Han Fusion for everyone."
+        ],
+        "examples_should_not_tag": [
+          "We are collecting non-perishable food items (donations)."
+        ]
+      },
+  
+      "Performance": {
+        "description": "Live artistic or cultural performance (music, theater, dance, comedy, spoken word).",
+        "rules": "Tag when the event is framed as a show/performance. Do NOT tag film/video viewings (use Screening).",
+        "keywords": [
+          "show",
+          "performance",
+          "concert",
+          "live music",
+          "a cappella",
+          "acapella",
+          "recital",
+          "theater",
+          "play",
+          "musical",
+          "dance performance",
+          "comedy show",
+          "stand-up",
+          "spoken word",
+          "poetry performance",
+          "Hop",
+          "Hopkins Center",
+          "Top of the Hop",
+          "TOH"
+        ],
+        "examples_should_tag": [
+          "Dance show at Top of the Hop.",
+          "A cappella showcase at the Hop."
+        ],
+        "examples_should_not_tag": [
+          "Documentary screening (use Screening)."
+        ]
+      },
+  
+      "Lecture/Speaker": {
+        "description": "Talk/lecture/panel/keynote where attendees primarily listen.",
+        "rules": "Tag when the email is mainly about a speaker/panel/talk. If it’s hands-on skill building, use Workshop instead.",
+        "keywords": [
+          "lecture",
+          "talk",
+          "speaker",
+          "guest speaker",
+          "keynote",
+          "panel",
+          "fireside chat",
+          "presentation",
+          "Q&A",
+          "discussion",
+          "book talk",
+          "artist in residence"
+        ],
+        "examples_should_tag": [
+          "Guest speaker on climate policy followed by Q&A."
+        ],
+        "examples_should_not_tag": [
+          "Resume workshop (use Workshop)."
+        ]
+      },
+  
+      "Giveaway/Compensation": {
+        "description": "Attendees may receive gift cards, prizes, raffles, swag, stipends, or payment.",
+        "rules": "Tag only if compensation/prizes/swag is offered to attendees/participants.",
+        "keywords": [
+          "gift card",
+          "Amazon gift card",
+          "Starbucks gift card",
+          "raffle",
+          "giveaway",
+          "prize",
+          "swag",
+          "free merch",
+          "goodie bag",
+          "paid",
+          "compensation",
+          "stipend",
+          "cash"
+        ],
+        "examples_should_tag": [
+          "Winners get a $10 gift card."
+        ],
+        "examples_should_not_tag": [
+          "Free entry (no prizes/comp mentioned)."
+        ]
+      },
+  
+      "Screening": {
+        "description": "Watching a film/documentary/episode/video is the main activity.",
+        "rules": "Tag when the email is primarily about viewing a movie/video content.",
+        "keywords": [
+          "screening",
+          "film",
+          "movie",
+          "documentary",
+          "watch party",
+          "cinema",
+          "episode viewing",
+          "Loew",
+          "Loew Cinema"
+        ],
+        "examples_should_tag": [
+          "Film screening at Loew followed by discussion."
+        ],
+        "examples_should_not_tag": [
+          "Live show (use Performance)."
+        ]
+      },
+  
+      "Mixer": {
+        "description": "Socializing/networking/meeting people is the main purpose.",
+        "rules": "Tag when the email emphasizes mingling/networking rather than a structured talk or hands-on activity.",
+        "keywords": [
+          "mixer",
+          "networking",
+          "social",
+          "meet and greet",
+          "meet-and-greet",
+          "mingling",
+          "hangout",
+          "happy hour",
+          "speed networking"
+        ],
+        "examples_should_tag": [
+          "Networking mixer with alumni."
+        ],
+        "examples_should_not_tag": [
+          "Workshop training session (use Workshop)."
+        ]
+      },
+  
+      "Workshop": {
+        "description": "Hands-on skill-building with active participation.",
+        "rules": "Tag if the email indicates interactive practice/building (often includes 'bring your laptop' or 'hands-on').",
+        "keywords": [
+          "workshop",
+          "hands-on",
+          "training",
+          "tutorial",
+          "skill-building",
+          "practice session",
+          "bring your laptop",
+          "build",
+          "make",
+          "create",
+          "hackathon",
+          "DALI Lab",
+          "DALI Lab Workshops"
+        ],
+        "examples_should_tag": [
+          "Hands-on Git/GitHub workshop (bring your laptop)."
+        ],
+        "examples_should_not_tag": [
+          "Guest talk only (use Lecture/Speaker)."
+        ]
+      },
+  
+      "Philanthropy": {
+        "description": "Fundraising, donations, volunteering/service, or proceeds supporting a cause.",
+        "rules": "Tag only if charity/fundraising/service is explicitly stated. Greek events count only when explicitly described as philanthropy/fundraising/service (not just a party).",
+        "keywords": [
+          "philanthropy",
+          "fundraiser",
+          "fundraising",
+          "donation",
+          "donate",
+          "charity",
+          "volunteer",
+          "service event",
+          "benefit",
+          "proceeds go to",
+          "raising funds",
+          "raise funds",
+          "all proceeds",
+          "relief",
+          "food pantry",
+          "non-perishable food items",
+          "monetary donations",
+          "QR code to donate",
+          "Greek philanthropy",
+          "philanthropy chair",
+          "fraternity philanthropy",
+          "sorority philanthropy",
+          "Greek life",
+          "fraternity",
+          "sorority"
+        ],
+        "examples_should_tag": [
+          "Partnering to raise funds for hurricane relief.",
+          "Collecting donations for LISTEN Community Services Food Pantry."
+        ],
+        "examples_should_not_tag": [
+          "Social event hosted by a fraternity (no cause/donations mentioned)."
+        ]
+      },
+  
+      "21+": {
+        "description": "Explicitly requires attendees to be 21+.",
+        "rules": "Tag only if the email explicitly says 21+ / must be 21 / 21 and over / valid ID required for age restriction.",
+        "keywords": [
+          "21+",
+          "must be 21",
+          "21 and over",
+          "valid ID required",
+          "ID check",
+          "age restricted"
+        ],
+        "examples_should_tag": [
+          "Must be 21+ with valid ID."
+        ],
+        "examples_should_not_tag": [
+          "Mocktails night.",
+          "Alcohol mentioned but no explicit 21+."
+        ]
+      },
+  
+      "Recurring Meetings": {
+        "description": "Regular club/group meetings that happen repeatedly (weekly/biweekly/ongoing).",
+        "rules": "Tag only if the email indicates a repeating schedule or ongoing club meetings (GBM counts).",
+        "keywords": [
+          "weekly",
+          "biweekly",
+          "every week",
+          "every Monday",
+          "every Tuesday",
+          "meets every",
+          "recurring",
+          "ongoing",
+          "regular meeting",
+          "general body meeting",
+          "GBM"
+        ],
+        "examples_should_tag": [
+          "GBM every Wednesday at 6pm."
+        ],
+        "examples_should_not_tag": [
+          "One-time event with a single date."
+        ]
+      },
+  
+      "Off-campus": {
+        "description": "Event is off Dartmouth’s main campus OR at a remote Dartmouth/outdoor location (e.g., Dartmouth Skiway, O-Farm, DOC trips/cabins).",
+        "rules": "Tag only if the location/destination indicates leaving main campus OR names an off-campus place OR names a remote Dartmouth/outdoor location. Transportation words alone (shuttle/carpool) are not enough without a destination.",
+        "keywords": [
+          "off-campus",
+          "downtown",
+          "Main Street",
+          "restaurant",
+          "bar",
+          "Lebanon",
+          "White River Junction",
+          "WRJ",
+          "Vermont",
+          "Boston",
+          "shuttle",
+          "bus",
+          "van",
+          "carpool",
+          "rides leaving campus",
+          "departing campus",
+          "returning to campus",
+          "pickup",
+          "drop-off",
+          "Dartmouth Skiway",
+          "Skiway",
+          "Dartmouth Organic Farm",
+          "O-Farm",
+          "Dartmouth Outing Club",
+          "DOC trip",
+          "DOC cabin",
+          "Moosilauke Ravine Lodge"
+        ],
+        "examples_should_tag": [
+          "Shuttle leaving campus to Dartmouth Skiway.",
+          "Volunteer day at the O-Farm."
+        ],
+        "examples_should_not_tag": [
+          "Shuttle between on-campus buildings.",
+          "Returning to campus mentioned but no destination."
+        ]
+      }
+    }
+  }
+  
