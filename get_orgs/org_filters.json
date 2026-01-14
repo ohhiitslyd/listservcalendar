@@ -1271,7 +1271,7 @@
   },
   {
     "organization": "Men’s Club Basketball",
-    "emails": ["Men.s.Club.Basketball@dartmouth.edu"],
+    "emails": ["Mens.Club.Basketball@dartmouth.edu"],
     "categories": ["Sport"]
   },
   {
@@ -1281,27 +1281,27 @@
   },
   {
     "organization": "Men’s Club Lacrosse",
-    "emails": ["Men.s.Club.Lacrosse@dartmouth.edu"],
+    "emails": ["Mens.Club.Lacrosse@dartmouth.edu"],
     "categories": ["Sport"]
   },
   {
     "organization": "Men’s Club Soccer",
-    "emails": ["Men.s.Club.Soccer@dartmouth.edu"],
+    "emails": ["Mens.Club.Soccer@dartmouth.edu"],
     "categories": ["Sport"]
   },
   {
     "organization": "Men’s Club Volleyball",
-    "emails": ["Men.s.Club.Volleyball@dartmouth.edu"],
+    "emails": ["Mens.Club.Volleyball@dartmouth.edu"],
     "categories": ["Sport"]
   },
   {
     "organization": "Men’s Club Water Polo",
-    "emails": ["Womens.Water.Polo@dartmouth.edu"],
+    "emails": ["Mens.Water.Polo@dartmouth.edu"],
     "categories": ["Sport"]
   },
   {
     "organization": "Men’s Ultimate",
-    "emails": ["Men.s.Ultimate@dartmouth.edu"],
+    "emails": ["Mens.Ultimate@dartmouth.edu"],
     "categories": ["Sport"]
   },
   {
@@ -1951,22 +1951,22 @@
   },
   {
     "organization": "Women’s Club Basketball",
-    "emails": ["Women.s.Club.Basketball@dartmouth.edu"],
+    "emails": ["Womens.Club.Basketball@dartmouth.edu"],
     "categories": ["Sport"]
   },
   {
     "organization": "Women’s Club Hockey",
-    "emails": ["Women.s.Club.Hockey@dartmouth.edu"],
+    "emails": ["Womens.Club.Hockey@dartmouth.edu"],
     "categories": ["Sport"]
   },
   {
     "organization": "Women’s Club Lacrosse",
-    "emails": ["Women.s.Club.Lacrosse@dartmouth.edu"],
+    "emails": ["Womens.Club.Lacrosse@dartmouth.edu"],
     "categories": ["Sport"]
   },
   {
     "organization": "Women’s Club Volleyball",
-    "emails": ["Women.s.Club.Volleyball@dartmouth.edu"],
+    "emails": ["Womens.Club.Volleyball@dartmouth.edu"],
     "categories": ["Sport"]
   },
   {
@@ -1976,7 +1976,7 @@
   },
   {
     "organization": "Women’s Ultimate Frisbee",
-    "emails": ["Women.s.Ultimate.Frisbee@dartmouth.edu"],
+    "emails": ["Womens.Ultimate.Frisbee@dartmouth.edu"],
     "categories": ["Sport"]
   },
   {
