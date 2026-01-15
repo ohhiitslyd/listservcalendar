@@ -16,6 +16,11 @@ export const Filters = () => {
     selectedOrgCats,
     setSelectedOrgCats,
     orgCategoryCounts,
+
+    //negative filter mode
+    excludeMode,
+    setExcludeMode, 
+
   } = useContext(AppContext);
 
   const [activeTab, setActiveTab] = useState("organizations");
@@ -570,7 +575,25 @@ export const Filters = () => {
 
       {/* Footer */}
       <div className="filters-footer">
-        <button onClick={clearAll} className="filters-clear-all">
+        {/* NEW: negative filter toggle */}
+        <label style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 10 }}>
+          <input
+            type="checkbox"
+            checked={excludeMode}
+            onChange={(e) => setExcludeMode(e.target.checked)}
+          />
+          <span style={{ fontSize: 13 }}>
+            Exclude selected (hide matching events)
+          </span>
+        </label>
+
+        <button
+          onClick={() => {
+            clearAll();
+            setExcludeMode(false); // optional: reset mode when clearing
+          }}
+          className="filters-clear-all"
+        >
           Clear All
         </button>
       </div>

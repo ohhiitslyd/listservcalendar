@@ -82,17 +82,19 @@ export const api = {
     calendarIds = [],
     categoriesParam = "",
     orgCategoriesParam = "",
+    excludeParam = "",
   }: {
     calendarIds?: string[];
     categoriesParam?: string;
     orgCategoriesParam?: string; 
+    excludeParam?: string;
   } = {}): Promise<EventsResponse> => {
     const idsQuery = calendarIds.length
       ? `?calendarIds=${encodeURIComponent(calendarIds.join(","))}`
       : "?";
 
     // IMPORTANT: append both params if present
-    const url = `/api/events${idsQuery}${categoriesParam}${orgCategoriesParam}`;
+    const url = `/api/events${idsQuery}${categoriesParam}${orgCategoriesParam}${excludeParam}`;
 
     return fetch(url, { credentials: "include" }).then((r) => r.json());
   },

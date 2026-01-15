@@ -670,6 +670,9 @@ app.get("/api/events", ensureAuthed, async (req, res) => {
           .filter(Boolean)
       : null;
 
+    // negative filtering flag
+    const exclude = req.query.exclude === "1" || req.query.exclude === "true";
+    
     // Apply filters ONLY to ListServ events; non-ListServ always pass through
     let filtered = combined;
 
@@ -695,7 +698,10 @@ app.get("/api/events", ensureAuthed, async (req, res) => {
         //    - If only `reqCats` set → matchesCat must be true
         //    - If only `reqOrgCats` set → matchesOrg must be true
         //    - If both set → (matchesCat || matchesOrg)
-        return matchesCat || matchesOrg;
+        const matchesAny = matchesCat || matchesOrg;
+
+        // If exclude mode is ON, hide ListServ events that match selected filters
+        return exclude ? !matchesAny : matchesAny;
       });
     }
 
