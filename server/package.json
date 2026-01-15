@@ -16,6 +16,7 @@
         "express": "^4.19.2",
         "express-session": "^1.17.3",
         "googleapis": "^144.0.0",
+        "node-cron": "^4.2.1",
         "path-to-regexp": "^6.2.1"
     }
 }

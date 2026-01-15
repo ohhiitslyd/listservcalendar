@@ -8,8 +8,10 @@ import { fileURLToPath } from "url";
 import Database from "better-sqlite3";
 import crypto from "crypto";
 import fs from "fs";
+import cron from "node-cron";
 import { scrapeEmails } from "./services/emailScraper.js";
 import { parseEmailForEvents } from "./services/llmParser.js";
+import { runAutomatedScrape } from "./services/autoScraper.js";
 
 dotenv.config();
 
@@ -155,6 +157,25 @@ try {
 } catch (e) {
   // Column already exists
 }
+
+// App settings table for tracking scrape metadata
+db.exec(`CREATE TABLE IF NOT EXISTS app_settings (
+  key TEXT PRIMARY KEY,
+  value TEXT,
+  updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+);`);
+
+// Admin tokens table for automated scraping OAuth
+db.exec(`CREATE TABLE IF NOT EXISTS admin_tokens (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id TEXT UNIQUE NOT NULL,
+  user_email TEXT,
+  refresh_token TEXT NOT NULL,
+  access_token TEXT,
+  token_expiry TEXT,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+);`);
 
 // Helper function for combining date and time
 function combineDateTime(date, time, allDay) {
@@ -501,6 +522,34 @@ app.get("/auth/google/callback", async (req, res) => {
       name: userinfo.name,
     };
     await getOrCreateListServCalendar(req, oauth2Client);
+
+    // Store admin tokens for automated scraping
+    // Only store if we have a refresh_token (first time or re-consent)
+    if (tokens.refresh_token) {
+      try {
+        db.prepare(
+          `INSERT OR REPLACE INTO admin_tokens 
+          (user_id, user_email, refresh_token, access_token, token_expiry, updated_at) 
+          VALUES (?, ?, ?, ?, ?, ?)`
+        ).run(
+          userinfo.id || userinfo.email,
+          userinfo.email,
+          tokens.refresh_token,
+          tokens.access_token || null,
+          tokens.expiry_date
+            ? new Date(tokens.expiry_date).toISOString()
+            : null,
+          new Date().toISOString()
+        );
+        console.log(
+          `[auth] Stored admin tokens for automated scraping: ${userinfo.email}`
+        );
+      } catch (dbError) {
+        console.error("[auth] Failed to store admin tokens:", dbError);
+        // Don't fail auth if token storage fails
+      }
+    }
+
     res.redirect(FRONTEND_URL);
   } catch (e) {
     console.error(e);
@@ -1603,6 +1652,87 @@ app.post("/api/email-events/:eventId/to-draft", ensureAuthed, (req, res) => {
   }
 });
 
+// --- Automated Scraping Endpoint (Manual Trigger) ---
+app.post("/api/scrape/auto-run", ensureAuthed, async (req, res) => {
+  try {
+    console.log("[manual-scrape] Manually triggered automated scrape");
+    const result = await runAutomatedScrape(db);
+    res.json(result);
+  } catch (e) {
+    console.error("[manual-scrape] Error:", e);
+    res.status(500).json({
+      success: false,
+      error: "Failed to run automated scrape",
+      details: e.message,
+    });
+  }
+});
+
+// --- Clear ListServ Calendar Endpoint ---
+app.post("/api/clear-listserv-calendar", ensureAuthed, async (req, res) => {
+  try {
+    const oauth2Client = getOAuthClient(req);
+    const calendar = google.calendar({ version: "v3", auth: oauth2Client });
+    const { id: listservCalendarId } = await getOrCreateListServCalendar(
+      req,
+      oauth2Client
+    );
+
+    console.log(`[clear-calendar] Fetching events from ListServ calendar...`);
+
+    // Get all events
+    const events = await calendar.events.list({
+      calendarId: listservCalendarId,
+      maxResults: 2500,
+      singleEvents: false,
+    });
+
+    const eventList = events.data.items || [];
+    console.log(`[clear-calendar] Found ${eventList.length} events to delete`);
+
+    let deleted = 0;
+    const errors = [];
+
+    // Delete each event
+    for (const event of eventList) {
+      try {
+        await calendar.events.delete({
+          calendarId: listservCalendarId,
+          eventId: event.id,
+        });
+        deleted++;
+        if (deleted % 10 === 0) {
+          console.log(
+            `[clear-calendar] Deleted ${deleted}/${eventList.length}...`
+          );
+        }
+      } catch (error) {
+        console.error(
+          `[clear-calendar] Failed to delete ${event.id}:`,
+          error.message
+        );
+        errors.push({ eventId: event.id, error: error.message });
+      }
+    }
+
+    console.log(
+      `[clear-calendar] Complete: ${deleted} deleted, ${errors.length} errors`
+    );
+
+    res.json({
+      success: true,
+      deleted,
+      total: eventList.length,
+      errors: errors.length > 0 ? errors : undefined,
+    });
+  } catch (e) {
+    console.error("[clear-calendar] Error:", e);
+    res
+      .status(500)
+      .json({ error: "Failed to clear calendar", details: e.message });
+  }
+});
+
 // --- Serve frontend ---
 const clientDist = path.join(__dirname, "..", "client", "dist");
 app.use(express.static(clientDist));
@@ -1614,6 +1744,27 @@ app.get("*", (req, res, next) => {
   }
   next();
 });
+
+// --- Setup Automated Email Scraping (Every 12 Hours) ---
+// Cron schedule: '0 */12 * * *' runs at minute 0 of every 12th hour (00:00, 12:00)
+// Alternative: '0 0,12 * * *' explicitly runs at midnight and noon
+cron.schedule("0 */12 * * *", async () => {
+  console.log("\n[CRON] ⏰ Automated email scrape triggered");
+  try {
+    const result = await runAutomatedScrape(db);
+    if (result.success) {
+      console.log(
+        `[CRON] ✅ Scrape successful: ${result.eventsCreated} events created`
+      );
+    } else {
+      console.error(`[CRON] ❌ Scrape failed: ${result.error}`);
+    }
+  } catch (error) {
+    console.error("[CRON] ❌ Automated scrape error:", error.message);
+  }
+});
+
+console.log("✅ [CRON] Automated email scraping scheduled every 12 hours");
 
 app.listen(PORT, () =>
   console.log(`Server listening on http://localhost:${PORT}`)
