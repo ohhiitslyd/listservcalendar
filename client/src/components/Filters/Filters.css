@@ -209,6 +209,23 @@
   flex-shrink: 0;
 }
 
+/* Footer negative-filter toggle should match filter row typography */
+.filters-footer-toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+}
+
+.filters-footer-toggle-text {
+  /* match .org-filter-name exactly */
+  font-size: 14px;
+  font-weight: 400;
+  font-family: 'Poppins', sans-serif;
+  color: #000000;
+  white-space: nowrap;
+}
+
 .filters-clear-all {
   background: transparent;
   border: none;
@@ -267,8 +284,12 @@
   border: 1px solid #e5e7eb;
   border-radius: 999px;
   padding: 4px 8px;
-  font-size: 0.85rem;
   cursor: pointer;
+
+  font-size: 14px;
+  font-weight: 400;
+  font-family: 'Poppins', sans-serif;
+  color: #000000;
 }
 .filter-chip:hover {
   background: #f3f4f6;
@@ -280,6 +301,18 @@
 }
 .filter-chip .chip-label {
   margin-right: 4px;
+  font-size: 14px;
+  font-weight: 400;
+  font-family: 'Poppins', sans-serif;
+  color: #000000;
+}
+
+.filter-chip button {
+  font: inherit;         
+  color: inherit;
+  background: none;
+  border: none;
+  padding: 0;
 }
 
 .filter-chip .chip-count {

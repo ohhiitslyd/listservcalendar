@@ -20,6 +20,9 @@ export const Filters = () => {
     //negative filter mode
     excludeMode,
     setExcludeMode, 
+    
+    negativeFilterEnabled,
+    setNegativeFilterEnabled,
 
   } = useContext(AppContext);
 
@@ -33,6 +36,8 @@ export const Filters = () => {
 
   // Calculate total selected count
   const totalSelected = selectedCats.size + selectedOrgCats.size;
+
+
 
   const toggleCategoryExpansion = (typeKey) => {
     setExpandedCategories((prev) => {
@@ -373,6 +378,20 @@ export const Filters = () => {
         </span>
       </div>
 
+      {/* Negative filter toggle (styled like other filter chips) */}
+      <div className="filter-bubbles" style={{ marginBottom: 12 }}>
+        <button
+          type="button"
+          className={`filter-chip ${negativeFilterEnabled ? "selected" : ""}`}
+          onClick={() => setNegativeFilterEnabled((prev) => !prev)}
+          title="When ON, selected filters are excluded from the calendar"
+          aria-pressed={negativeFilterEnabled}
+        >
+          <span className="chip-label">Exclude Selected</span>
+          <span className="chip-count">✕</span>
+        </button>
+      </div>
+
       {/* Tabs */}
       <div className="filters-tabs">
         <button
@@ -576,13 +595,14 @@ export const Filters = () => {
       {/* Footer */}
       <div className="filters-footer">
         {/* NEW: negative filter toggle */}
-        <label style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 10 }}>
+        <label className="filters-footer-toggle">
           <input
             type="checkbox"
             checked={excludeMode}
             onChange={(e) => setExcludeMode(e.target.checked)}
+            className="org-filter-checkbox"
           />
-          <span style={{ fontSize: 13 }}>
+          <span className="filters-footer-toggle-text">
             Exclude selected (hide matching events)
           </span>
         </label>
