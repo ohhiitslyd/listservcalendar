@@ -378,19 +378,7 @@ export const Filters = () => {
         </span>
       </div>
 
-      {/* Negative filter toggle (styled like other filter chips) */}
-      <div className="filter-bubbles" style={{ marginBottom: 12 }}>
-        <button
-          type="button"
-          className={`filter-chip ${negativeFilterEnabled ? "selected" : ""}`}
-          onClick={() => setNegativeFilterEnabled((prev) => !prev)}
-          title="When ON, selected filters are excluded from the calendar"
-          aria-pressed={negativeFilterEnabled}
-        >
-          <span className="chip-label">Exclude Selected</span>
-          <span className="chip-count">✕</span>
-        </button>
-      </div>
+      
 
       {/* Tabs */}
       <div className="filters-tabs">
@@ -594,23 +582,25 @@ export const Filters = () => {
 
       {/* Footer */}
       <div className="filters-footer">
-        {/* NEW: negative filter toggle */}
-        <label className="filters-footer-toggle">
-          <input
-            type="checkbox"
-            checked={excludeMode}
-            onChange={(e) => setExcludeMode(e.target.checked)}
-            className="org-filter-checkbox"
-          />
-          <span className="filters-footer-toggle-text">
-            Exclude selected (hide matching events)
-          </span>
-        </label>
+        {/* Negative filter toggle - aligned like other filter rows */}
+        <div className="org-filter-item" style={{ marginBottom: 0 }}>
+          <label className="org-filter-label" style={{ cursor: "pointer" }}>
+            <input
+              type="checkbox"
+              checked={excludeMode}
+              onChange={(e) => setExcludeMode(e.target.checked)}
+              className="org-filter-checkbox"
+            />
+            <span className="org-filter-name">
+              Exclude selected (hide matching events)
+            </span>
+          </label>
+        </div>
 
         <button
           onClick={() => {
             clearAll();
-            setExcludeMode(false); // optional: reset mode when clearing
+            setExcludeMode(false);
           }}
           className="filters-clear-all"
         >
