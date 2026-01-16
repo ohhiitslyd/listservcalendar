@@ -8,16 +8,22 @@ export const useMemoizedCounts = (events, listservCalendarId) =>
   useMemo(() => {
     const counts = {};
     const lsId = listservCalendarId;
-    (events || []).forEach(ev => {
+
+    (events || []).forEach((ev) => {
+      // Treat email-ingested events as ListServ too
       const isListServ =
         (ev.source === "google" && ev.calendarId === lsId) ||
-        ev.source === "draft";
+        ev.source === "draft" ||
+        ev.source === "email";
+
       if (!isListServ) return;
 
-      const cats = ev?.extendedProps?.categories || [];
-      cats.forEach(c => {
+      // Categories might exist either directly or inside extendedProps
+      const cats = ev.categories || ev?.extendedProps?.categories || [];
+      cats.forEach((c) => {
         counts[c] = (counts[c] || 0) + 1;
       });
     });
+
     return counts;
   }, [events, listservCalendarId]);
