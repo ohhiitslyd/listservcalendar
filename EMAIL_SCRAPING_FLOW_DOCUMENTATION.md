@@ -3,6 +3,8 @@
 ## Overview
 This document explains the complete process of scraping emails, extracting event data, storing it in the database, and displaying events on the calendar. It also details where and how to add additional fields.
 
+Generated using Cursor.
+
 ---
 
 ## 📧 STEP 1: EMAIL SCRAPING

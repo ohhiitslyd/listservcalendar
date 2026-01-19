@@ -1247,15 +1247,21 @@ app.post("/api/scrape/process", ensureAuthed, async (req, res) => {
             .randomBytes(12)
             .toString("hex")}`;
 
-          const eventForTagging = {
+          // Use tags from LLM parsing (assigned based on event_type_des.json)
+          const llmTags = event.tags || [];
+          
+          // Still include org categories from server-side assignment (for organization-based filtering)
+          const eventForOrgTagging = {
             title: event.title || "",
             description: event.description || "",
             location: event.location || "",
             organization: event.organization || "",
           };
-          const catKeys = assignCategories(eventForTagging).map(slug);
-          const orgKeys = assignOrgCategories(eventForTagging).map(slug);
-          const tagsJson = JSON.stringify([...catKeys, ...orgKeys]);
+          const orgKeys = assignOrgCategories(eventForOrgTagging).map(slug);
+
+          // Normalize LLM tag names (slugify) for consistency and combine with org categories
+          const normalizedLlmTags = llmTags.map(tag => slug(tag));
+          const tagsJson = JSON.stringify([...normalizedLlmTags, ...orgKeys]);
 
           const start = combineDateTime(
             event.startDate,

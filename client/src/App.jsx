@@ -156,8 +156,7 @@ const InnerApp = () => {
       {/* FOOTER */}
       <div className="app-footer">
         <p>
-          Click and drag on the calendar to create an event. Click any event
-          to view details and manage it.
+          Click any event to view details.
         </p>
       </div>
 
