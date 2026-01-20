@@ -16,6 +16,14 @@ export const Filters = () => {
     selectedOrgCats,
     setSelectedOrgCats,
     orgCategoryCounts,
+
+    //negative filter mode
+    excludeMode,
+    setExcludeMode, 
+    
+    negativeFilterEnabled,
+    setNegativeFilterEnabled,
+
   } = useContext(AppContext);
 
   const [activeTab, setActiveTab] = useState("organizations");
@@ -28,6 +36,8 @@ export const Filters = () => {
 
   // Calculate total selected count
   const totalSelected = selectedCats.size + selectedOrgCats.size;
+
+
 
   const toggleCategoryExpansion = (typeKey) => {
     setExpandedCategories((prev) => {
@@ -368,6 +378,8 @@ export const Filters = () => {
         </span>
       </div>
 
+      
+
       {/* Tabs */}
       <div className="filters-tabs">
         <button
@@ -570,7 +582,28 @@ export const Filters = () => {
 
       {/* Footer */}
       <div className="filters-footer">
-        <button onClick={clearAll} className="filters-clear-all">
+        {/* Negative filter toggle - aligned like other filter rows */}
+        <div className="org-filter-item" style={{ marginBottom: 0 }}>
+          <label className="org-filter-label" style={{ cursor: "pointer" }}>
+            <input
+              type="checkbox"
+              checked={excludeMode}
+              onChange={(e) => setExcludeMode(e.target.checked)}
+              className="org-filter-checkbox"
+            />
+            <span className="org-filter-name">
+              Exclude selected (hide matching events)
+            </span>
+          </label>
+        </div>
+
+        <button
+          onClick={() => {
+            clearAll();
+            setExcludeMode(false);
+          }}
+          className="filters-clear-all"
+        >
           Clear All
         </button>
       </div>

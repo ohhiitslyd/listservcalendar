@@ -272,6 +272,145 @@ function runMigration() {
 
 runMigration(); // Run the migration on startup
 
+// Load category and organization rules for filtering (from main branch)
+const CATEGORY_DESCRIPTOR_PATH = path.join(
+  __dirname,
+  "event_category_descriptors.json"
+);
+let CATEGORY_RULES = { categories: {} };
+try {
+  const raw = fs.readFileSync(CATEGORY_DESCRIPTOR_PATH, "utf8");
+  CATEGORY_RULES = JSON.parse(raw);
+  console.log(
+    "[categories] loaded",
+    Object.keys(CATEGORY_RULES.categories || {}).length,
+    "categories from",
+    CATEGORY_DESCRIPTOR_PATH
+  );
+} catch (e) {
+  console.warn(
+    "Could not read event_category_descriptors.json. Category filtering will be empty.",
+    e
+  );
+}
+
+// Organization based filters (organization_events.json)
+const ORG_DESCRIPTOR_PATH = path.join(__dirname, "organization_events.json");
+let ORGANIZATION_RULES = { categories: {} };
+try {
+  const rawOrg = fs.readFileSync(ORG_DESCRIPTOR_PATH, "utf8");
+  ORGANIZATION_RULES = JSON.parse(rawOrg);
+  console.log(
+    "[org-categories] loaded",
+    Object.keys(ORGANIZATION_RULES.categories || {}).length,
+    "top-level org categories from",
+    ORG_DESCRIPTOR_PATH
+  );
+} catch (e) {
+  console.warn(
+    "Could not read organization_events.json. Org category filtering will be empty.",
+    e
+  );
+}
+
+// ---- Key normalization helpers (from main branch) ----
+const slug = (s = "") =>
+  String(s)
+    .normalize("NFKD")
+    .toLowerCase()
+    .replace(/\s+/g, "_")
+    .replace(/[^a-z0-9_:]/g, ""); // keep letters, digits, underscores, and colons
+
+const lowerArray = (arr = []) => arr.map((x) => String(x).toLowerCase());
+
+// --- Filtering helper Functions (event category classification) ---
+function toTextBlob(ev) {
+  const {
+    title = "",
+    description = "",
+    location = "",
+    organization = "",
+  } = ev || {};
+  return `${title} ${description} ${location} ${organization}`.toLowerCase();
+}
+
+function matchesAnyKeyword(blob, keywords = []) {
+  return keywords.some((kw) => blob.includes(String(kw).toLowerCase()));
+}
+
+/**
+ * assignCategories(ev) -> array of category keys
+ * Uses CATEGORY_RULES.categories[*].must_include_any / exclude_if_any
+ */
+function assignCategories(ev) {
+  const blob = toTextBlob(ev);
+  const out = [];
+
+  const cats = CATEGORY_RULES?.categories || {};
+  for (const [key, def] of Object.entries(cats)) {
+    const must = def.must_include_any || [];
+    const exc = def.exclude_if_any || [];
+
+    // If must_include_any exists and none hit -> skip
+    if (must.length > 0 && !matchesAnyKeyword(blob, must)) continue;
+
+    // If any excluded keyword hits -> skip
+    if (exc.length > 0 && matchesAnyKeyword(blob, exc)) continue;
+
+    out.push(key); // match!
+  }
+  return out;
+}
+
+// --- Organization-level classification ---
+function assignOrgCategories(ev) {
+  const blob = toTextBlob(ev);
+  const out = [];
+
+  const cats = ORGANIZATION_RULES?.categories || {};
+  for (const [typeKeyRaw, typeDef] of Object.entries(cats)) {
+    const typeKey = slug(typeKeyRaw);
+    const subcats = typeDef?.subcategories || {};
+    let sawChild = false;
+
+    // Optional: if type-level must_include_any is used
+    const typeHit =
+      Array.isArray(typeDef?.must_include_any) &&
+      matchesAnyKeyword(blob, lowerArray(typeDef.must_include_any));
+    if (typeHit) out.push(typeKey);
+
+    for (const [subKeyRaw, subDef] of Object.entries(subcats)) {
+      const subKey = slug(subKeyRaw);
+
+      const subHit =
+        Array.isArray(subDef?.must_include_any) &&
+        matchesAnyKeyword(blob, lowerArray(subDef.must_include_any));
+      if (subHit) {
+        out.push(`${typeKey}:${subKey}`);
+        sawChild = true;
+      }
+
+      const orgs = subDef?.organizations || {};
+      for (const [orgKeyRaw, orgDef] of Object.entries(orgs)) {
+        const orgKey = slug(orgKeyRaw);
+        const orgHit =
+          Array.isArray(orgDef?.must_include_any) &&
+          matchesAnyKeyword(blob, lowerArray(orgDef.must_include_any));
+        if (orgHit) {
+          out.push(`${typeKey}:${subKey}:${orgKey}`);
+          sawChild = true;
+        }
+      }
+    }
+
+    // If no child matched but type matched, keep type
+    if (typeHit && !sawChild) {
+      // Already added above
+    }
+  }
+  return out;
+}
+
 // Prepared statements for events table
 const eventInsert = db.prepare(
   `INSERT INTO events(id, user_id, source, email_id, title, description, location, organization, tags, poster_url, start, end, all_day, confidence_score, status)
@@ -531,6 +670,36 @@ app.get("/api/events", ensureAuthed, async (req, res) => {
     // Combine all events (tags come from LLM, no additional processing needed)
     const combined = [...localEvents, ...allEvents];
 
+    // --- Normalize query params so case/space differences don't break filtering ---
+    const reqCatParam = req.query.categories;
+    const reqOrgParam = req.query.orgCategories;
+
+    // These are the selected category keys (already slugified on the frontend)
+    const reqCats = reqCatParam
+      ? reqCatParam
+          .split(",")
+          .map((s) => slug(s.trim()))
+          .filter(Boolean)
+      : null;
+
+    const reqOrgCats = reqOrgParam
+      ? reqOrgParam
+          .split(",")
+          .map((s) => slug(s.trim()))
+          .filter(Boolean)
+      : null;
+
+    // negative filtering flag
+    const exclude = req.query.exclude === "1" || req.query.exclude === "true";
+
+    // --- Combine and normalize tags ---
+    // Add categories and orgCategories to events for filtering (from main branch)
+    const combinedWithCategories = combined.map((ev) => {
+      const catKeys = assignCategories(ev).map(slug); // normalize category keys
+      const orgKeys = assignOrgCategories(ev).map(slug); // normalize org-category keys
+      return { ...ev, categories: catKeys, orgCategories: orgKeys };
+    });
+
     // Helper: identify ListServ events so only they get filtered away
     const isListServ = (ev) => {
       const isDraft = ev.source === "draft" || ev.source === "email";
@@ -539,21 +708,52 @@ app.get("/api/events", ensureAuthed, async (req, res) => {
       return isDraft || isGoogleListServ;
     };
 
-    // Filter by event type tags if requested
-    let filtered = combined;
+    // Apply filters ONLY to ListServ events; non-ListServ always pass through
+    let filtered = combinedWithCategories;
 
+    // Filter by event type tags if requested (from HEAD branch)
     if (req.query.eventTypes) {
       const reqEventTypes = req.query.eventTypes
         .split(",")
         .map((s) => s.trim())
         .filter(Boolean);
 
-      filtered = combined.filter((ev) => {
+      filtered = filtered.filter((ev) => {
         // Non-ListServ events are always kept, regardless of filters
         if (!isListServ(ev)) return true;
 
         // For ListServ events, check if they match any requested event types
         return (ev.tags || []).some((tag) => reqEventTypes.includes(tag));
+      });
+    }
+
+    // Filter by categories/orgCategories if requested (from main branch)
+    if (reqCats || reqOrgCats) {
+      filtered = filtered.filter((ev) => {
+        // Non-ListServ events are always kept, regardless of filters
+        if (!isListServ(ev)) return true;
+
+        // 2) If somehow we have no filters, keep the event
+        if (!reqCats && !reqOrgCats) return true;
+
+        // 3) Compute "does this event match any selected event-category filter?"
+        const matchesCat = reqCats
+          ? (ev.categories || []).some((c) => reqCats.includes(c))
+          : false;
+
+        // 4) Compute "does this event match any selected org-category filter?"
+        const matchesOrg = reqOrgCats
+          ? (ev.orgCategories || []).some((c) => reqOrgCats.includes(c))
+          : false;
+
+        // 5) OR logic across the two groups:
+        //    - If only `reqCats` set → matchesCat must be true
+        //    - If only `reqOrgCats` set → matchesOrg must be true
+        //    - If both set → (matchesCat || matchesOrg)
+        const matchesAny = matchesCat || matchesOrg;
+
+        // If exclude mode is ON, hide ListServ events that match selected filters
+        return exclude ? !matchesAny : matchesAny;
       });
     }
 
@@ -979,8 +1179,21 @@ app.post("/api/scrape/process", ensureAuthed, async (req, res) => {
             .randomBytes(12)
             .toString("hex")}`;
 
-          // Event tags now come from LLM parsing (event.tags)
-          const tagsJson = event.tags ? JSON.stringify(event.tags) : "[]";
+          // Use tags from LLM parsing (assigned based on event_type_des.json)
+          const llmTags = event.tags || [];
+          
+          // Still include org categories from server-side assignment (for organization-based filtering)
+          const eventForOrgTagging = {
+            title: event.title || "",
+            description: event.description || "",
+            location: event.location || "",
+            organization: event.organization || "",
+          };
+          const orgKeys = assignOrgCategories(eventForOrgTagging).map(slug);
+
+          // Normalize LLM tag names (slugify) for consistency and combine with org categories
+          const normalizedLlmTags = llmTags.map(tag => slug(tag));
+          const tagsJson = JSON.stringify([...normalizedLlmTags, ...orgKeys]);
 
           const start = combineDateTime(
             event.startDate,

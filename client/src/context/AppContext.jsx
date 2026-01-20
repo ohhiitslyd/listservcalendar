@@ -36,6 +36,8 @@ export const AppProvider = ({ children }) => {
   // --- Org categories (type/subtype/org) ---
   const [availableOrgCats, setAvailableOrgCats] = useState([]);
   const [selectedOrgCats, setSelectedOrgCats] = useState(new Set());
+  // negative filter mode (exclude selected filters instead of include)
+  const [excludeMode, setExcludeMode] = useState(false);
 
   const [activeFilters, setActiveFilters] = useState(new Set());
 
@@ -68,6 +70,11 @@ export const AppProvider = ({ children }) => {
     const s = Array.from(selectedOrgCats).join(",");
     return `&orgCategories=${encodeURIComponent(s)}`;
   }, [selectedOrgCats]);
+
+  // if excludeMode is on, tell backend to invert the filter match
+  const excludeParam = useMemo(() => {
+    return excludeMode ? "&exclude=1" : "";
+  }, [excludeMode]);
 
   // whose start time falls within the current view’s date range
   const weekFilteredEventsForCounts = useMemo(() => {
@@ -167,12 +174,13 @@ export const AppProvider = ({ children }) => {
         ids.length > 0
           ? `?calendarIds=${encodeURIComponent(ids.join(","))}`
           : "?";
-      const url = `/api/events${base}${categoriesParam}${orgCategoriesParam}`;
+      const url = `/api/events${base}${categoriesParam}${orgCategoriesParam}${excludeParam}`;
       console.log("🔎 fetchEvents →", url);
       const data = await api.fetchEvents({
         calendarIds: ids,
         categoriesParam,
         orgCategoriesParam,
+        excludeParam,
       });
 
       // Color mapping for organization categories
@@ -244,7 +252,7 @@ export const AppProvider = ({ children }) => {
       });
       setEvents(transformed);
     },
-    [visibleCalendars, categoriesParam, orgCategoriesParam, listservCalendarId]
+    [visibleCalendars, categoriesParam, orgCategoriesParam, excludeParam, listservCalendarId]
   );
 
   // Fetch events for counts ONLY (NO categoriesParam). This keeps a stable, unfiltered snapshot.
@@ -430,6 +438,7 @@ export const AppProvider = ({ children }) => {
   }, [
     categoriesParam,
     orgCategoriesParam,
+    excludeParam, 
     user,
     visibleCalendars,
     fetchEvents,
@@ -496,6 +505,10 @@ export const AppProvider = ({ children }) => {
 
     currentViewRange,
     setCurrentViewRange,
+
+    // negative filtering toggle
+    excludeMode,
+    setExcludeMode, 
   };
 
   return (
