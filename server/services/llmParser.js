@@ -1,8 +1,25 @@
 import * as cheerio from "cheerio";
+import fs from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
 
 /**
  * LLM-based email parser using OpenAI API
  */
+
+// Load event type tags from event_types/event_type_des.json
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+let EVENT_TAGS = { tags: {} };
+try {
+  const tagsPath = path.join(__dirname, "..", "..", "event_types", "event_type_des.json");
+  const rawTags = fs.readFileSync(tagsPath, "utf8");
+  EVENT_TAGS = JSON.parse(rawTags);
+  console.log(`[llm-parser] Loaded ${Object.keys(EVENT_TAGS.tags || {}).length} tag definitions from event_type_des.json`);
+} catch (e) {
+  console.warn("[llm-parser] Could not load event_type_des.json. Tag assignment will be limited.", e.message);
+}
 
 /**
  * Convert HTML to plain text, removing base64 image data and other bloat
@@ -129,7 +146,10 @@ export async function parseEmailForEvents(emailData) {
   const bodyPreview = cleanedText.substring(0, 10000);
   const bodyTruncated = cleanedText.length > 10000;
 
-  // Build prompt with improved time detection
+  // Format tag definitions as JSON for the prompt
+  const tagDefinitionsJson = JSON.stringify(EVENT_TAGS, null, 2);
+
+  // Build prompt with improved time detection and tag assignment
   const prompt = `Extract event information from this email. Today's date is ${emailDateStr}.
 
 Email Subject: ${subject || "(no subject)"}
@@ -145,6 +165,19 @@ WHAT IS AN EVENT?
 - DO extract: concerts, meetings, workshops, parties, lectures, performances, social gatherings, study sessions, fundraisers, etc.
 - DO NOT extract: application deadlines, survey requests, reminders, announcements without dates, parking applications, general announcements
 
+AVAILABLE TAGS:
+The following JSON contains all available tags with their descriptions, rules, keywords, and examples:
+${tagDefinitionsJson}
+
+TAG ASSIGNMENT INSTRUCTIONS:
+- Review the email content against each tag's description and keywords
+- Assign a tag if the email content matches the tag's description OR contains relevant keywords
+- Pay special attention to the "rules" field - it contains important exceptions and clarifications
+- You can assign multiple tags if the event matches multiple descriptions
+- Only assign tags that clearly apply - be conservative, not liberal
+- Return tags as an array of tag names (e.g., ["Free Food", "Performance"])
+- If no tags apply, return an empty array: []
+
 Extract the following information as JSON:
 {
   "title": "Event title or null (MUST extract if event exists, even if partial)",
@@ -154,7 +187,8 @@ Extract the following information as JSON:
   "startTime": "HH:MM:SS or null (24-hour format, or null if all-day)",
   "endDate": "YYYY-MM-DD or null",
   "endTime": "HH:MM:SS or null (24-hour format, or null if all-day)",
-  "allDay": true or false
+  "allDay": true or false,
+  "tags": ["array", "of", "tag", "names", "or", "empty", "array"]
 }
 
 CRITICAL: Return actual JSON null values (not the string "null"). For example:
@@ -260,6 +294,26 @@ Return ONLY valid JSON, no other text`;
     if (parsed.allDay !== true && parsed.allDay !== false) {
       parsed.allDay = !parsed.startTime && !parsed.endTime; // Default based on time presence
     }
+
+    // Parse tags array from LLM response
+    let tags = [];
+    if (parsed.tags) {
+      if (Array.isArray(parsed.tags)) {
+        tags = parsed.tags.filter(tag => tag && typeof tag === "string");
+      } else if (typeof parsed.tags === "string") {
+        // Handle case where LLM returns string instead of array
+        try {
+          tags = JSON.parse(parsed.tags);
+        } catch {
+          // If not valid JSON, try splitting by comma
+          tags = parsed.tags.split(",").map(t => t.trim()).filter(Boolean);
+        }
+      }
+    }
+
+    // Validate tags against available tag definitions
+    const availableTagNames = Object.keys(EVENT_TAGS?.tags || {});
+    tags = tags.filter(tag => availableTagNames.includes(tag));
 
     // If time is missing but we have image attachments, try vision API
     if (!parsed.startTime && !parsed.endTime && attachments && emailId) {
@@ -641,6 +695,7 @@ If no time is visible, return {"startTime": null, "endTime": null}.`;
       allDay: allDay,
       posterUrl: posterUrl || null,
       organization: organization,
+      tags: tags, // Tags assigned by LLM based on event_type_des.json
       confidenceScore: 0.95,
     };
 
@@ -671,6 +726,7 @@ If no time is visible, return {"startTime": null, "endTime": null}.`;
     return [event];
   } catch (error) {
     console.error("[llm-parser] Error parsing with LLM:", error.message);
+    // Return empty array on error (no fallback event object to avoid partial data)
     return [];
   }
 }

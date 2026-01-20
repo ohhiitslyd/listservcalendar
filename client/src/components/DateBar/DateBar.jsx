@@ -19,12 +19,25 @@ export const DateBar = () => {
       const end = view.activeEnd;
       
       if (view.type === "timeGridWeek") {
-        // Format as "Nov 9 - 15, 2025"
+        // Format as "Nov 9 - 15, 2025" or "Jan 25 - 31, 2026"
         const startMonth = start.toLocaleDateString("en-US", { month: "short" });
         const startDay = start.getDate();
-        const endDay = end.getDate() - 1; // Subtract 1 because end is exclusive
         const year = start.getFullYear();
-        setDateRange(`${startMonth} ${startDay} - ${endDay}, ${year}`);
+        
+        // Calculate the last day of the week (end is exclusive, so subtract 1 day)
+        const endDate = new Date(end);
+        endDate.setDate(endDate.getDate() - 1);
+        const endDay = endDate.getDate();
+        const endMonth = endDate.toLocaleDateString("en-US", { month: "short" });
+        
+        // If the week spans two months, show both months: "Jan 25 - Feb 1, 2026"
+        // Otherwise show single month: "Jan 25 - 31, 2026"
+        if (startMonth === endMonth) {
+          setDateRange(`${startMonth} ${startDay} - ${endDay}, ${year}`);
+        } else {
+          const endYear = endDate.getFullYear();
+          setDateRange(`${startMonth} ${startDay} - ${endMonth} ${endDay}, ${endYear}`);
+        }
       } else if (view.type === "timeGridDay") {
         // Format as "Nov 9, 2025"
         const month = start.toLocaleDateString("en-US", { month: "short" });
