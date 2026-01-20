@@ -12,6 +12,10 @@ import cron from "node-cron";
 import { scrapeEmails } from "./services/emailScraper.js";
 import { parseEmailForEvents } from "./services/llmParser.js";
 import { runAutomatedScrape } from "./services/autoScraper.js";
+import {
+  publishEventToCalendar,
+  getOrCreateListServCalendar as getOrCreateListServCalendarShared,
+} from "./services/calendarPublisher.js";
 
 dotenv.config();
 
@@ -19,62 +23,7 @@ dotenv.config();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// If the JSON file is next to index.js in server/
-const CATEGORY_DESCRIPTOR_PATH = path.join(
-  __dirname,
-  "event_category_descriptors.json"
-);
-/**
- * Shape of the file (structure of tags):
- * {
- *   "categories": {
- *     "Career Development": {
- *       "label": "Career Development",
- *       "must_include_any": [...],
- *       "exclude_if_any": [...],
- *       "description": "..."
- *     },
- *     ...
- *   }
- * }
- */
-// Load the JSON once at boot
-let CATEGORY_RULES = { categories: {} };
-try {
-  const raw = fs.readFileSync(CATEGORY_DESCRIPTOR_PATH, "utf8");
-  CATEGORY_RULES = JSON.parse(raw);
-  console.log(
-    "[categories] loaded",
-    Object.keys(CATEGORY_RULES.categories || {}).length,
-    "categories from",
-    CATEGORY_DESCRIPTOR_PATH
-  );
-} catch (e) {
-  console.warn(
-    "Could not read event_category_descriptors.json. Category filtering will be empty.",
-    e
-  );
-}
-
-// Organization based filters (organization_events.json)
-const ORG_DESCRIPTOR_PATH = path.join(__dirname, "organization_events.json");
-
-let ORGANIZATION_RULES = { categories: {} };
-try {
-  const rawOrg = fs.readFileSync(ORG_DESCRIPTOR_PATH, "utf8");
-  ORGANIZATION_RULES = JSON.parse(rawOrg);
-  console.log(
-    "[org-categories] loaded",
-    Object.keys(ORGANIZATION_RULES.categories || {}).length,
-    "top-level org categories from",
-    ORG_DESCRIPTOR_PATH
-  );
-} catch (e) {
-  console.warn(
-    "Could not read organization_events.json. Org category filtering will be empty.",
-    e
-  );
-}
+// Note: Event type tags are loaded in llmParser.js (matching main branch implementation)
 
 const {
   PORT = 3000,
@@ -157,6 +106,8 @@ try {
 } catch (e) {
   // Column already exists
 }
+
+// Note: tags column already exists in the events table (from main branch)
 
 // App settings table for tracking scrape metadata
 db.exec(`CREATE TABLE IF NOT EXISTS app_settings (
@@ -360,135 +311,27 @@ function getOAuthClient(req) {
   return oauth2Client;
 }
 
-// --- Helper: Ensure ListServ calendar exists ---
+// --- Helper: Ensure ListServ calendar exists (with session caching) ---
 async function getOrCreateListServCalendar(req, oauth2Client) {
-  if (req.session.listservCalendarId)
+  // Use session cache if available
+  if (req.session.listservCalendarId) {
     return { id: req.session.listservCalendarId, created: false };
-  const calendar = google.calendar({ version: "v3", auth: oauth2Client });
-  const list = await calendar.calendarList.list();
-  const existing = (list.data.items || []).find(
-    (c) => c.summary?.toLowerCase() === "listserv events"
-  );
-  if (existing) {
-    req.session.listservCalendarId = existing.id;
-    return { id: existing.id, created: false };
   }
-  const newCal = await calendar.calendars.insert({
-    requestBody: {
-      summary: "ListServ Events",
-      description: "Dedicated calendar for ListServ app",
-      timeZone: "America/Los_Angeles",
-    },
-  });
-  await calendar.calendarList.insert({ requestBody: { id: newCal.data.id } });
-  req.session.listservCalendarId = newCal.data.id;
-  return { id: newCal.data.id, created: true };
+  // Use shared function for actual work
+  const result = await getOrCreateListServCalendarShared(oauth2Client);
+  // Cache the result in session
+  req.session.listservCalendarId = result.id;
+  return result;
 }
 
 // beginning of additions
 
 // ---- Key normalization helpers (add near the top, after JSON loads) ----
-const slug = (s = "") =>
-  String(s)
-    .normalize("NFKD")
-    .toLowerCase()
-    .replace(/\s+/g, "_")
-    .replace(/[^a-z0-9_:]/g, ""); // keep letters, digits, underscores, and colons
-
-const lowerArray = (arr = []) => arr.map((x) => String(x).toLowerCase());
-
-// --- Filtering helper Functions (event category classification) ---
-// normalize and test text
-function toTextBlob(ev) {
-  //combining fields together
-  const {
-    title = "",
-    description = "",
-    location = "",
-    organization = "",
-  } = ev || {};
-  return `${title} ${description} ${location} ${organization}`.toLowerCase();
-}
-
-//is a non case sensitive match
-function matchesAnyKeyword(blob, keywords = []) {
-  return keywords.some((kw) => blob.includes(String(kw).toLowerCase()));
-}
-
-/**
- * assignCategories(ev) -> array of category keys
- * Uses CATEGORY_RULES.categories[*].must_include_any / exclude_if_any
- * Logic:
- *  - If must_include_any is present: require at least one to appear
- *  - If exclude_if_any contains a hit: skip that category
- */
-function assignCategories(ev) {
-  const blob = toTextBlob(ev);
-  const out = [];
-
-  const cats = CATEGORY_RULES?.categories || {};
-  for (const [key, def] of Object.entries(cats)) {
-    const must = def.must_include_any || [];
-    const exc = def.exclude_if_any || [];
-
-    // If must_include_any exists and none hit -> skip
-    if (must.length > 0 && !matchesAnyKeyword(blob, must)) continue;
-
-    // If any excluded keyword hits -> skip
-    if (exc.length > 0 && matchesAnyKeyword(blob, exc)) continue;
-
-    out.push(key); // match!
-  }
-  return out;
-}
-
-// --- Organization-level classification ---
-function assignOrgCategories(ev) {
-  const blob = toTextBlob(ev);
-  const out = [];
-
-  const cats = ORGANIZATION_RULES?.categories || {};
-  for (const [typeKeyRaw, typeDef] of Object.entries(cats)) {
-    const typeKey = slug(typeKeyRaw);
-    const subcats = typeDef?.subcategories || {};
-    let sawChild = false;
-
-    // Optional: if type-level must_include_any is used
-    const typeHit =
-      Array.isArray(typeDef?.must_include_any) &&
-      matchesAnyKeyword(blob, lowerArray(typeDef.must_include_any));
-    if (typeHit) out.push(typeKey);
-
-    for (const [subKeyRaw, subDef] of Object.entries(subcats)) {
-      const subKey = slug(subKeyRaw);
-
-      const subHit =
-        Array.isArray(subDef?.must_include_any) &&
-        matchesAnyKeyword(blob, lowerArray(subDef.must_include_any));
-      if (subHit) {
-        out.push(`${typeKey}:${subKey}`);
-        sawChild = true;
-      }
-
-      const orgs = subDef?.organizations || {};
-      for (const [orgKeyRaw, orgDef] of Object.entries(orgs)) {
-        const orgKey = slug(orgKeyRaw);
-        const orgHit =
-          Array.isArray(orgDef?.must_include_any) &&
-          matchesAnyKeyword(blob, lowerArray(orgDef.must_include_any));
-        if (orgHit) {
-          out.push(`${typeKey}:${subKey}:${orgKey}`);
-          sawChild = true;
-        }
-      }
-    }
-
-    // If any child matched but we didn’t add the bare type yet, include it
-    if (sawChild && !out.includes(typeKey)) out.push(typeKey);
-  }
-
-  return out;
-}
+// ============================================================================
+// OLD TAGGING SYSTEM - DEPRECATED (Replaced by LLM-based event type tagging)
+// Event tags are now assigned by LLM during email parsing using event_type_des.json
+// This provides more accurate, context-aware tagging
+// ============================================================================
 
 // --- Auth ---
 app.get("/auth/google", (req, res) => {
@@ -685,12 +528,8 @@ app.get("/api/events", ensureAuthed, async (req, res) => {
       poster_url: e.poster_url || "",
     }));
 
-    // --- Combine and normalize tags ---
-    const combined = [...localEvents, ...allEvents].map((ev) => {
-      const catKeys = assignCategories(ev).map(slug); // normalize category keys
-      const orgKeys = assignOrgCategories(ev).map(slug); // normalize org-category keys
-      return { ...ev, categories: catKeys, orgCategories: orgKeys };
-    });
+    // Combine all events (tags come from LLM, no additional processing needed)
+    const combined = [...localEvents, ...allEvents];
 
     // Helper: identify ListServ events so only they get filtered away
     const isListServ = (ev) => {
@@ -700,51 +539,21 @@ app.get("/api/events", ensureAuthed, async (req, res) => {
       return isDraft || isGoogleListServ;
     };
 
-    // --- Normalize query params so case/space differences don't break filtering ---
-    const reqCatParam = req.query.categories;
-    const reqOrgParam = req.query.orgCategories;
-
-    // These are the selected category keys (already slugified on the frontend)
-    const reqCats = reqCatParam
-      ? reqCatParam
-          .split(",")
-          .map((s) => slug(s.trim()))
-          .filter(Boolean)
-      : null;
-
-    const reqOrgCats = reqOrgParam
-      ? reqOrgParam
-          .split(",")
-          .map((s) => slug(s.trim()))
-          .filter(Boolean)
-      : null;
-
-    // Apply filters ONLY to ListServ events; non-ListServ always pass through
+    // Filter by event type tags if requested
     let filtered = combined;
 
-    if (reqCats || reqOrgCats) {
+    if (req.query.eventTypes) {
+      const reqEventTypes = req.query.eventTypes
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+
       filtered = combined.filter((ev) => {
-        // 1) Non-ListServ events are always kept, regardless of filters
+        // Non-ListServ events are always kept, regardless of filters
         if (!isListServ(ev)) return true;
 
-        // 2) If somehow we have no filters, keep the event
-        if (!reqCats && !reqOrgCats) return true;
-
-        // 3) Compute "does this event match any selected event-category filter?"
-        const matchesCat = reqCats
-          ? (ev.categories || []).some((c) => reqCats.includes(c))
-          : false;
-
-        // 4) Compute "does this event match any selected org-category filter?"
-        const matchesOrg = reqOrgCats
-          ? (ev.orgCategories || []).some((c) => reqOrgCats.includes(c))
-          : false;
-
-        // 5) OR logic across the two groups:
-        //    - If only `reqCats` set → matchesCat must be true
-        //    - If only `reqOrgCats` set → matchesOrg must be true
-        //    - If both set → (matchesCat || matchesOrg)
-        return matchesCat || matchesOrg;
+        // For ListServ events, check if they match any requested event types
+        return (ev.tags || []).some((tag) => reqEventTypes.includes(tag));
       });
     }
 
@@ -755,56 +564,33 @@ app.get("/api/events", ensureAuthed, async (req, res) => {
   }
 });
 
-//returns category labels from the JSON (left panel) - more additions
-app.get("/api/event-categories", ensureAuthed, (req, res) => {
-  const cats = CATEGORY_RULES?.categories || {};
-  const list = Object.entries(cats).map(([rawKey, def]) => ({
-    key: slug(rawKey), // normalized key
-    label: def.label || rawKey, // human label stays pretty
-    description: def.description || "",
-  }));
-  res.json({ categories: list });
-});
-
-// --- Org categories → flat list for bubbles on the left panel
-app.get("/api/org-categories", ensureAuthed, (req, res) => {
-  const cats = ORGANIZATION_RULES?.categories || {};
-  const list = [];
-
-  for (const [typeKeyRaw, typeDef] of Object.entries(cats)) {
-    const typeKey = slug(typeKeyRaw);
-    const typeLabel = typeDef.label || typeKeyRaw;
-    list.push({ key: typeKey, label: typeLabel, level: "type" });
-
-    const subcats = typeDef.subcategories || {};
-    for (const [subKeyRaw, subDef] of Object.entries(subcats)) {
-      const subKey = slug(subKeyRaw);
-      const subLabel = subDef.label || subKeyRaw;
-      const subFlatKey = `${typeKey}:${subKey}`;
-      list.push({
-        key: subFlatKey,
-        label: `${typeLabel} • ${subLabel}`,
-        level: "subcategory",
-      });
-
-      const orgs = subDef.organizations || {};
-      for (const [orgKeyRaw, orgDef] of Object.entries(orgs)) {
-        const orgKey = slug(orgKeyRaw);
-        const orgLabel = orgDef.label || orgKeyRaw;
-        const orgFlatKey = `${typeKey}:${subKey}:${orgKey}`;
-        list.push({
-          key: orgFlatKey,
-          label: orgLabel,
-          level: "organization",
-        });
-      }
-    }
+// Get event type tags for filtering (LLM-based tagging)
+// Note: Tags are loaded in llmParser.js, but we need to load them here for the API endpoint
+app.get("/api/event-types", ensureAuthed, (req, res) => {
+  try {
+    const EVENT_TYPE_PATH = path.join(
+      __dirname,
+      "..",
+      "event_types",
+      "event_type_des.json"
+    );
+    const raw = fs.readFileSync(EVENT_TYPE_PATH, "utf8");
+    const EVENT_TAGS = JSON.parse(raw);
+    const tags = EVENT_TAGS?.tags || {};
+    const list = Object.entries(tags).map(([tagName, def]) => ({
+      tag: tagName,
+      description: def.description,
+      keywords: def.keywords || [],
+    }));
+    res.json({ eventTypes: list });
+  } catch (e) {
+    console.warn(
+      "[event-types] Could not load event_type_des.json:",
+      e.message
+    );
+    res.json({ eventTypes: [] });
   }
-
-  res.json({ categories: list });
 });
-
-//ending of additions
 
 // --- Drafts (now using unified events table) ---
 app.post("/api/drafts", ensureAuthed, (req, res) => {
@@ -995,101 +781,53 @@ app.post("/api/events/:compoundId/publish", ensureAuthed, async (req, res) => {
       .get(rawId, req.session.user.id);
     if (!row) return res.status(404).json({ error: "Event not found" });
 
-    const oauth2Client = getOAuthClient(req);
-    const calendar = google.calendar({ version: "v3", auth: oauth2Client });
-    const { id: listservCalendarId } = await getOrCreateListServCalendar(
-      req,
-      oauth2Client
-    );
+    // Validate dates
+    if (!row.start) {
+      return res.status(400).json({ error: "Invalid event date" });
+    }
 
-    // Validate and format dates
-    let startDate, endDate;
-    if (row.all_day) {
-      // For all-day events, ensure date is in YYYY-MM-DD format
-      startDate = row.start ? row.start.split("T")[0] : null;
-      endDate = row.end ? row.end.split("T")[0] : startDate;
-      if (!startDate) {
+    if (!row.all_day) {
+      // For timed events, ensure it's a valid ISO datetime string
+      if (!row.start.includes("T") || isNaN(new Date(row.start).getTime())) {
         console.error(
-          `[publish] Invalid all-day event date for event ${rawId}: ${row.start}`
-        );
-        return res.status(400).json({ error: "Invalid event date" });
-      }
-    } else {
-      // For timed events, ensure ISO 8601 format
-      startDate = row.start;
-      endDate = row.end || row.start;
-      if (!startDate) {
-        console.error(
-          `[publish] Invalid timed event date for event ${rawId}: ${row.start}`
-        );
-        return res.status(400).json({ error: "Invalid event date" });
-      }
-      // Ensure it's a valid ISO datetime string
-      if (!startDate.includes("T") || isNaN(new Date(startDate).getTime())) {
-        console.error(
-          `[publish] Invalid datetime format for event ${rawId}: ${startDate}`
+          `[publish] Invalid datetime format for event ${rawId}: ${row.start}`
         );
         return res.status(400).json({ error: "Invalid event datetime format" });
       }
     }
 
-    const resource = {
-      summary: row.title || "",
+    // Parse tags from database
+    const tags = row.tags ? JSON.parse(row.tags) : [];
+
+    const oauth2Client = getOAuthClient(req);
+    const result = await publishEventToCalendar({
+      oauth2Client,
+      db,
+      eventId: rawId,
+      userId: req.session.user.id,
+      title: row.title || "",
       description: row.description || "",
       location: row.location || "",
-      // Store custom data in extendedProperties
-      extendedProperties: {
-        shared: {
-          organization: row.organization || "",
-          tags: row.tags || "[]", // Pass the JSON string
-          poster_url: row.poster_url || "",
-        },
-      },
-    };
-
-    if (row.all_day) {
-      resource.start = { date: startDate };
-      resource.end = { date: endDate };
-    } else {
-      resource.start = { dateTime: startDate, timeZone: "America/New_York" };
-      resource.end = { dateTime: endDate, timeZone: "America/New_York" };
-    }
-
-    console.log(
-      `[publish] Publishing event ${rawId} (source: ${source}) to calendar ${listservCalendarId}`
-    );
-    console.log(`[publish] Event details:`, {
-      title: resource.summary,
-      start: resource.start,
-      end: resource.end,
-      allDay: row.all_day,
+      organization: row.organization || "",
+      eventTags: tags,
+      posterUrl: row.poster_url || "",
+      start: row.start,
+      end: row.end || row.start,
+      allDay: !!row.all_day,
+      logPrefix: "[publish]",
     });
 
-    const insertResp = await calendar.events.insert({
-      calendarId: listservCalendarId,
-      requestBody: resource,
-    });
-
-    if (!insertResp.data || !insertResp.data.id) {
-      console.error(
-        `[publish] Google Calendar insert failed for event ${rawId}:`,
-        insertResp
-      );
-      return res
-        .status(500)
-        .json({ error: "Failed to publish event to Google Calendar" });
+    if (!result.success) {
+      return res.status(500).json({
+        error: "Failed to publish event to Google Calendar",
+        details: result.error,
+      });
     }
 
-    console.log(
-      `[publish] Successfully published event ${rawId} to Google Calendar: ${insertResp.data.id}`
-    );
-
-    // Update event status to 'published' and store google_event_id (don't delete)
-    db.prepare(
-      "UPDATE events SET status='published', google_event_id=?, updated_at=CURRENT_TIMESTAMP WHERE id=? AND user_id=?"
-    ).run(insertResp.data.id, rawId, req.session.user.id);
-
-    res.json({ ok: true, published: { id: `google:${insertResp.data.id}` } });
+    res.json({
+      ok: true,
+      published: { id: `google:${result.google_event_id}` },
+    });
   } catch (e) {
     console.error(`[publish] Error publishing event:`, e);
     console.error(`[publish] Error details:`, {
@@ -1241,15 +979,8 @@ app.post("/api/scrape/process", ensureAuthed, async (req, res) => {
             .randomBytes(12)
             .toString("hex")}`;
 
-          const eventForTagging = {
-            title: event.title || "",
-            description: event.description || "",
-            location: event.location || "",
-            organization: event.organization || "",
-          };
-          const catKeys = assignCategories(eventForTagging).map(slug);
-          const orgKeys = assignOrgCategories(eventForTagging).map(slug);
-          const tagsJson = JSON.stringify([...catKeys, ...orgKeys]);
+          // Event tags now come from LLM parsing (event.tags)
+          const tagsJson = event.tags ? JSON.stringify(event.tags) : "[]";
 
           const start = combineDateTime(
             event.startDate,
@@ -1347,73 +1078,24 @@ app.post("/api/scrape/process", ensureAuthed, async (req, res) => {
           });
 
           // Auto-publish email-sourced events to Google Calendar
-          try {
-            const oauth2Client = getOAuthClient(req);
-            const calendar = google.calendar({
-              version: "v3",
-              auth: oauth2Client,
-            });
-            const { id: listservCalendarId } =
-              await getOrCreateListServCalendar(req, oauth2Client);
-
-            let startDate, endDate;
-            if (event.allDay) {
-              startDate = start ? start.split("T")[0] : null;
-              endDate = end ? end.split("T")[0] : startDate;
-            } else {
-              startDate = start;
-              endDate = end || start;
-            }
-
-            if (startDate) {
-              const resource = {
-                summary: event.title || "",
-                description: event.description || "",
-                location: event.location || "",
-                extendedProperties: {
-                  shared: {
-                    organization: event.organization || "",
-                    tags: tagsJson,
-                    poster_url: event.posterUrl || "",
-                  },
-                },
-              };
-
-              if (event.allDay) {
-                resource.start = { date: startDate };
-                resource.end = { date: endDate };
-              } else {
-                resource.start = {
-                  dateTime: startDate,
-                  timeZone: "America/New_York",
-                };
-                resource.end = {
-                  dateTime: endDate,
-                  timeZone: "America/New_York",
-                };
-              }
-
-              const insertResp = await calendar.events.insert({
-                calendarId: listservCalendarId,
-                requestBody: resource,
-              });
-
-              if (insertResp.data && insertResp.data.id) {
-                db.prepare(
-                  "UPDATE events SET status='published', google_event_id=?, updated_at=CURRENT_TIMESTAMP WHERE id=? AND user_id=?"
-                ).run(insertResp.data.id, eventId, userId);
-              } else {
-                console.warn(
-                  `[process] Failed to auto-publish event ${eventId} to Google Calendar`
-                );
-              }
-            }
-          } catch (publishError) {
-            console.error(
-              `[process] Error auto-publishing event ${eventId}:`,
-              publishError.message
-            );
-          }
+          const oauth2Client = getOAuthClient(req);
+          await publishEventToCalendar({
+            oauth2Client,
+            db,
+            eventId,
+            userId,
+            title: event.title || "",
+            description: event.description || "",
+            location: event.location || "",
+            organization: event.organization || "",
+            eventTags: event.tags || [],
+            posterUrl: event.posterUrl || "",
+            start,
+            end: end || start,
+            allDay: event.allDay,
+            logPrefix: "[process]",
+          });
+          // Note: publishEventToCalendar handles errors internally and logs them
 
           eventsCreated++;
         }

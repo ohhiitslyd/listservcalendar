@@ -1,6 +1,7 @@
 import { google } from "googleapis";
 import { scrapeEmails } from "./emailScraper.js";
 import { parseEmailForEvents } from "./llmParser.js";
+import { publishEventToCalendar } from "./calendarPublisher.js";
 
 /**
  * Automated Email Scraping Service
@@ -138,9 +139,10 @@ function combineDateTime(date, time, allDay) {
  * Process unprocessed emails and extract events
  * @param {string} userId - User ID
  * @param {Database} db - SQLite database instance
+ * @param {Object} oauth2Client - Google OAuth2 client for publishing events
  * @returns {Promise<Object>} - Processing results
  */
-async function processUnprocessedEmails(userId, db) {
+async function processUnprocessedEmails(userId, db, oauth2Client) {
   try {
     // Get all unprocessed emails
     const emailsToProcess = db
@@ -234,6 +236,28 @@ async function processUnprocessedEmails(userId, db) {
             "draft"
           );
           eventsCreated++;
+
+          // Auto-publish email-sourced events to Google Calendar
+          if (oauth2Client) {
+            await publishEventToCalendar({
+              oauth2Client,
+              db,
+              eventId,
+              userId,
+              title: event.title || "",
+              description: event.description || "",
+              location: event.location || "",
+              organization: event.organization || "",
+              eventTags: event.tags || [],
+              posterUrl: event.posterUrl || "",
+              start,
+              end: end || start,
+              allDay: event.allDay,
+              logPrefix: "[autoScraper]",
+            });
+            // Note: publishEventToCalendar handles errors internally and logs them
+            // We don't fail the whole process if publishing fails
+          }
         }
 
         // Mark email as processed
@@ -312,9 +336,15 @@ export async function runAutomatedScrape(db) {
       `[autoScraper] Scrape complete: ${scrapeResult.scraped} new, ${scrapeResult.skipped} skipped`
     );
 
-    // Step 5: Process scraped emails
-    console.log(`[autoScraper] Processing emails...`);
-    const processResult = await processUnprocessedEmails(userId, db);
+    // Step 5: Process scraped emails and auto-publish events
+    console.log(
+      `[autoScraper] Processing emails and auto-publishing events...`
+    );
+    const processResult = await processUnprocessedEmails(
+      userId,
+      db,
+      oauth2Client
+    );
 
     console.log(
       `[autoScraper] Processing complete: ${processResult.processed} emails, ${processResult.eventsCreated} events`
