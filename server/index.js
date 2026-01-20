@@ -711,23 +711,6 @@ app.get("/api/events", ensureAuthed, async (req, res) => {
     // Apply filters ONLY to ListServ events; non-ListServ always pass through
     let filtered = combinedWithCategories;
 
-    // Filter by event type tags if requested (from HEAD branch)
-    if (req.query.eventTypes) {
-      const reqEventTypes = req.query.eventTypes
-        .split(",")
-        .map((s) => s.trim())
-        .filter(Boolean);
-
-      filtered = filtered.filter((ev) => {
-        // Non-ListServ events are always kept, regardless of filters
-        if (!isListServ(ev)) return true;
-
-        // For ListServ events, check if they match any requested event types
-        return (ev.tags || []).some((tag) => reqEventTypes.includes(tag));
-      });
-    }
-
-    // Filter by categories/orgCategories if requested (from main branch)
     if (reqCats || reqOrgCats) {
       filtered = filtered.filter((ev) => {
         // Non-ListServ events are always kept, regardless of filters
@@ -1181,7 +1164,7 @@ app.post("/api/scrape/process", ensureAuthed, async (req, res) => {
 
           // Use tags from LLM parsing (assigned based on event_type_des.json)
           const llmTags = event.tags || [];
-          
+
           // Still include org categories from server-side assignment (for organization-based filtering)
           const eventForOrgTagging = {
             title: event.title || "",
@@ -1192,7 +1175,7 @@ app.post("/api/scrape/process", ensureAuthed, async (req, res) => {
           const orgKeys = assignOrgCategories(eventForOrgTagging).map(slug);
 
           // Normalize LLM tag names (slugify) for consistency and combine with org categories
-          const normalizedLlmTags = llmTags.map(tag => slug(tag));
+          const normalizedLlmTags = llmTags.map((tag) => slug(tag));
           const tagsJson = JSON.stringify([...normalizedLlmTags, ...orgKeys]);
 
           const start = combineDateTime(
