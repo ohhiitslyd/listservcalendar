@@ -4,34 +4,53 @@ import path from "path";
 import { fileURLToPath } from "url";
 
 /**
- * LLM-based email parser using OpenAI API
+ * LLM-based email parser using OpenAI API with event type tagging
  */
 
-// Load event type tags from event_types/event_type_des.json
+// Load event type definitions
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+const EVENT_TYPE_PATH = path.join(
+  __dirname,
+  "..",
+  "..",
+  "event_types",
+  "event_type_des.json"
+);
 
 let EVENT_TAGS = { tags: {} };
 try {
-  const tagsPath = path.join(
-    __dirname,
-    "..",
-    "..",
-    "event_types",
-    "event_type_des.json"
-  );
-  const rawTags = fs.readFileSync(tagsPath, "utf8");
-  EVENT_TAGS = JSON.parse(rawTags);
+  const raw = fs.readFileSync(EVENT_TYPE_PATH, "utf8");
+  EVENT_TAGS = JSON.parse(raw);
   console.log(
-    `[llm-parser] Loaded ${
-      Object.keys(EVENT_TAGS.tags || {}).length
-    } tag definitions from event_type_des.json`
+    "[llm-parser] Loaded",
+    Object.keys(EVENT_TAGS.tags || {}).length,
+    "event type tags"
   );
 } catch (e) {
-  console.warn(
-    "[llm-parser] Could not load event_type_des.json. Tag assignment will be limited.",
-    e.message
-  );
+  console.warn("[llm-parser] Could not load event_type_des.json:", e.message);
+}
+
+/**
+ * Format event type tags for LLM prompt
+ */
+function formatEventTypesForLLM() {
+  const tags = EVENT_TAGS?.tags || {};
+
+  return Object.entries(tags)
+    .map(([tagName, def]) => {
+      const keywordSample = def.keywords?.slice(0, 8).join(", ") || "N/A";
+      const shouldTag = def.examples_should_tag?.[0] || "N/A";
+      const shouldNotTag = def.examples_should_not_tag?.[0] || "N/A";
+
+      return `**${tagName}**
+- Description: ${def.description}
+- Rules: ${def.rules}
+- Keywords: ${keywordSample}...
+- ✓ Should tag: ${shouldTag}
+- ✗ Should NOT tag: ${shouldNotTag}`;
+    })
+    .join("\n\n");
 }
 
 /**
@@ -159,11 +178,11 @@ export async function parseEmailForEvents(emailData) {
   const bodyPreview = cleanedText.substring(0, 10000);
   const bodyTruncated = cleanedText.length > 10000;
 
-  // Format tag definitions as JSON for the prompt
-  const tagDefinitionsJson = JSON.stringify(EVENT_TAGS, null, 2);
+  // Build event type context for LLM
+  const eventTypesContext = formatEventTypesForLLM();
 
-  // Build prompt with improved time detection and tag assignment
-  const prompt = `Extract event information from this email. Today's date is ${emailDateStr}.
+  // Build prompt with event type tagging
+  const prompt = `Extract event information from this email and assign appropriate event type tags. Today's date is ${emailDateStr}.
 
 Email Subject: ${subject || "(no subject)"}
 From: ${from_name || "Unknown"}
@@ -178,18 +197,8 @@ WHAT IS AN EVENT?
 - DO extract: concerts, meetings, workshops, parties, lectures, performances, social gatherings, study sessions, fundraisers, etc.
 - DO NOT extract: application deadlines, survey requests, reminders, announcements without dates, parking applications, general announcements
 
-AVAILABLE TAGS:
-The following JSON contains all available tags with their descriptions, rules, keywords, and examples:
-${tagDefinitionsJson}
-
-TAG ASSIGNMENT INSTRUCTIONS:
-- Review the email content against each tag's description and keywords
-- Assign a tag if the email content matches the tag's description OR contains relevant keywords
-- Pay special attention to the "rules" field - it contains important exceptions and clarifications
-- You can assign multiple tags if the event matches multiple descriptions
-- Only assign tags that clearly apply - be conservative, not liberal
-- Return tags as an array of tag names (e.g., ["Free Food", "Performance"])
-- If no tags apply, return an empty array: []
+EVENT TYPE TAGS - Assign ALL applicable tags from this list:
+${eventTypesContext}
 
 Extract the following information as JSON:
 {
@@ -201,7 +210,7 @@ Extract the following information as JSON:
   "endDate": "YYYY-MM-DD or null",
   "endTime": "HH:MM:SS or null (24-hour format, or null if all-day)",
   "allDay": true or false,
-  "tags": ["array", "of", "tag", "names", "or", "empty", "array"]
+  "tags": ["Tag1", "Tag2"]
 }
 
 CRITICAL: Return actual JSON null values (not the string "null"). For example:
@@ -216,6 +225,19 @@ CRITICAL EXTRACTION RULES:
 - If the email is ONLY about applications, surveys, or reminders with no actual event, return null for all fields
 
 IMPORTANT: The description field should be a brief, informative summary of what the event is about. Extract key details from the email body that would help someone understand what the event is.
+
+EVENT TYPE TAGGING RULES:
+- Read the email content carefully and assign ALL applicable event type tags
+- Follow the description, rules, and examples for each tag precisely
+- "Free Food": Only tag if food is PROVIDED to attendees (NOT collecting/donating food)
+- "Philanthropy": Only tag if fundraising/charity/service is EXPLICITLY mentioned
+- "21+": Only tag if age restriction is EXPLICITLY stated
+- "Performance": Tag for live shows, concerts, theater (NOT film screenings)
+- "Screening": Tag for film/movie viewings
+- "Workshop": Tag for hands-on, interactive learning
+- "Lecture/Speaker": Tag for talks where attendees primarily listen
+- Multiple tags can and should be applied when appropriate
+- When in doubt about a tag, DO NOT include it
 
 CRITICAL RULES FOR TIME DETECTION:
 - ONLY extract times that are EXPLICITLY mentioned in the email text - NEVER guess or invent times
@@ -307,29 +329,6 @@ Return ONLY valid JSON, no other text`;
     if (parsed.allDay !== true && parsed.allDay !== false) {
       parsed.allDay = !parsed.startTime && !parsed.endTime; // Default based on time presence
     }
-
-    // Parse tags array from LLM response
-    let tags = [];
-    if (parsed.tags) {
-      if (Array.isArray(parsed.tags)) {
-        tags = parsed.tags.filter((tag) => tag && typeof tag === "string");
-      } else if (typeof parsed.tags === "string") {
-        // Handle case where LLM returns string instead of array
-        try {
-          tags = JSON.parse(parsed.tags);
-        } catch {
-          // If not valid JSON, try splitting by comma
-          tags = parsed.tags
-            .split(",")
-            .map((t) => t.trim())
-            .filter(Boolean);
-        }
-      }
-    }
-
-    // Validate tags against available tag definitions
-    const availableTagNames = Object.keys(EVENT_TAGS?.tags || {});
-    tags = tags.filter((tag) => availableTagNames.includes(tag));
 
     // If time is missing but we have image attachments, try vision API
     if (!parsed.startTime && !parsed.endTime && attachments && emailId) {
@@ -700,6 +699,35 @@ If no time is visible, return {"startTime": null, "endTime": null}.`;
       );
     }
 
+    // Validate and clean tags from LLM response
+    let tags = [];
+    if (parsed.tags) {
+      if (Array.isArray(parsed.tags)) {
+        tags = parsed.tags.filter((tag) => tag && typeof tag === "string");
+      } else if (typeof parsed.tags === "string") {
+        // Handle case where LLM returns string instead of array
+        try {
+          tags = JSON.parse(parsed.tags);
+        } catch {
+          // If not valid JSON, try splitting by comma
+          tags = parsed.tags
+            .split(",")
+            .map((t) => t.trim())
+            .filter(Boolean);
+        }
+      }
+    }
+
+    // Validate tags against available tag definitions
+    const availableTagNames = Object.keys(EVENT_TAGS?.tags || {});
+    tags = tags.filter((tag) => availableTagNames.includes(tag));
+
+    if (tags.length > 0) {
+      console.log(
+        `[llm-parser] Event "${parsed.title}" tagged with: ${tags.join(", ")}`
+      );
+    }
+
     const event = {
       title: parsed.title,
       description: parsed.description || null,
@@ -711,7 +739,7 @@ If no time is visible, return {"startTime": null, "endTime": null}.`;
       allDay: allDay,
       posterUrl: posterUrl || null,
       organization: organization,
-      tags: tags, // Tags assigned by LLM based on event_type_des.json
+      tags: tags,
       confidenceScore: 0.95,
     };
 
@@ -742,7 +770,6 @@ If no time is visible, return {"startTime": null, "endTime": null}.`;
     return [event];
   } catch (error) {
     console.error("[llm-parser] Error parsing with LLM:", error.message);
-    // Return empty array on error (no fallback event object to avoid partial data)
     return [];
   }
 }

@@ -1,53 +1,69 @@
 import { google } from "googleapis";
 
 /**
- * Shared utility for publishing events to Google Calendar
- * Used by both /api/scrape/process and autoScraper.js
+ * Shared utility functions for Google Calendar operations
+ * Used by both the main server and automated scraper
  */
 
 /**
- * Get or create the ListServ calendar (without session caching)
+ * Get or create the ListServ Events calendar
  * @param {Object} oauth2Client - Google OAuth2 client
- * @returns {Promise<Object>} - Calendar info with id and created flag
+ * @returns {Promise<{id: string, created: boolean}>} - Calendar ID and whether it was created
  */
 export async function getOrCreateListServCalendar(oauth2Client) {
   const calendar = google.calendar({ version: "v3", auth: oauth2Client });
-  const list = await calendar.calendarList.list();
-  const existing = (list.data.items || []).find(
-    (c) => c.summary?.toLowerCase() === "listserv events"
-  );
-  if (existing) {
-    return { id: existing.id, created: false };
+
+  try {
+    // List all calendars
+    const listResponse = await calendar.calendarList.list();
+    const calendars = listResponse.data.items || [];
+
+    // Look for existing "ListServ Events" calendar (case-insensitive)
+    const existing = calendars.find(
+      (cal) => cal.summary?.toLowerCase() === "listserv events"
+    );
+
+    if (existing) {
+      return { id: existing.id, created: false };
+    }
+
+    // Create new calendar if not found
+    const createResponse = await calendar.calendars.insert({
+      requestBody: {
+        summary: "ListServ Events",
+        description: "Events extracted from campus-events@dartmouth.edu emails",
+        timeZone: "America/New_York",
+      },
+    });
+
+    return { id: createResponse.data.id, created: true };
+  } catch (error) {
+    console.error(
+      "[calendarPublisher] Error getting/creating ListServ calendar:",
+      error.message
+    );
+    throw error;
   }
-  const newCal = await calendar.calendars.insert({
-    requestBody: {
-      summary: "ListServ Events",
-      description: "Dedicated calendar for ListServ app",
-      timeZone: "America/Los_Angeles",
-    },
-  });
-  await calendar.calendarList.insert({ requestBody: { id: newCal.data.id } });
-  return { id: newCal.data.id, created: true };
 }
 
 /**
  * Publish an event to Google Calendar
- * @param {Object} params - Publishing parameters
+ * @param {Object} params - Event parameters
  * @param {Object} params.oauth2Client - Google OAuth2 client
- * @param {Database} params.db - SQLite database instance
- * @param {string} params.eventId - Event ID in database
+ * @param {Object} params.db - SQLite database instance
+ * @param {string} params.eventId - Local event ID
  * @param {string} params.userId - User ID
  * @param {string} params.title - Event title
  * @param {string} params.description - Event description
  * @param {string} params.location - Event location
  * @param {string} params.organization - Event organization
- * @param {Array<string>} params.eventTags - Array of event tags
+ * @param {Array<string>} params.eventTags - Event tags array
  * @param {string} params.posterUrl - Poster image URL
- * @param {string} params.start - Start datetime (ISO format)
- * @param {string} params.end - End datetime (ISO format)
+ * @param {string} params.start - Start date/time (ISO string)
+ * @param {string} params.end - End date/time (ISO string)
  * @param {boolean} params.allDay - Whether event is all-day
- * @param {string} params.logPrefix - Prefix for log messages (e.g., "[autoScraper]")
- * @returns {Promise<Object>} - Result with success flag and google_event_id
+ * @param {string} params.logPrefix - Log prefix for messages
+ * @returns {Promise<{success: boolean, error?: string, googleEventId?: string}>}
  */
 export async function publishEventToCalendar({
   oauth2Client,
@@ -58,104 +74,65 @@ export async function publishEventToCalendar({
   description,
   location,
   organization,
-  eventTags,
-  posterUrl,
+  eventTags = [],
+  posterUrl = "",
   start,
   end,
-  allDay,
-  logPrefix = "[publish]",
+  allDay = false,
+  logPrefix = "[calendarPublisher]",
 }) {
   try {
-    const calendar = google.calendar({
-      version: "v3",
-      auth: oauth2Client,
-    });
-    const { id: listservCalendarId } = await getOrCreateListServCalendar(
-      oauth2Client
-    );
+    // Get or create ListServ calendar
+    const { id: calendarId } = await getOrCreateListServCalendar(oauth2Client);
 
-    // Format dates based on all-day vs timed event
-    let startDate, endDate;
-    if (allDay) {
-      startDate = start ? start.split("T")[0] : null;
-      endDate = end ? end.split("T")[0] : startDate;
-    } else {
-      startDate = start;
-      endDate = end || start;
-    }
+    const calendar = google.calendar({ version: "v3", auth: oauth2Client });
 
-    if (!startDate) {
-      console.warn(
-        `${logPrefix} Skipping publish - missing start date for event ${eventId}`
-      );
-      return { success: false, error: "Missing start date" };
-    }
-
-    // Build Google Calendar event resource
-    const resource = {
-      summary: title || "",
+    // Format event for Google Calendar API
+    const eventData = {
+      summary: title || "(No title)",
       description: description || "",
       location: location || "",
+      start: allDay
+        ? { date: start.split("T")[0] } // All-day events use date only
+        : { dateTime: start, timeZone: "America/New_York" },
+      end: allDay
+        ? { date: end ? end.split("T")[0] : start.split("T")[0] }
+        : { dateTime: end || start, timeZone: "America/New_York" },
       extendedProperties: {
         shared: {
           organization: organization || "",
-          tags: eventTags ? JSON.stringify(eventTags) : "[]",
+          tags: JSON.stringify(eventTags || []),
           poster_url: posterUrl || "",
         },
       },
     };
 
-    // Set start/end dates
-    if (allDay) {
-      resource.start = { date: startDate };
-      resource.end = { date: endDate };
-    } else {
-      resource.start = {
-        dateTime: startDate,
-        timeZone: "America/New_York",
-      };
-      resource.end = {
-        dateTime: endDate,
-        timeZone: "America/New_York",
-      };
-    }
-
-    // Insert event into Google Calendar
-    const insertResp = await calendar.events.insert({
-      calendarId: listservCalendarId,
-      requestBody: resource,
+    // Create event in Google Calendar
+    const response = await calendar.events.insert({
+      calendarId,
+      requestBody: eventData,
     });
 
-    if (insertResp.data && insertResp.data.id) {
-      // Update database with published status
-      db.prepare(
-        "UPDATE events SET status='published', google_event_id=?, updated_at=CURRENT_TIMESTAMP WHERE id=? AND user_id=?"
-      ).run(insertResp.data.id, eventId, userId);
+    const googleEventId = response.data.id;
 
-      console.log(
-        `${logPrefix}Published event: "${title || eventId}" (${
-          insertResp.data.id
-        })`
-      );
+    // Update local database
+    db.prepare(
+      `UPDATE events 
+       SET google_event_id = ?, status = 'published', updated_at = CURRENT_TIMESTAMP 
+       WHERE id = ? AND user_id = ?`
+    ).run(googleEventId, eventId, userId);
 
-      return {
-        success: true,
-        google_event_id: insertResp.data.id,
-      };
-    } else {
-      console.warn(
-        `${logPrefix}  Failed to publish event ${eventId} - no event ID returned`
-      );
-      return {
-        success: false,
-        error: "No event ID returned from Google Calendar",
-      };
-    }
-  } catch (error) {
-    console.error(
-      `${logPrefix} Error publishing event ${eventId}:`,
-      error.message
+    console.log(
+      `${logPrefix} Published event ${eventId} to Google Calendar (${googleEventId})`
     );
-    return { success: false, error: error.message };
+
+    return { success: true, googleEventId };
+  } catch (error) {
+    const errorMessage = error.message || "Unknown error";
+    console.error(
+      `${logPrefix} Failed to publish event ${eventId} to Google Calendar:`,
+      errorMessage
+    );
+    return { success: false, error: errorMessage };
   }
 }
