@@ -238,14 +238,13 @@ export const AppProvider = ({ children }) => {
           textColor: "#000000", // Always use black text for better readability
           extendedProps: {
             organization: ev.organization ?? "",
-            tags: ev.tags ?? "",
+            tags: ev.tags ?? [],
             poster_url: ev.poster_url ?? "",
             description: ev.description ?? "",
             location: ev.location ?? "",
             source: ev.source,
             calendarId: ev.calendarId ?? null,
             filter: ev.filter ?? ev.tag ?? null,
-            categories: ev.categories ?? [],
             orgCategories: ev.orgCategories ?? [],
           },
         };
@@ -277,7 +276,7 @@ export const AppProvider = ({ children }) => {
           source: ev.source,
           calendarId: ev.calendarId ?? null,
           filter: ev.filter ?? ev.tag ?? null,
-          categories: ev.categories ?? [],
+          tags: ev.tags ?? [],
           orgCategories: ev.orgCategories ?? [],
         },
       }));

@@ -306,11 +306,11 @@ runMigration(); // Run the migration on startup
 
 // Prepared statements for events table
 const eventInsert = db.prepare(
-  `INSERT INTO events(id, user_id, source, email_id, title, description, location, organization, event_tags, poster_url, start, end, all_day, confidence_score, status)
-   VALUES(@id, @user_id, @source, @email_id, @title, @description, @location, @organization, @event_tags, @poster_url, @start, @end, @all_day, @confidence_score, @status)`
+  `INSERT INTO events(id, user_id, source, email_id, title, description, location, organization, tags, poster_url, start, end, all_day, confidence_score, status)
+   VALUES(@id, @user_id, @source, @email_id, @title, @description, @location, @organization, @tags, @poster_url, @start, @end, @all_day, @confidence_score, @status)`
 );
 const eventUpdate = db.prepare(
-  `UPDATE events SET title=@title, description=@description, location=@location, organization=@organization, event_tags=@event_tags, poster_url=@poster_url, 
+  `UPDATE events SET title=@title, description=@description, location=@location, organization=@organization, tags=@tags, poster_url=@poster_url,
    start=@start, end=@end, all_day=@all_day, updated_at=CURRENT_TIMESTAMP WHERE id=@id AND user_id=@user_id`
 );
 const eventDelete = db.prepare(
@@ -556,11 +556,11 @@ app.get("/api/events", ensureAuthed, async (req, res) => {
       end: e.end,
       allDay: !!e.all_day,
       organization: e.organization || "",
-      event_tags: JSON.parse(e.event_tags || "[]"), // De-serialize event_tags from JSON string
+      tags: JSON.parse(e.tags || "[]"), // De-serialize tags from JSON string
       poster_url: e.poster_url || "",
     }));
 
-    // Combine all events (event_tags come from LLM, no additional processing needed)
+    // Combine all events (tags come from LLM, no additional processing needed)
     const combined = [...localEvents, ...allEvents];
 
     // Helper: identify ListServ events so only they get filtered away
@@ -571,11 +571,13 @@ app.get("/api/events", ensureAuthed, async (req, res) => {
       return isDraft || isGoogleListServ;
     };
 
-    // Filter by event type tags if requested
+    // Filter by categories (event type tags) if requested
+    // Accept both 'categories' (frontend) and 'eventTypes' (legacy) parameters
     let filtered = combined;
+    const categoriesParam = req.query.categories || req.query.eventTypes;
 
-    if (req.query.eventTypes) {
-      const reqEventTypes = req.query.eventTypes
+    if (categoriesParam) {
+      const reqCategories = categoriesParam
         .split(",")
         .map((s) => s.trim())
         .filter(Boolean);
@@ -584,8 +586,8 @@ app.get("/api/events", ensureAuthed, async (req, res) => {
         // Non-ListServ events are always kept, regardless of filters
         if (!isListServ(ev)) return true;
 
-        // For ListServ events, check if they match any requested event types
-        return (ev.event_tags || []).some((tag) => reqEventTypes.includes(tag));
+        // For ListServ events, check if they match any requested categories
+        return (ev.tags || []).some((tag) => reqCategories.includes(tag));
       });
     }
 
@@ -607,6 +609,17 @@ app.get("/api/event-types", ensureAuthed, (req, res) => {
   res.json({ eventTypes: list });
 });
 
+// Alias for frontend compatibility - returns categories in expected format
+app.get("/api/event-categories", ensureAuthed, (req, res) => {
+  const tags = EVENT_TYPE_RULES?.tags || {};
+  const categories = Object.entries(tags).map(([tagName, def]) => ({
+    key: tagName,
+    label: tagName,
+    description: def.description,
+  }));
+  res.json({ categories });
+});
+
 // --- Drafts (now using unified events table) ---
 app.post("/api/drafts", ensureAuthed, (req, res) => {
   try {
@@ -618,14 +631,14 @@ app.post("/api/drafts", ensureAuthed, (req, res) => {
       end,
       allDay,
       organization,
-      event_tags,
+      tags,
       poster_url,
     } = req.body;
     if (!start) return res.status(400).json({ error: "start required" });
     const id = `draft_${crypto.randomBytes(12).toString("hex")}`;
-    const eventTagsJson = Array.isArray(event_tags)
-      ? JSON.stringify(event_tags)
-      : event_tags || "[]";
+    const tagsJson = Array.isArray(tags)
+      ? JSON.stringify(tags)
+      : tags || "[]";
     eventInsert.run({
       id,
       user_id: req.session.user.id,
@@ -635,7 +648,7 @@ app.post("/api/drafts", ensureAuthed, (req, res) => {
       description: description || "",
       location: location || "",
       organization: organization || "",
-      event_tags: eventTagsJson,
+      tags: tagsJson,
       poster_url: poster_url || "",
       start,
       end: end || null,
@@ -813,10 +826,8 @@ app.post("/api/events/:compoundId/publish", ensureAuthed, async (req, res) => {
       }
     }
 
-    // Parse event_tags from database
-    const eventTags = row.event_tags
-      ? JSON.parse(row.event_tags)
-      : row.tags
+    // Parse tags from database
+    const eventTags = row.tags
       ? JSON.parse(row.tags)
       : [];
 
@@ -1000,9 +1011,9 @@ app.post("/api/scrape/process", ensureAuthed, async (req, res) => {
             .randomBytes(12)
             .toString("hex")}`;
 
-          // Event tags now come from LLM parsing (event.event_tags)
-          const eventTagsJson = event.event_tags
-            ? JSON.stringify(event.event_tags)
+          // Tags come from LLM parsing (event.tags)
+          const tagsJson = event.tags
+            ? JSON.stringify(event.tags)
             : "[]";
 
           const start = combineDateTime(
@@ -1091,7 +1102,7 @@ app.post("/api/scrape/process", ensureAuthed, async (req, res) => {
             description: event.description || "",
             location: event.location || "",
             organization: event.organization || "",
-            event_tags: eventTagsJson,
+            tags: tagsJson,
             poster_url: event.posterUrl || "",
             start,
             end: end || null,
@@ -1111,7 +1122,7 @@ app.post("/api/scrape/process", ensureAuthed, async (req, res) => {
             description: event.description || "",
             location: event.location || "",
             organization: event.organization || "",
-            eventTags: event.event_tags || [],
+            eventTags: event.tags || [],
             posterUrl: event.posterUrl || "",
             start,
             end: end || start,
@@ -1198,10 +1209,10 @@ app.get("/api/email-events", ensureAuthed, (req, res) => {
 
     const events = db.prepare(query).all(...params);
 
-    // Parse event_tags JSON for each event
+    // Parse tags JSON for each event
     const eventsWithParsedTags = events.map((event) => ({
       ...event,
-      event_tags: event.event_tags ? JSON.parse(event.event_tags) : [],
+      tags: event.tags ? JSON.parse(event.tags) : [],
     }));
 
     res.json({ events: eventsWithParsedTags });
