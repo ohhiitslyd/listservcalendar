@@ -5,7 +5,25 @@ import { fileURLToPath } from "url";
 
 /**
  * LLM-based email parser using OpenAI API with event type tagging
+ *
+ * Features:
+ * - JSON mode for guaranteed valid JSON output
+ * - Retry logic for resilient API calls
+ * - Vision API for extracting full event details from poster images
+ * - Few-shot examples for improved accuracy
  */
+
+// Configuration
+const LLM_CONFIG = {
+  model: "gpt-4o",
+  temperature: 0.3,
+  maxTokens: 600,
+  maxRetries: 3,
+  retryDelayMs: 1000,
+  visionMaxTokens: 400,
+  // API base URL - can be overridden for Azure OpenAI or other providers
+  apiBaseUrl: process.env.OPENAI_API_BASE_URL || "https://api.openai.com/v1",
+};
 
 // Load event type definitions
 const __filename = fileURLToPath(import.meta.url);
@@ -30,6 +48,85 @@ try {
 } catch (e) {
   console.warn("[llm-parser] Could not load event_type_des.json:", e.message);
 }
+
+/**
+ * Sleep helper for retry delays
+ */
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Make an OpenAI API call with retry logic
+ * @param {string} apiKey - OpenAI API key
+ * @param {Object} requestBody - The request body for the API
+ * @param {number} maxRetries - Maximum number of retries
+ * @returns {Promise<Object>} The API response data
+ */
+async function callOpenAIWithRetry(apiKey, requestBody, maxRetries = LLM_CONFIG.maxRetries) {
+  let lastError;
+
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      const response = await fetch(`${LLM_CONFIG.apiBaseUrl}/chat/completions`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify(requestBody),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        // Don't retry on auth errors or invalid requests
+        if (response.status === 401 || response.status === 400) {
+          throw new Error(`API error ${response.status}: ${errorText}`);
+        }
+        throw new Error(`API error ${response.status}: ${errorText}`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      lastError = error;
+      console.warn(`[llm-parser] Attempt ${attempt}/${maxRetries} failed: ${error.message}`);
+
+      if (attempt < maxRetries) {
+        const delay = LLM_CONFIG.retryDelayMs * attempt; // Exponential backoff
+        console.log(`[llm-parser] Retrying in ${delay}ms...`);
+        await sleep(delay);
+      }
+    }
+  }
+
+  throw lastError;
+}
+
+/**
+ * Few-shot examples for improved extraction accuracy
+ */
+const FEW_SHOT_EXAMPLES = `
+EXAMPLE 1:
+Email Subject: Join us for Trivia Night!
+Email Body: Come test your knowledge at Murphy's Pub this Friday! Teams of up to 6, prizes for top 3 teams. Food and drinks available for purchase. 7-9 PM. All ages welcome but 21+ to drink.
+
+Output:
+{"title":"Trivia Night at Murphy's Pub","description":"Team trivia competition with prizes for top 3 teams. Teams of up to 6 people. Food and drinks available for purchase.","location":"Murphy's Pub","startDate":"[Friday's date]","startTime":"19:00:00","endDate":"[Friday's date]","endTime":"21:00:00","allDay":false,"tags":["21+"]}
+
+EXAMPLE 2:
+Email Subject: Documentary Screening: Climate Solutions
+Email Body: The Environmental Studies department presents a screening of "Tomorrow's World" followed by a panel discussion with local activists. Refreshments provided. Thursday, January 30th at 6pm in Moore Hall B01.
+
+Output:
+{"title":"Documentary Screening: Climate Solutions","description":"Screening of 'Tomorrow's World' documentary followed by panel discussion with local activists. Hosted by Environmental Studies department.","location":"Moore Hall B01","startDate":"2025-01-30","startTime":"18:00:00","endDate":"2025-01-30","endTime":null,"allDay":false,"tags":["Screening","Free Food","Lecture/Speaker"]}
+
+EXAMPLE 3:
+Email Subject: Reminder: Summer Internship Applications Due
+Email Body: Don't forget - applications for summer internships at tech companies are due by February 15th. Visit the career center for help with your resume.
+
+Output:
+{"title":null,"description":null,"location":null,"startDate":null,"startTime":null,"endDate":null,"endTime":null,"allDay":false,"tags":[]}
+`;
 
 /**
  * Format event type tags for LLM prompt
@@ -266,40 +363,30 @@ DATE EXTRACTION RULES:
 - If this email IS about an event, you MUST extract title and startDate
 - Be aggressive about extracting dates from context
 
-Return ONLY valid JSON, no other text`;
+${FEW_SHOT_EXAMPLES}
+
+Now extract from the email above. Return ONLY valid JSON:`;
 
   try {
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model: "gpt-4o", // Cheaper, faster model
-        messages: [
-          {
-            role: "system",
-            content:
-              "You are a helpful assistant that extracts event information from emails. Always return valid JSON only.",
-          },
-          {
-            role: "user",
-            content: prompt,
-          },
-        ],
-        temperature: 0.3, // Lower temperature for more consistent parsing
-        max_tokens: 500,
-      }),
+    // Use JSON mode for guaranteed valid JSON output
+    const data = await callOpenAIWithRetry(apiKey, {
+      model: LLM_CONFIG.model,
+      messages: [
+        {
+          role: "system",
+          content:
+            "You are a helpful assistant that extracts event information from emails. You always respond with valid JSON matching the requested schema. If no event is found, return null for all fields.",
+        },
+        {
+          role: "user",
+          content: prompt,
+        },
+      ],
+      temperature: LLM_CONFIG.temperature,
+      max_tokens: LLM_CONFIG.maxTokens,
+      response_format: { type: "json_object" }, // JSON mode - guarantees valid JSON
     });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`[llm-parser] API error: ${response.status} ${errorText}`);
-      return [];
-    }
-
-    const data = await response.json();
     const content = data.choices[0]?.message?.content?.trim();
 
     if (!content) {
@@ -330,8 +417,10 @@ Return ONLY valid JSON, no other text`;
       parsed.allDay = !parsed.startTime && !parsed.endTime; // Default based on time presence
     }
 
-    // If time is missing but we have image attachments, try vision API
-    if (!parsed.startTime && !parsed.endTime && attachments && emailId) {
+    // If key information is missing but we have image attachments, try vision API
+    // Now extracts FULL event details (title, date, time, location) from poster images
+    const needsVisionExtraction = !parsed.startTime || !parsed.startDate || !parsed.title;
+    if (needsVisionExtraction && attachments && emailId) {
       try {
         const attachmentsList =
           typeof attachments === "string"
@@ -348,68 +437,96 @@ Return ONLY valid JSON, no other text`;
             const imageData = imageAttachments[0].data;
             const imageMimeType = imageAttachments[0].mimeType;
 
-            const visionPrompt = `Look at this event poster/image. Extract the event time information if it's visible in the image. 
-Return ONLY a JSON object with:
+            // Expanded vision prompt to extract ALL event details from poster images
+            const visionPrompt = `Analyze this event poster/flyer image carefully. Extract ALL visible event information.
+
+Return a JSON object with these fields (use null if not visible):
 {
-  "startTime": "HH:MM:SS in 24-hour format or null",
-  "endTime": "HH:MM:SS in 24-hour format or null"
+  "title": "Event title/name visible on the poster",
+  "date": "Date in YYYY-MM-DD format (interpret month names, e.g., 'January 30' with context year ${new Date().getFullYear()})",
+  "startTime": "Start time in HH:MM:SS 24-hour format (e.g., '6:00 PM' → '18:00:00')",
+  "endTime": "End time in HH:MM:SS 24-hour format, or null if not shown",
+  "location": "Venue/room/address if visible",
+  "description": "Brief description if visible (what the event is about)"
 }
-If you see a time like "6:00 PM", convert it to "18:00:00". If you see a time range like "6:00-8:00 PM", extract both startTime and endTime.
-If no time is visible, return {"startTime": null, "endTime": null}.`;
 
-            const visionResponse = await fetch(
-              "https://api.openai.com/v1/chat/completions",
-              {
-                method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                  Authorization: `Bearer ${apiKey}`,
-                },
-                body: JSON.stringify({
-                  model: "gpt-4o",
-                  messages: [
-                    {
-                      role: "user",
-                      content: [
-                        { type: "text", text: visionPrompt },
-                        {
-                          type: "image_url",
-                          image_url: {
-                            url: `data:${imageMimeType};base64,${imageData}`,
-                          },
+TIME CONVERSION:
+- 6:00 PM → "18:00:00"
+- 7:30 PM → "19:30:00"
+- 12:00 PM (noon) → "12:00:00"
+- 9:00 AM → "09:00:00"
+
+DATE INTERPRETATION:
+- "January 30" → "${new Date().getFullYear()}-01-30"
+- "Feb 14" → "${new Date().getFullYear()}-02-14"
+- "1/30" → "${new Date().getFullYear()}-01-30"
+
+Look carefully at ALL text in the image including stylized/decorative fonts. Return valid JSON only.`;
+
+            try {
+              const visionData = await callOpenAIWithRetry(apiKey, {
+                model: LLM_CONFIG.model,
+                messages: [
+                  {
+                    role: "system",
+                    content: "You are an expert at reading event posters and extracting structured event information. Always return valid JSON.",
+                  },
+                  {
+                    role: "user",
+                    content: [
+                      { type: "text", text: visionPrompt },
+                      {
+                        type: "image_url",
+                        image_url: {
+                          url: `data:${imageMimeType};base64,${imageData}`,
+                          detail: "high", // Use high detail for better text recognition
                         },
-                      ],
-                    },
-                  ],
-                  max_tokens: 200,
-                }),
-              }
-            );
+                      },
+                    ],
+                  },
+                ],
+                max_tokens: LLM_CONFIG.visionMaxTokens,
+                response_format: { type: "json_object" },
+              }, 2); // Only 2 retries for vision to avoid excessive costs
 
-            if (visionResponse.ok) {
-              const visionData = await visionResponse.json();
-              const visionContent =
-                visionData.choices[0]?.message?.content?.trim();
+              const visionContent = visionData.choices[0]?.message?.content?.trim();
               if (visionContent) {
-                const visionJsonMatch = visionContent.match(/\{[\s\S]*\}/);
-                if (visionJsonMatch) {
-                  const visionParsed = JSON.parse(visionJsonMatch[0]);
-                  if (visionParsed.startTime || visionParsed.endTime) {
-                    parsed.startTime =
-                      visionParsed.startTime || parsed.startTime;
-                    parsed.endTime = visionParsed.endTime || parsed.endTime;
-                    parsed.allDay = false; // If we found time, it's not all-day
-                    console.log(
-                      `[llm-parser] Extracted time from image: startTime=${parsed.startTime}, endTime=${parsed.endTime}`
-                    );
-                  }
+                const visionParsed = JSON.parse(visionContent);
+                console.log(`[llm-parser] Vision API extracted:`, visionParsed);
+
+                // Merge vision results with parsed data (vision fills in gaps)
+                if (visionParsed.title && !parsed.title) {
+                  parsed.title = visionParsed.title;
+                  console.log(`[llm-parser] Vision: extracted title "${parsed.title}"`);
+                }
+                if (visionParsed.date && !parsed.startDate) {
+                  parsed.startDate = visionParsed.date;
+                  console.log(`[llm-parser] Vision: extracted date ${parsed.startDate}`);
+                }
+                if (visionParsed.startTime && !parsed.startTime) {
+                  parsed.startTime = visionParsed.startTime;
+                  parsed.allDay = false;
+                  console.log(`[llm-parser] Vision: extracted startTime ${parsed.startTime}`);
+                }
+                if (visionParsed.endTime && !parsed.endTime) {
+                  parsed.endTime = visionParsed.endTime;
+                  console.log(`[llm-parser] Vision: extracted endTime ${parsed.endTime}`);
+                }
+                if (visionParsed.location && !parsed.location) {
+                  parsed.location = visionParsed.location;
+                  console.log(`[llm-parser] Vision: extracted location "${parsed.location}"`);
+                }
+                if (visionParsed.description && !parsed.description) {
+                  parsed.description = visionParsed.description;
                 }
               }
+            } catch (visionApiError) {
+              console.warn("[llm-parser] Vision API call failed:", visionApiError.message);
             }
           }
         }
       } catch (visionError) {
-        console.warn("[llm-parser] Vision API error:", visionError.message);
+        console.warn("[llm-parser] Vision processing error:", visionError.message);
       }
     }
 
