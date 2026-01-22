@@ -22,52 +22,49 @@ function formatDateForGmail(date) {
 
 /**
  * Get the last scrape time from database
- * @param {Database} db - SQLite database instance
- * @returns {Date} - Last scrape time or default to 12 hours ago
+ * @param {Pool} pool - PostgreSQL connection pool
+ * @returns {Promise<Date>} - Last scrape time or default to 8 hours ago
  */
-function getLastScrapeTime(db) {
+async function getLastScrapeTime(pool) {
   try {
     // First try to get from app_settings
-    const setting = db
-      .prepare("SELECT value FROM app_settings WHERE key=?")
-      .get("last_auto_scrape");
+    const settingResult = await pool.query(
+      "SELECT value FROM app_settings WHERE key = $1",
+      ["last_auto_scrape"]
+    );
 
-    if (setting?.value) {
-      return new Date(setting.value);
+    if (settingResult.rows[0]?.value) {
+      return new Date(settingResult.rows[0].value);
     }
 
     // Fallback: Get the most recent email's received_date
-    const lastEmail = db
-      .prepare(
-        "SELECT received_date FROM scraped_emails ORDER BY received_date DESC LIMIT 1"
-      )
-      .get();
+    const lastEmailResult = await pool.query(
+      "SELECT received_date FROM scraped_emails ORDER BY received_date DESC LIMIT 1"
+    );
 
-    if (lastEmail?.received_date) {
-      return new Date(lastEmail.received_date);
+    if (lastEmailResult.rows[0]?.received_date) {
+      return new Date(lastEmailResult.rows[0].received_date);
     }
 
-    // Default: 12 hours ago (matches the cron schedule)
-    return new Date(Date.now() - 12 * 60 * 60 * 1000);
+    // Default: 8 hours ago (matches the cron schedule)
+    return new Date(Date.now() - 8 * 60 * 60 * 1000);
   } catch (error) {
     console.error("[autoScraper] Error getting last scrape time:", error);
-    // Default: 12 hours ago
-    return new Date(Date.now() - 12 * 60 * 60 * 1000);
+    // Default: 8 hours ago
+    return new Date(Date.now() - 8 * 60 * 60 * 1000);
   }
 }
 
 /**
  * Save the current scrape time to database
- * @param {Database} db - SQLite database instance
+ * @param {Pool} pool - PostgreSQL connection pool
  */
-function saveLastScrapeTime(db) {
+async function saveLastScrapeTime(pool) {
   try {
-    db.prepare(
-      "INSERT OR REPLACE INTO app_settings (key, value, updated_at) VALUES (?, ?, ?)"
-    ).run(
-      "last_auto_scrape",
-      new Date().toISOString(),
-      new Date().toISOString()
+    await pool.query(
+      `INSERT INTO app_settings (key, value, updated_at) VALUES ($1, $2, $3)
+       ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = EXCLUDED.updated_at`,
+      ["last_auto_scrape", new Date().toISOString(), new Date().toISOString()]
     );
   } catch (error) {
     console.error("[autoScraper] Error saving last scrape time:", error);
@@ -76,15 +73,15 @@ function saveLastScrapeTime(db) {
 
 /**
  * Get admin OAuth credentials from database
- * @param {Database} db - SQLite database instance
- * @returns {Object|null} - Admin token data or null
+ * @param {Pool} pool - PostgreSQL connection pool
+ * @returns {Promise<Object|null>} - Admin token data or null
  */
-function getAdminTokens(db) {
+async function getAdminTokens(pool) {
   try {
-    const token = db
-      .prepare("SELECT * FROM admin_tokens ORDER BY updated_at DESC LIMIT 1")
-      .get();
-    return token;
+    const result = await pool.query(
+      "SELECT * FROM admin_tokens WHERE is_scraper_account = TRUE ORDER BY updated_at DESC LIMIT 1"
+    );
+    return result.rows[0] || null;
   } catch (error) {
     console.error("[autoScraper] Error getting admin tokens:", error);
     return null;
@@ -114,7 +111,6 @@ function createOAuthClientFromTokens(tokenData) {
   // Auto-refresh tokens
   oauth2Client.on("tokens", (tokens) => {
     console.log("[autoScraper] OAuth tokens refreshed");
-    // Note: We could save the new tokens back to DB here if needed
   });
 
   return oauth2Client;
@@ -138,18 +134,18 @@ function combineDateTime(date, time, allDay) {
 /**
  * Process unprocessed emails and extract events
  * @param {string} userId - User ID
- * @param {Database} db - SQLite database instance
+ * @param {Pool} pool - PostgreSQL connection pool
  * @param {Object} oauth2Client - Google OAuth2 client for publishing events
  * @returns {Promise<Object>} - Processing results
  */
-async function processUnprocessedEmails(userId, db, oauth2Client) {
+async function processUnprocessedEmails(userId, pool, oauth2Client) {
   try {
     // Get all unprocessed emails
-    const emailsToProcess = db
-      .prepare(
-        "SELECT * FROM scraped_emails WHERE user_id=? AND processed=0 ORDER BY received_date DESC"
-      )
-      .all(userId);
+    const emailsResult = await pool.query(
+      "SELECT * FROM scraped_emails WHERE user_id = $1 AND processed = 0 ORDER BY received_date DESC",
+      [userId]
+    );
+    const emailsToProcess = emailsResult.rows;
 
     let processed = 0;
     let eventsCreated = 0;
@@ -158,17 +154,7 @@ async function processUnprocessedEmails(userId, db, oauth2Client) {
     for (const email of emailsToProcess) {
       try {
         // Parse email for events using LLM
-        // Note: parseEmailForEvents expects the full email object
         const parsedEvents = await parseEmailForEvents(email);
-
-        // Insert events into the events table
-        const eventInsert = db.prepare(`
-          INSERT INTO events(
-            id, user_id, source, email_id, title, description, location,
-            organization, tags, poster_url, start, end, all_day, 
-            confidence_score, status
-          ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `);
 
         for (const event of parsedEvents) {
           // Combine date and time fields into proper datetime strings
@@ -190,7 +176,6 @@ async function processUnprocessedEmails(userId, db, oauth2Client) {
           }
 
           // Validate: if end date is different from start date, reset to same day
-          // Most campus events are single-day; multi-day is likely a parsing error
           if (
             end &&
             event.endDate &&
@@ -205,7 +190,6 @@ async function processUnprocessedEmails(userId, db, oauth2Client) {
                 endDate: event.endDate,
               }
             );
-            // Keep the end time but use the start date
             end = combineDateTime(event.startDate, event.endTime, event.allDay);
           }
 
@@ -218,22 +202,28 @@ async function processUnprocessedEmails(userId, db, oauth2Client) {
           }
 
           const eventId = `event_${Math.random().toString(36).substr(2, 16)}`;
-          eventInsert.run(
-            eventId,
-            userId,
-            "email",
-            email.id,
-            event.title || "(No title)",
-            event.description || "",
-            event.location || "",
-            event.organization || "",
-            event.tags ? JSON.stringify(event.tags) : null,
-            event.posterUrl || null,
-            start,
-            end || start,
-            event.allDay ? 1 : 0,
-            event.confidence || null,
-            "draft"
+
+          await pool.query(
+            `INSERT INTO events (id, user_id, source, email_id, title, description, location,
+              organization, tags, poster_url, start, "end", all_day, confidence_score, status)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
+            [
+              eventId,
+              userId,
+              "email",
+              email.id,
+              event.title || "(No title)",
+              event.description || "",
+              event.location || "",
+              event.organization || "",
+              event.tags ? JSON.stringify(event.tags) : null,
+              event.posterUrl || null,
+              start,
+              end || start,
+              event.allDay ? 1 : 0,
+              event.confidence || null,
+              "draft",
+            ]
           );
           eventsCreated++;
 
@@ -241,7 +231,7 @@ async function processUnprocessedEmails(userId, db, oauth2Client) {
           if (oauth2Client) {
             await publishEventToCalendar({
               oauth2Client,
-              db,
+              pool,
               eventId,
               userId,
               title: event.title || "",
@@ -255,14 +245,13 @@ async function processUnprocessedEmails(userId, db, oauth2Client) {
               allDay: event.allDay,
               logPrefix: "[autoScraper]",
             });
-            // Note: publishEventToCalendar handles errors internally and logs them
-            // We don't fail the whole process if publishing fails
           }
         }
 
         // Mark email as processed
-        db.prepare("UPDATE scraped_emails SET processed=1 WHERE id=?").run(
-          email.id
+        await pool.query(
+          "UPDATE scraped_emails SET processed = 1 WHERE id = $1",
+          [email.id]
         );
         processed++;
       } catch (error) {
@@ -287,10 +276,10 @@ async function processUnprocessedEmails(userId, db, oauth2Client) {
 
 /**
  * Main automated scrape function
- * @param {Database} db - SQLite database instance
+ * @param {Pool} pool - PostgreSQL connection pool
  * @returns {Promise<Object>} - Scrape results
  */
-export async function runAutomatedScrape(db) {
+export async function runAutomatedScrape(pool) {
   const startTime = new Date();
   console.log(`\n[autoScraper] ========================================`);
   console.log(
@@ -299,7 +288,7 @@ export async function runAutomatedScrape(db) {
 
   try {
     // Step 1: Get admin OAuth credentials
-    const adminTokenData = getAdminTokens(db);
+    const adminTokenData = await getAdminTokens(pool);
     if (!adminTokenData) {
       throw new Error(
         "No admin tokens found. Please authenticate an admin user first."
@@ -314,7 +303,7 @@ export async function runAutomatedScrape(db) {
     );
 
     // Step 2: Get last scrape time
-    const lastScrapeTime = getLastScrapeTime(db);
+    const lastScrapeTime = await getLastScrapeTime(pool);
     console.log(
       `[autoScraper] Last scrape time: ${lastScrapeTime.toISOString()}`
     );
@@ -326,7 +315,7 @@ export async function runAutomatedScrape(db) {
 
     // Step 4: Scrape emails
     console.log(`[autoScraper] Scraping emails...`);
-    const scrapeResult = await scrapeEmails(oauth2Client, userId, db, {
+    const scrapeResult = await scrapeEmails(oauth2Client, userId, pool, {
       query,
       skipExisting: true,
       force: false,
@@ -342,7 +331,7 @@ export async function runAutomatedScrape(db) {
     );
     const processResult = await processUnprocessedEmails(
       userId,
-      db,
+      pool,
       oauth2Client
     );
 
@@ -351,7 +340,7 @@ export async function runAutomatedScrape(db) {
     );
 
     // Step 6: Save scrape time
-    saveLastScrapeTime(db);
+    await saveLastScrapeTime(pool);
 
     const endTime = new Date();
     const duration = ((endTime - startTime) / 1000).toFixed(2);

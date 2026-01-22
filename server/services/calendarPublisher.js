@@ -50,7 +50,7 @@ export async function getOrCreateListServCalendar(oauth2Client) {
  * Publish an event to Google Calendar
  * @param {Object} params - Event parameters
  * @param {Object} params.oauth2Client - Google OAuth2 client
- * @param {Object} params.db - SQLite database instance
+ * @param {Pool} params.pool - PostgreSQL connection pool
  * @param {string} params.eventId - Local event ID
  * @param {string} params.userId - User ID
  * @param {string} params.title - Event title
@@ -67,7 +67,7 @@ export async function getOrCreateListServCalendar(oauth2Client) {
  */
 export async function publishEventToCalendar({
   oauth2Client,
-  db,
+  pool,
   eventId,
   userId,
   title,
@@ -116,17 +116,18 @@ export async function publishEventToCalendar({
     const googleEventId = response.data.id;
 
     // Update local database
-    db.prepare(
-      `UPDATE events 
-       SET google_event_id = ?, status = 'published', updated_at = CURRENT_TIMESTAMP 
-       WHERE id = ? AND user_id = ?`
-    ).run(googleEventId, eventId, userId);
+    await pool.query(
+      `UPDATE events
+       SET google_event_id = $1, status = 'published', updated_at = CURRENT_TIMESTAMP
+       WHERE id = $2 AND user_id = $3`,
+      [googleEventId, eventId, userId]
+    );
 
     console.log(
       `${logPrefix} Published event ${eventId} to Google Calendar (${googleEventId})`
     );
 
-    return { success: true, googleEventId };
+    return { success: true, google_event_id: googleEventId };
   } catch (error) {
     const errorMessage = error.message || "Unknown error";
     console.error(
