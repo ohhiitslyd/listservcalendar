@@ -921,10 +921,23 @@ app.get("/api/scraped-emails", ensureAuthed, async (req, res) => {
 
     const emails = await query(queryText, params);
 
-    const emailsWithAttachments = emails.map((email) => ({
-      ...email,
-      attachments: email.attachments ? JSON.parse(email.attachments) : null,
-    }));
+    const emailsWithAttachments = emails.map((email) => {
+      // Parse attachments and strip base64 data to reduce response size
+      // The actual attachment data is fetched via /api/scraped-emails/:emailId/attachments/:contentId
+      let attachmentsMeta = null;
+      if (email.attachments) {
+        try {
+          const parsed = JSON.parse(email.attachments);
+          attachmentsMeta = parsed.map(({ data, ...meta }) => meta); // Strip base64 data
+        } catch (e) {
+          attachmentsMeta = null;
+        }
+      }
+      return {
+        ...email,
+        attachments: attachmentsMeta,
+      };
+    });
 
     res.json({ emails: emailsWithAttachments });
   } catch (e) {
@@ -970,15 +983,31 @@ app.get("/api/email-events", ensureAuthed, async (req, res) => {
 app.get("/api/scraped-emails/export", ensureAuthed, async (req, res) => {
   try {
     const userId = req.session.user.id;
+    const { includeAttachmentData = "false" } = req.query;
+
+    // Exclude attachment data by default to avoid Neon's 64MB response limit
+    const columns = includeAttachmentData === "true"
+      ? "*"
+      : "id, user_id, gmail_message_id, thread_id, from_email, from_name, subject, body_text, body_html, received_date, scraped_at, processed, attachments";
+
     const emails = await query(
-      "SELECT * FROM scraped_emails WHERE user_id = $1 ORDER BY received_date DESC",
+      `SELECT ${columns} FROM scraped_emails WHERE user_id = $1 ORDER BY received_date DESC`,
       [userId]
     );
 
-    const emailsWithAttachments = emails.map((email) => ({
-      ...email,
-      attachments: email.attachments ? JSON.parse(email.attachments) : null,
-    }));
+    const emailsWithAttachments = emails.map((email) => {
+      if (!email.attachments) return { ...email, attachments: null };
+      try {
+        const parsed = JSON.parse(email.attachments);
+        // Strip base64 data unless explicitly requested
+        const attachments = includeAttachmentData === "true"
+          ? parsed
+          : parsed.map(({ data, ...meta }) => meta);
+        return { ...email, attachments };
+      } catch (e) {
+        return { ...email, attachments: null };
+      }
+    });
 
     const exportPath = path.join(__dirname, "scraped_emails_export.json");
     fs.writeFileSync(
