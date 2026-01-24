@@ -1,25 +1,25 @@
 {
-    "name": "calendar-sync-client",
-    "version": "1.0.0",
-    "private": true,
-    "type": "module",
-    "scripts": {
-        "dev": "vite",
-        "build": "vite build",
-        "preview": "vite preview --port 5173"
-    },
-    "dependencies": {
-        "@fullcalendar/common": "^5.11.5",
-        "@fullcalendar/react": "^6.1.19",
-        "@fullcalendar/core": "^6.1.19",
-        "@fullcalendar/daygrid": "^6.1.19",
-        "@fullcalendar/interaction": "^6.1.19",
-        "@fullcalendar/timegrid": "^6.1.19",
-        "react": "^18.3.1",
-        "react-dom": "^18.3.1"
-    },
-    "devDependencies": {
-        "@vitejs/plugin-react": "^4.3.1",
-        "vite": "^5.4.0"
-    }
+  "name": "calendar-sync-client",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview --port 5173"
+  },
+  "dependencies": {
+    "@fullcalendar/common": "^5.11.5",
+    "@fullcalendar/react": "^6.1.19",
+    "@fullcalendar/core": "^6.1.19",
+    "@fullcalendar/daygrid": "^6.1.19",
+    "@fullcalendar/interaction": "^6.1.19",
+    "@fullcalendar/timegrid": "^6.1.19",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.1",
+    "vite": "^5.4.0"
+  }
 }

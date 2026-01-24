@@ -217,14 +217,14 @@ export async function fetchEmailContent(oauth2Client, messageId) {
  * Scrape emails and store them in database
  * @param {Object} oauth2Client - Authenticated OAuth2 client
  * @param {string} userId - User ID
- * @param {Object} db - SQLite database instance
+ * @param {Pool} pool - PostgreSQL connection pool
  * @param {Object} options - Scraping options
  * @param {number} options.maxResults - Maximum number of emails to fetch
  * @param {string} options.query - Gmail search query
  * @param {boolean} options.skipExisting - Skip emails already in database
  * @returns {Promise<Object>} Scraping results
  */
-export async function scrapeEmails(oauth2Client, userId, db, options = {}) {
+export async function scrapeEmails(oauth2Client, userId, pool, options = {}) {
   const {
     maxResults = 50,
     query = "to:campus-events@dartmouth.edu",
@@ -244,23 +244,15 @@ export async function scrapeEmails(oauth2Client, userId, db, options = {}) {
     let skipped = 0;
     let errors = [];
 
-    const emailByGmailId = db.prepare(
-      "SELECT * FROM scraped_emails WHERE gmail_message_id=?"
-    );
-    const emailInsert = db.prepare(`INSERT INTO scraped_emails(
-      id, user_id, gmail_message_id, thread_id, from_email, from_name, 
-      subject, body_text, body_html, received_date, attachments
-    ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
-    const emailUpdate = db.prepare(`UPDATE scraped_emails SET
-      thread_id=?, from_email=?, from_name=?, subject=?, body_text=?, 
-      body_html=?, received_date=?, attachments=?
-      WHERE gmail_message_id=? AND user_id=?`);
-
     // Process each email
     for (const msg of messages) {
       try {
         // Check if already exists
-        const existing = emailByGmailId.get(msg.id);
+        const existingResult = await pool.query(
+          "SELECT * FROM scraped_emails WHERE gmail_message_id = $1",
+          [msg.id]
+        );
+        const existing = existingResult.rows[0];
 
         if (existing && skipExisting && !force) {
           skipped++;
@@ -272,36 +264,50 @@ export async function scrapeEmails(oauth2Client, userId, db, options = {}) {
 
         if (existing && force) {
           // Update existing email with new data (especially attachments)
-          emailUpdate.run(
-            emailData.threadId,
-            emailData.fromEmail,
-            emailData.fromName,
-            emailData.subject,
-            emailData.bodyText,
-            emailData.bodyHtml,
-            emailData.receivedDate,
-            emailData.attachments
-              ? JSON.stringify(emailData.attachments)
-              : null,
-            emailData.gmailMessageId,
-            userId
+          await pool.query(
+            `UPDATE scraped_emails SET
+              thread_id = $1, from_email = $2, from_name = $3, subject = $4,
+              body_text = $5, body_html = $6, received_date = $7, attachments = $8
+             WHERE gmail_message_id = $9 AND user_id = $10`,
+            [
+              emailData.threadId,
+              emailData.fromEmail,
+              emailData.fromName,
+              emailData.subject,
+              emailData.bodyText,
+              emailData.bodyHtml,
+              emailData.receivedDate,
+              emailData.attachments
+                ? JSON.stringify(emailData.attachments)
+                : null,
+              emailData.gmailMessageId,
+              userId,
+            ]
           );
           scraped++; // Count as scraped even though it's an update
         } else {
           // Insert new email
           const emailId = `email_${crypto.randomBytes(12).toString("hex")}`;
-          emailInsert.run(
-            emailId,
-            userId,
-            emailData.gmailMessageId,
-            emailData.threadId,
-            emailData.fromEmail,
-            emailData.fromName,
-            emailData.subject,
-            emailData.bodyText,
-            emailData.bodyHtml,
-            emailData.receivedDate,
-            emailData.attachments ? JSON.stringify(emailData.attachments) : null
+          await pool.query(
+            `INSERT INTO scraped_emails (
+              id, user_id, gmail_message_id, thread_id, from_email, from_name,
+              subject, body_text, body_html, received_date, attachments
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+            [
+              emailId,
+              userId,
+              emailData.gmailMessageId,
+              emailData.threadId,
+              emailData.fromEmail,
+              emailData.fromName,
+              emailData.subject,
+              emailData.bodyText,
+              emailData.bodyHtml,
+              emailData.receivedDate,
+              emailData.attachments
+                ? JSON.stringify(emailData.attachments)
+                : null,
+            ]
           );
           scraped++;
         }

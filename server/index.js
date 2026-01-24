@@ -5,13 +5,17 @@ import { google } from "googleapis";
 import dotenv from "dotenv";
 import path from "path";
 import { fileURLToPath } from "url";
-import Database from "better-sqlite3";
 import crypto from "crypto";
 import fs from "fs";
 import cron from "node-cron";
 import { scrapeEmails } from "./services/emailScraper.js";
 import { parseEmailForEvents } from "./services/llmParser.js";
 import { runAutomatedScrape } from "./services/autoScraper.js";
+import {
+  publishEventToCalendar,
+  getOrCreateListServCalendar as getOrCreateListServCalendarShared,
+} from "./services/calendarPublisher.js";
+import { initializeSchema, query, queryOne, execute, pool } from "./db.js";
 
 dotenv.config();
 
@@ -19,62 +23,33 @@ dotenv.config();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// If the JSON file is next to index.js in server/
-const CATEGORY_DESCRIPTOR_PATH = path.join(
+// Load event type descriptors for LLM-based tagging
+const EVENT_TYPE_PATH = path.join(
   __dirname,
-  "event_category_descriptors.json"
+  "..",
+  "event_types",
+  "event_type_des.json"
 );
-/**
- * Shape of the file (structure of tags):
- * {
- *   "categories": {
- *     "Career Development": {
- *       "label": "Career Development",
- *       "must_include_any": [...],
- *       "exclude_if_any": [...],
- *       "description": "..."
- *     },
- *     ...
- *   }
- * }
- */
-// Load the JSON once at boot
-let CATEGORY_RULES = { categories: {} };
+
+let EVENT_TYPE_RULES = { tags: {} };
 try {
-  const raw = fs.readFileSync(CATEGORY_DESCRIPTOR_PATH, "utf8");
-  CATEGORY_RULES = JSON.parse(raw);
+  const raw = fs.readFileSync(EVENT_TYPE_PATH, "utf8");
+  EVENT_TYPE_RULES = JSON.parse(raw);
   console.log(
-    "[categories] loaded",
-    Object.keys(CATEGORY_RULES.categories || {}).length,
-    "categories from",
-    CATEGORY_DESCRIPTOR_PATH
+    "[event-types] loaded",
+    Object.keys(EVENT_TYPE_RULES.tags || {}).length,
+    "event type tags from",
+    EVENT_TYPE_PATH
   );
 } catch (e) {
   console.warn(
-    "Could not read event_category_descriptors.json. Category filtering will be empty.",
+    "Could not read event_type_des.json. Event type tagging will be empty.",
     e
   );
 }
 
-// Organization based filters (organization_events.json)
-const ORG_DESCRIPTOR_PATH = path.join(__dirname, "organization_events.json");
-
-let ORGANIZATION_RULES = { categories: {} };
-try {
-  const rawOrg = fs.readFileSync(ORG_DESCRIPTOR_PATH, "utf8");
-  ORGANIZATION_RULES = JSON.parse(rawOrg);
-  console.log(
-    "[org-categories] loaded",
-    Object.keys(ORGANIZATION_RULES.categories || {}).length,
-    "top-level org categories from",
-    ORG_DESCRIPTOR_PATH
-  );
-} catch (e) {
-  console.warn(
-    "Could not read organization_events.json. Org category filtering will be empty.",
-    e
-  );
-}
+// Export EVENT_TYPE_RULES for use in other modules
+export { EVENT_TYPE_RULES };
 
 const {
   PORT = 3000,
@@ -83,6 +58,7 @@ const {
   GOOGLE_CLIENT_SECRET,
   GOOGLE_REDIRECT_URI,
   FRONTEND_URL = "http://localhost:5173",
+  SCRAPER_EMAIL,
 } = process.env;
 
 if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET || !GOOGLE_REDIRECT_URI) {
@@ -102,80 +78,8 @@ app.use(
   })
 );
 
-// SQLite setup
-const db = new Database(path.join(__dirname, "db.sqlite"));
-
-// Email scraping table (raw email data)
-db.exec(`CREATE TABLE IF NOT EXISTS scraped_emails (
-  id TEXT PRIMARY KEY,
-  user_id TEXT NOT NULL,
-  gmail_message_id TEXT UNIQUE NOT NULL,
-  thread_id TEXT,
-  from_email TEXT,
-  from_name TEXT,
-  subject TEXT,
-  body_text TEXT,
-  body_html TEXT,
-  received_date TEXT,
-  scraped_at TEXT DEFAULT CURRENT_TIMESTAMP,
-  processed INTEGER DEFAULT 0,
-  attachments TEXT
-);`);
-
-try {
-  db.exec(`ALTER TABLE scraped_emails ADD COLUMN attachments TEXT`);
-} catch (e) {
-  // Column already exists
-}
-
-// Unified events table (replaces drafts and email_events)
-db.exec(`CREATE TABLE IF NOT EXISTS events (
-  id TEXT PRIMARY KEY,
-  user_id TEXT NOT NULL,
-  source TEXT NOT NULL,
-  email_id TEXT,
-  title TEXT,
-  description TEXT,
-  location TEXT,
-  organization TEXT,
-  tags TEXT,
-  poster_url TEXT,
-  start TEXT NOT NULL,
-  end TEXT,
-  all_day INTEGER DEFAULT 0,
-  confidence_score REAL,
-  status TEXT DEFAULT 'draft',
-  google_event_id TEXT,
-  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-  updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (email_id) REFERENCES scraped_emails(id)
-);`);
-
-// Add google_event_id column if it doesn't exist
-try {
-  db.exec(`ALTER TABLE events ADD COLUMN google_event_id TEXT`);
-} catch (e) {
-  // Column already exists
-}
-
-// App settings table for tracking scrape metadata
-db.exec(`CREATE TABLE IF NOT EXISTS app_settings (
-  key TEXT PRIMARY KEY,
-  value TEXT,
-  updated_at TEXT DEFAULT CURRENT_TIMESTAMP
-);`);
-
-// Admin tokens table for automated scraping OAuth
-db.exec(`CREATE TABLE IF NOT EXISTS admin_tokens (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  user_id TEXT UNIQUE NOT NULL,
-  user_email TEXT,
-  refresh_token TEXT NOT NULL,
-  access_token TEXT,
-  token_expiry TEXT,
-  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-  updated_at TEXT DEFAULT CURRENT_TIMESTAMP
-);`);
+// Initialize PostgreSQL schema
+await initializeSchema();
 
 // Helper function for combining date and time
 function combineDateTime(date, time, allDay) {
@@ -185,160 +89,6 @@ function combineDateTime(date, time, allDay) {
   }
   return date;
 }
-
-// Migration: Merge drafts and email_events into events table
-function runMigration() {
-  console.log(
-    "[db] Running migration: consolidating drafts and email_events..."
-  );
-
-  const tables = db
-    .prepare(
-      "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('drafts', 'email_events', 'events')"
-    )
-    .all()
-    .map((t) => t.name);
-
-  const hasDrafts = tables.includes("drafts");
-  const hasEmailEvents = tables.includes("email_events");
-  const hasEvents = tables.includes("events");
-
-  // Migrate drafts to events
-  if (hasDrafts && !hasEvents) {
-    console.log("[db] Migrating drafts to events table...");
-    const drafts = db.prepare("SELECT * FROM drafts").all();
-    for (const draft of drafts) {
-      db.prepare(
-        `INSERT INTO events(id, user_id, source, title, description, location, organization, tags, poster_url, start, end, all_day, status, created_at, updated_at)
-         VALUES(?, ?, 'manual', ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?)`
-      ).run(
-        draft.id,
-        draft.user_id,
-        draft.title || "",
-        draft.description || "",
-        draft.location || "",
-        draft.organization || "",
-        draft.tags || "[]",
-        draft.poster_url || "",
-        draft.start,
-        draft.end || null,
-        draft.all_day || 0,
-        draft.created_at || new Date().toISOString(),
-        draft.updated_at || new Date().toISOString()
-      );
-    }
-    console.log(`[db] Migrated ${drafts.length} drafts to events`);
-  }
-
-  // Migrate email_events to events
-  if (hasEmailEvents) {
-    console.log("[db] Migrating email_events to events table...");
-    const emailEvents = db.prepare("SELECT * FROM email_events").all();
-    for (const evt of emailEvents) {
-      // Combine date and time into ISO format
-      const start = combineDateTime(
-        evt.start_date,
-        evt.start_time,
-        evt.all_day
-      );
-      const end = combineDateTime(evt.end_date, evt.end_time, evt.all_day);
-
-      if (start) {
-        // Check if event already exists (might have been migrated from drafts)
-        const existing = db
-          .prepare("SELECT id FROM events WHERE id=?")
-          .get(evt.id);
-        if (!existing) {
-          db.prepare(
-            `INSERT INTO events(id, user_id, source, email_id, title, description, location, organization, tags, poster_url, start, end, all_day, confidence_score, status, created_at, updated_at)
-             VALUES(?, ?, 'email', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-          ).run(
-            evt.id,
-            evt.user_id,
-            evt.email_id || null,
-            evt.title || "",
-            evt.description || "",
-            evt.location || "",
-            evt.organization || "",
-            evt.tags || "[]",
-            "", // poster_url will be set when converting to draft
-            start,
-            end || null,
-            evt.all_day || 0,
-            evt.confidence_score || null,
-            evt.status === "converted" ? "draft" : "draft",
-            evt.extracted_at || new Date().toISOString(),
-            evt.extracted_at || new Date().toISOString()
-          );
-        }
-      }
-    }
-    console.log(`[db] Migrated ${emailEvents.length} email_events to events`);
-  }
-
-  // Drop old tables if migration successful
-  if (hasEvents && (hasDrafts || hasEmailEvents)) {
-    console.log("[db] Dropping old tables...");
-    if (hasDrafts) {
-      try {
-        db.exec("DROP TABLE drafts");
-        console.log("[db] Dropped drafts table");
-      } catch (e) {
-        console.warn("[db] Could not drop drafts table:", e.message);
-      }
-    }
-    if (hasEmailEvents) {
-      try {
-        db.exec("DROP TABLE email_events");
-        console.log("[db] Dropped email_events table");
-      } catch (e) {
-        console.warn("[db] Could not drop email_events table:", e.message);
-      }
-    }
-  }
-
-  // Ensure events table has all required columns
-  const columns = db.pragma("table_info(events)").map((col) => col.name);
-  const requiredColumns = {
-    source: "TEXT NOT NULL DEFAULT 'manual'",
-    email_id: "TEXT",
-    confidence_score: "REAL",
-  };
-
-  for (const [col, def] of Object.entries(requiredColumns)) {
-    if (!columns.includes(col)) {
-      try {
-        db.exec(`ALTER TABLE events ADD COLUMN ${col} ${def}`);
-        console.log(`[db] Added column: ${col}`);
-      } catch (e) {
-        console.warn(`[db] Could not add column ${col}:`, e.message);
-      }
-    }
-  }
-
-  console.log("[db] Migration complete.");
-}
-
-runMigration(); // Run the migration on startup
-
-// Prepared statements for events table
-const eventInsert = db.prepare(
-  `INSERT INTO events(id, user_id, source, email_id, title, description, location, organization, tags, poster_url, start, end, all_day, confidence_score, status)
-   VALUES(@id, @user_id, @source, @email_id, @title, @description, @location, @organization, @tags, @poster_url, @start, @end, @all_day, @confidence_score, @status)`
-);
-const eventUpdate = db.prepare(
-  `UPDATE events SET title=@title, description=@description, location=@location, organization=@organization, tags=@tags, poster_url=@poster_url, 
-   start=@start, end=@end, all_day=@all_day, updated_at=CURRENT_TIMESTAMP WHERE id=@id AND user_id=@user_id`
-);
-const eventDelete = db.prepare(
-  "DELETE FROM events WHERE id=@id AND user_id=@user_id"
-);
-const eventsByUser = db.prepare(
-  "SELECT * FROM events WHERE user_id=? AND status != 'published'"
-);
-const eventsByUserAndSource = db.prepare(
-  "SELECT * FROM events WHERE user_id=? AND source=? AND status != 'published'"
-);
 
 function ensureAuthed(req, res, next) {
   if (!req.session.tokens || !req.session.user) {
@@ -360,134 +110,17 @@ function getOAuthClient(req) {
   return oauth2Client;
 }
 
-// --- Helper: Ensure ListServ calendar exists ---
+// --- Helper: Ensure ListServ calendar exists (with session caching) ---
 async function getOrCreateListServCalendar(req, oauth2Client) {
-  if (req.session.listservCalendarId)
+  // Use session cache if available
+  if (req.session.listservCalendarId) {
     return { id: req.session.listservCalendarId, created: false };
-  const calendar = google.calendar({ version: "v3", auth: oauth2Client });
-  const list = await calendar.calendarList.list();
-  const existing = (list.data.items || []).find(
-    (c) => c.summary?.toLowerCase() === "listserv events"
-  );
-  if (existing) {
-    req.session.listservCalendarId = existing.id;
-    return { id: existing.id, created: false };
   }
-  const newCal = await calendar.calendars.insert({
-    requestBody: {
-      summary: "ListServ Events",
-      description: "Dedicated calendar for ListServ app",
-      timeZone: "America/Los_Angeles",
-    },
-  });
-  await calendar.calendarList.insert({ requestBody: { id: newCal.data.id } });
-  req.session.listservCalendarId = newCal.data.id;
-  return { id: newCal.data.id, created: true };
-}
-
-// beginning of additions
-
-// ---- Key normalization helpers (add near the top, after JSON loads) ----
-const slug = (s = "") =>
-  String(s)
-    .normalize("NFKD")
-    .toLowerCase()
-    .replace(/\s+/g, "_")
-    .replace(/[^a-z0-9_:]/g, ""); // keep letters, digits, underscores, and colons
-
-const lowerArray = (arr = []) => arr.map((x) => String(x).toLowerCase());
-
-// --- Filtering helper Functions (event category classification) ---
-// normalize and test text
-function toTextBlob(ev) {
-  //combining fields together
-  const {
-    title = "",
-    description = "",
-    location = "",
-    organization = "",
-  } = ev || {};
-  return `${title} ${description} ${location} ${organization}`.toLowerCase();
-}
-
-//is a non case sensitive match
-function matchesAnyKeyword(blob, keywords = []) {
-  return keywords.some((kw) => blob.includes(String(kw).toLowerCase()));
-}
-
-/**
- * assignCategories(ev) -> array of category keys
- * Uses CATEGORY_RULES.categories[*].must_include_any / exclude_if_any
- * Logic:
- *  - If must_include_any is present: require at least one to appear
- *  - If exclude_if_any contains a hit: skip that category
- */
-function assignCategories(ev) {
-  const blob = toTextBlob(ev);
-  const out = [];
-
-  const cats = CATEGORY_RULES?.categories || {};
-  for (const [key, def] of Object.entries(cats)) {
-    const must = def.must_include_any || [];
-    const exc = def.exclude_if_any || [];
-
-    // If must_include_any exists and none hit -> skip
-    if (must.length > 0 && !matchesAnyKeyword(blob, must)) continue;
-
-    // If any excluded keyword hits -> skip
-    if (exc.length > 0 && matchesAnyKeyword(blob, exc)) continue;
-
-    out.push(key); // match!
-  }
-  return out;
-}
-
-// --- Organization-level classification ---
-function assignOrgCategories(ev) {
-  const blob = toTextBlob(ev);
-  const out = [];
-
-  const cats = ORGANIZATION_RULES?.categories || {};
-  for (const [typeKeyRaw, typeDef] of Object.entries(cats)) {
-    const typeKey = slug(typeKeyRaw);
-    const subcats = typeDef?.subcategories || {};
-    let sawChild = false;
-
-    // Optional: if type-level must_include_any is used
-    const typeHit =
-      Array.isArray(typeDef?.must_include_any) &&
-      matchesAnyKeyword(blob, lowerArray(typeDef.must_include_any));
-    if (typeHit) out.push(typeKey);
-
-    for (const [subKeyRaw, subDef] of Object.entries(subcats)) {
-      const subKey = slug(subKeyRaw);
-
-      const subHit =
-        Array.isArray(subDef?.must_include_any) &&
-        matchesAnyKeyword(blob, lowerArray(subDef.must_include_any));
-      if (subHit) {
-        out.push(`${typeKey}:${subKey}`);
-        sawChild = true;
-      }
-
-      const orgs = subDef?.organizations || {};
-      for (const [orgKeyRaw, orgDef] of Object.entries(orgs)) {
-        const orgKey = slug(orgKeyRaw);
-        const orgHit =
-          Array.isArray(orgDef?.must_include_any) &&
-          matchesAnyKeyword(blob, lowerArray(orgDef.must_include_any));
-        if (orgHit) {
-          out.push(`${typeKey}:${subKey}:${orgKey}`);
-          sawChild = true;
-        }
-      }
-    }
-
-    // If any child matched but we didn’t add the bare type yet, include it
-    if (sawChild && !out.includes(typeKey)) out.push(typeKey);
-  }
-
-  return out;
+  // Use shared function for actual work
+  const result = await getOrCreateListServCalendarShared(oauth2Client);
+  // Cache the result in session
+  req.session.listservCalendarId = result.id;
+  return result;
 }
 
 // --- Auth ---
@@ -520,33 +153,72 @@ app.get("/auth/google/callback", async (req, res) => {
       id: userinfo.id || userinfo.email,
       email: userinfo.email,
       name: userinfo.name,
+      picture: userinfo.picture,
     };
     await getOrCreateListServCalendar(req, oauth2Client);
 
-    // Store admin tokens for automated scraping
-    // Only store if we have a refresh_token (first time or re-consent)
-    if (tokens.refresh_token) {
-      try {
-        db.prepare(
-          `INSERT OR REPLACE INTO admin_tokens 
-          (user_id, user_email, refresh_token, access_token, token_expiry, updated_at) 
-          VALUES (?, ?, ?, ?, ?, ?)`
-        ).run(
+    // Create or update user in users table
+    try {
+      await execute(
+        `INSERT INTO users (id, email, name, picture_url, updated_at)
+         VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)
+         ON CONFLICT (id) DO UPDATE SET
+           email = EXCLUDED.email,
+           name = EXCLUDED.name,
+           picture_url = EXCLUDED.picture_url,
+           updated_at = CURRENT_TIMESTAMP`,
+        [
           userinfo.id || userinfo.email,
           userinfo.email,
-          tokens.refresh_token,
-          tokens.access_token || null,
-          tokens.expiry_date
-            ? new Date(tokens.expiry_date).toISOString()
-            : null,
-          new Date().toISOString()
+          userinfo.name || null,
+          userinfo.picture || null,
+        ]
+      );
+      console.log(`[auth] User record created/updated: ${userinfo.email}`);
+    } catch (userDbError) {
+      console.error("[auth] Failed to create/update user record:", userDbError);
+    }
+
+    // Store admin tokens for automated scraping (only for designated scraper account)
+    if (tokens.refresh_token) {
+      try {
+        const isScraperAccount =
+          SCRAPER_EMAIL && userinfo.email === SCRAPER_EMAIL;
+
+        await execute(
+          `INSERT INTO admin_tokens (user_id, user_email, refresh_token, access_token, token_expiry, is_scraper_account, updated_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7)
+           ON CONFLICT (user_id) DO UPDATE SET
+             user_email = EXCLUDED.user_email,
+             refresh_token = EXCLUDED.refresh_token,
+             access_token = EXCLUDED.access_token,
+             token_expiry = EXCLUDED.token_expiry,
+             is_scraper_account = EXCLUDED.is_scraper_account,
+             updated_at = EXCLUDED.updated_at`,
+          [
+            userinfo.id || userinfo.email,
+            userinfo.email,
+            tokens.refresh_token,
+            tokens.access_token || null,
+            tokens.expiry_date
+              ? new Date(tokens.expiry_date).toISOString()
+              : null,
+            isScraperAccount,
+            new Date().toISOString(),
+          ]
         );
-        console.log(
-          `[auth] Stored admin tokens for automated scraping: ${userinfo.email}`
-        );
+
+        if (isScraperAccount) {
+          console.log(
+            `[auth] ✓ Stored SCRAPER ACCOUNT tokens: ${userinfo.email}`
+          );
+        } else {
+          console.log(
+            `[auth] Stored user tokens (not scraper): ${userinfo.email}`
+          );
+        }
       } catch (dbError) {
         console.error("[auth] Failed to store admin tokens:", dbError);
-        // Don't fail auth if token storage fails
       }
     }
 
@@ -563,8 +235,180 @@ app.post("/auth/logout", (req, res) => {
     res.json({ ok: true });
   });
 });
-app.get("/api/me", (req, res) => {
-  res.json({ user: req.session.user || null });
+
+app.get("/api/me", async (req, res) => {
+  if (!req.session.user) {
+    return res.json({ user: null });
+  }
+
+  // Fetch user preferences from database
+  try {
+    const userRecord = await queryOne(
+      "SELECT preferences FROM users WHERE id = $1",
+      [req.session.user.id]
+    );
+    res.json({
+      user: {
+        ...req.session.user,
+        preferences: userRecord?.preferences || {},
+      },
+    });
+  } catch (error) {
+    console.error("[api/me] Error fetching user preferences:", error);
+    res.json({ user: req.session.user });
+  }
+});
+
+// --- User Preferences ---
+app.get("/api/user/preferences", ensureAuthed, async (req, res) => {
+  try {
+    const userRecord = await queryOne(
+      "SELECT preferences FROM users WHERE id = $1",
+      [req.session.user.id]
+    );
+    res.json({ preferences: userRecord?.preferences || {} });
+  } catch (error) {
+    console.error("[preferences] Error fetching:", error);
+    res.status(500).json({ error: "Failed to fetch preferences" });
+  }
+});
+
+app.put("/api/user/preferences", ensureAuthed, async (req, res) => {
+  try {
+    const { preferences } = req.body;
+    if (typeof preferences !== "object" || preferences === null) {
+      return res.status(400).json({ error: "Preferences must be an object" });
+    }
+
+    // Merge with existing preferences
+    const existingUser = await queryOne(
+      "SELECT preferences FROM users WHERE id = $1",
+      [req.session.user.id]
+    );
+    const mergedPreferences = {
+      ...(existingUser?.preferences || {}),
+      ...preferences,
+    };
+
+    await execute(
+      `UPDATE users SET preferences = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`,
+      [JSON.stringify(mergedPreferences), req.session.user.id]
+    );
+
+    res.json({ preferences: mergedPreferences });
+  } catch (error) {
+    console.error("[preferences] Error updating:", error);
+    res.status(500).json({ error: "Failed to update preferences" });
+  }
+});
+
+// --- Sync events to user's Google Calendar ---
+app.post("/api/user/sync-to-calendar", ensureAuthed, async (req, res) => {
+  try {
+    const { eventIds, filters } = req.body;
+
+    if (!eventIds && !filters) {
+      return res.status(400).json({ error: "Must provide eventIds or filters" });
+    }
+
+    const oauth2Client = getOAuthClient(req);
+    const calendar = google.calendar({ version: "v3", auth: oauth2Client });
+
+    // Get or create user's ListServ calendar
+    const { id: calendarId } = await getOrCreateListServCalendar(req, oauth2Client);
+
+    // Fetch events to sync
+    let events = [];
+    if (eventIds && Array.isArray(eventIds) && eventIds.length > 0) {
+      // Sync specific events by ID
+      const placeholders = eventIds.map((_, i) => `$${i + 1}`).join(",");
+      events = await query(
+        `SELECT * FROM events WHERE id IN (${placeholders}) AND source = 'email'`,
+        eventIds
+      );
+    } else if (filters) {
+      // Sync events matching filters (tags/categories)
+      let queryText = "SELECT * FROM events WHERE source = 'email' AND status != 'published'";
+      const params = [];
+      let paramIndex = 1;
+
+      if (filters.tags && filters.tags.length > 0) {
+        // Filter by tags (JSON array contains any of the specified tags)
+        queryText += ` AND (`;
+        const tagConditions = filters.tags.map((tag, i) => {
+          params.push(`%"${tag}"%`);
+          return `tags LIKE $${paramIndex + i}`;
+        });
+        queryText += tagConditions.join(" OR ") + `)`;
+        paramIndex += filters.tags.length;
+      }
+
+      queryText += " ORDER BY start ASC LIMIT 100"; // Limit to prevent abuse
+      events = await query(queryText, params);
+    }
+
+    if (events.length === 0) {
+      return res.json({ synced: 0, results: [] });
+    }
+
+    // Sync each event to user's Google Calendar
+    const results = [];
+    for (const event of events) {
+      try {
+        const isAllDay = !!event.all_day;
+        const tags = event.tags ? JSON.parse(event.tags) : [];
+
+        const eventData = {
+          summary: event.title || "(No title)",
+          description: event.description || "",
+          location: event.location || "",
+          start: isAllDay
+            ? { date: event.start.split("T")[0] }
+            : { dateTime: event.start, timeZone: "America/New_York" },
+          end: isAllDay
+            ? { date: event.end ? event.end.split("T")[0] : event.start.split("T")[0] }
+            : { dateTime: event.end || event.start, timeZone: "America/New_York" },
+          extendedProperties: {
+            shared: {
+              organization: event.organization || "",
+              tags: JSON.stringify(tags),
+              poster_url: event.poster_url || "",
+              source_event_id: event.id, // Track original event ID
+            },
+          },
+        };
+
+        const response = await calendar.events.insert({
+          calendarId,
+          requestBody: eventData,
+        });
+
+        results.push({
+          eventId: event.id,
+          success: true,
+          googleEventId: response.data.id,
+        });
+      } catch (syncError) {
+        results.push({
+          eventId: event.id,
+          success: false,
+          error: syncError.message,
+        });
+      }
+    }
+
+    const syncedCount = results.filter((r) => r.success).length;
+    console.log(`[sync] User ${req.session.user.email} synced ${syncedCount}/${events.length} events to Google Calendar`);
+
+    res.json({
+      synced: syncedCount,
+      total: events.length,
+      results,
+    });
+  } catch (error) {
+    console.error("[sync] Error syncing to calendar:", error);
+    res.status(500).json({ error: "Failed to sync events to calendar" });
+  }
 });
 
 // --- List all user calendars ---
@@ -635,8 +479,6 @@ app.get("/api/events", ensureAuthed, async (req, res) => {
         59
       ).toISOString();
 
-    // Fetch events from requested calendars (including listserv calendar)
-    // Published events will come from Google Calendar, drafts from local DB
     const requestedIds = req.query.calendarIds
       ? req.query.calendarIds.split(",")
       : ["primary"];
@@ -671,7 +513,17 @@ app.get("/api/events", ensureAuthed, async (req, res) => {
       allEvents.push(...googleEvents);
     }
 
-    const localEvents = eventsByUser.all(req.session.user.id).map((e) => ({
+    // Get local events from PostgreSQL
+    // Email-sourced events are campus-wide, visible to all users (regardless of status)
+    // Manual/draft events remain user-specific (only unpublished ones)
+    const localEventsRaw = await query(
+      `SELECT * FROM events WHERE
+       source = 'email'
+       OR (user_id = $1 AND status != 'published')`,
+      [req.session.user.id]
+    );
+
+    const localEvents = localEventsRaw.map((e) => ({
       id: e.source === "manual" ? `draft:${e.id}` : `email:${e.id}`,
       source: e.source === "manual" ? "draft" : "email",
       title: e.title || (e.source === "manual" ? "(Draft)" : "(Event)"),
@@ -681,18 +533,12 @@ app.get("/api/events", ensureAuthed, async (req, res) => {
       end: e.end,
       allDay: !!e.all_day,
       organization: e.organization || "",
-      tags: JSON.parse(e.tags || "[]"), // De-serialize tags from JSON string
+      tags: e.tags ? JSON.parse(e.tags) : [],
       poster_url: e.poster_url || "",
     }));
 
-    // --- Combine and normalize tags ---
-    const combined = [...localEvents, ...allEvents].map((ev) => {
-      const catKeys = assignCategories(ev).map(slug); // normalize category keys
-      const orgKeys = assignOrgCategories(ev).map(slug); // normalize org-category keys
-      return { ...ev, categories: catKeys, orgCategories: orgKeys };
-    });
+    const combined = [...localEvents, ...allEvents];
 
-    // Helper: identify ListServ events so only they get filtered away
     const isListServ = (ev) => {
       const isDraft = ev.source === "draft" || ev.source === "email";
       const isGoogleListServ =
@@ -700,57 +546,18 @@ app.get("/api/events", ensureAuthed, async (req, res) => {
       return isDraft || isGoogleListServ;
     };
 
-    // --- Normalize query params so case/space differences don't break filtering ---
-    const reqCatParam = req.query.categories;
-    const reqOrgParam = req.query.orgCategories;
-
-    // These are the selected category keys (already slugified on the frontend)
-    const reqCats = reqCatParam
-      ? reqCatParam
-          .split(",")
-          .map((s) => slug(s.trim()))
-          .filter(Boolean)
-      : null;
-
-    const reqOrgCats = reqOrgParam
-      ? reqOrgParam
-          .split(",")
-          .map((s) => slug(s.trim()))
-          .filter(Boolean)
-      : null;
-
-    // negative filtering flag
-    const exclude = req.query.exclude === "1" || req.query.exclude === "true";
-    
-    // Apply filters ONLY to ListServ events; non-ListServ always pass through
     let filtered = combined;
+    const categoriesParam = req.query.categories || req.query.eventTypes;
 
-    if (reqCats || reqOrgCats) {
+    if (categoriesParam) {
+      const reqCategories = categoriesParam
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+
       filtered = combined.filter((ev) => {
-        // 1) Non-ListServ events are always kept, regardless of filters
         if (!isListServ(ev)) return true;
-
-        // 2) If somehow we have no filters, keep the event
-        if (!reqCats && !reqOrgCats) return true;
-
-        // 3) Compute "does this event match any selected event-category filter?"
-        const matchesCat = reqCats
-          ? (ev.categories || []).some((c) => reqCats.includes(c))
-          : false;
-
-        // 4) Compute "does this event match any selected org-category filter?"
-        const matchesOrg = reqOrgCats
-          ? (ev.orgCategories || []).some((c) => reqOrgCats.includes(c))
-          : false;
-
-        // 5) OR logic across the two groups:
-        //    - If only `reqCats` set → matchesCat must be true
-        //    - If only `reqOrgCats` set → matchesOrg must be true
-        //    - If both set → (matchesCat || matchesOrg)
-        const matchesAny = matchesCat || matchesOrg;
-
-        // If exclude mode is ON, hide ListServ events that match selected filters
-        return exclude ? !matchesAny : matchesAny;
+        return (ev.tags || []).some((tag) => reqCategories.includes(tag));
       });
     }
 
@@ -761,59 +568,30 @@ app.get("/api/events", ensureAuthed, async (req, res) => {
   }
 });
 
-//returns category labels from the JSON (left panel) - more additions
-app.get("/api/event-categories", ensureAuthed, (req, res) => {
-  const cats = CATEGORY_RULES?.categories || {};
-  const list = Object.entries(cats).map(([rawKey, def]) => ({
-    key: slug(rawKey), // normalized key
-    label: def.label || rawKey, // human label stays pretty
-    description: def.description || "",
+// Get event type tags for filtering (LLM-based tagging)
+app.get("/api/event-types", ensureAuthed, (req, res) => {
+  const tags = EVENT_TYPE_RULES?.tags || {};
+  const list = Object.entries(tags).map(([tagName, def]) => ({
+    tag: tagName,
+    description: def.description,
+    keywords: def.keywords || [],
   }));
-  res.json({ categories: list });
+  res.json({ eventTypes: list });
 });
 
-// --- Org categories → flat list for bubbles on the left panel
-app.get("/api/org-categories", ensureAuthed, (req, res) => {
-  const cats = ORGANIZATION_RULES?.categories || {};
-  const list = [];
-
-  for (const [typeKeyRaw, typeDef] of Object.entries(cats)) {
-    const typeKey = slug(typeKeyRaw);
-    const typeLabel = typeDef.label || typeKeyRaw;
-    list.push({ key: typeKey, label: typeLabel, level: "type" });
-
-    const subcats = typeDef.subcategories || {};
-    for (const [subKeyRaw, subDef] of Object.entries(subcats)) {
-      const subKey = slug(subKeyRaw);
-      const subLabel = subDef.label || subKeyRaw;
-      const subFlatKey = `${typeKey}:${subKey}`;
-      list.push({
-        key: subFlatKey,
-        label: `${typeLabel} • ${subLabel}`,
-        level: "subcategory",
-      });
-
-      const orgs = subDef.organizations || {};
-      for (const [orgKeyRaw, orgDef] of Object.entries(orgs)) {
-        const orgKey = slug(orgKeyRaw);
-        const orgLabel = orgDef.label || orgKeyRaw;
-        const orgFlatKey = `${typeKey}:${subKey}:${orgKey}`;
-        list.push({
-          key: orgFlatKey,
-          label: orgLabel,
-          level: "organization",
-        });
-      }
-    }
-  }
-
-  res.json({ categories: list });
+// Alias for frontend compatibility - returns categories in expected format
+app.get("/api/event-categories", ensureAuthed, (req, res) => {
+  const tags = EVENT_TYPE_RULES?.tags || {};
+  const categories = Object.entries(tags).map(([tagName, def]) => ({
+    key: tagName,
+    label: tagName,
+    description: def.description,
+  }));
+  res.json({ categories });
 });
-
-//ending of additions
 
 // --- Drafts (now using unified events table) ---
-app.post("/api/drafts", ensureAuthed, (req, res) => {
+app.post("/api/drafts", ensureAuthed, async (req, res) => {
   try {
     const {
       title,
@@ -828,24 +606,32 @@ app.post("/api/drafts", ensureAuthed, (req, res) => {
     } = req.body;
     if (!start) return res.status(400).json({ error: "start required" });
     const id = `draft_${crypto.randomBytes(12).toString("hex")}`;
-    const tagsJson = Array.isArray(tags) ? JSON.stringify(tags) : tags || "[]";
-    eventInsert.run({
-      id,
-      user_id: req.session.user.id,
-      source: "manual",
-      email_id: null,
-      title: title || "",
-      description: description || "",
-      location: location || "",
-      organization: organization || "",
-      tags: tagsJson,
-      poster_url: poster_url || "",
-      start,
-      end: end || null,
-      all_day: allDay ? 1 : 0,
-      confidence_score: null,
-      status: "draft",
-    });
+    const tagsJson = Array.isArray(tags)
+      ? JSON.stringify(tags)
+      : tags || "[]";
+
+    await execute(
+      `INSERT INTO events (id, user_id, source, email_id, title, description, location, organization, tags, poster_url, start, "end", all_day, confidence_score, status)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
+      [
+        id,
+        req.session.user.id,
+        "manual",
+        null,
+        title || "",
+        description || "",
+        location || "",
+        organization || "",
+        tagsJson,
+        poster_url || "",
+        start,
+        end || null,
+        allDay ? 1 : 0,
+        null,
+        "draft",
+      ]
+    );
+
     res.json({ ok: true, id: `draft:${id}` });
   } catch (e) {
     console.error(e);
@@ -859,14 +645,11 @@ app.delete("/api/events/:compoundId", ensureAuthed, async (req, res) => {
     const [source, rawId] = req.params.compoundId.split(":");
 
     if (source === "draft" || source === "email") {
-      // Check if event was published to Google Calendar
-      const event = db
-        .prepare(
-          "SELECT google_event_id, status FROM events WHERE id=? AND user_id=?"
-        )
-        .get(rawId, req.session.user.id);
+      const event = await queryOne(
+        "SELECT google_event_id, status FROM events WHERE id = $1 AND user_id = $2",
+        [rawId, req.session.user.id]
+      );
 
-      // Delete from Google Calendar if it was published
       if (event && event.google_event_id && event.status === "published") {
         try {
           const oauth2Client = getOAuthClient(req);
@@ -890,12 +673,13 @@ app.delete("/api/events/:compoundId", ensureAuthed, async (req, res) => {
             `[delete] Failed to delete from Google Calendar:`,
             gcalError.message
           );
-          // Continue to delete from local DB even if Google Calendar delete fails
         }
       }
 
-      // Delete from local database
-      eventDelete.run({ id: rawId, user_id: req.session.user.id });
+      await execute(
+        "DELETE FROM events WHERE id = $1 AND user_id = $2",
+        [rawId, req.session.user.id]
+      );
       return res.json({ ok: true });
     }
 
@@ -930,7 +714,6 @@ app.delete("/api/calendar/events", ensureAuthed, async (req, res) => {
       oauth2Client
     );
 
-    // Get all events from the listserv calendar
     const now = new Date();
     const timeMin = new Date(now.getFullYear() - 1, 0, 1).toISOString();
     const timeMax = new Date(
@@ -959,7 +742,6 @@ app.delete("/api/calendar/events", ensureAuthed, async (req, res) => {
       const events = response.data.items || [];
       nextPageToken = response.data.nextPageToken;
 
-      // Delete each event
       for (const event of events) {
         try {
           await calendar.events.delete({
@@ -996,113 +778,59 @@ app.post("/api/events/:compoundId/publish", ensureAuthed, async (req, res) => {
       return res
         .status(400)
         .json({ error: "Only drafts or email events can be published" });
-    const row = db
-      .prepare(`SELECT * FROM events WHERE id=? AND user_id=?`)
-      .get(rawId, req.session.user.id);
+
+    const row = await queryOne(
+      "SELECT * FROM events WHERE id = $1 AND user_id = $2",
+      [rawId, req.session.user.id]
+    );
     if (!row) return res.status(404).json({ error: "Event not found" });
 
-    const oauth2Client = getOAuthClient(req);
-    const calendar = google.calendar({ version: "v3", auth: oauth2Client });
-    const { id: listservCalendarId } = await getOrCreateListServCalendar(
-      req,
-      oauth2Client
-    );
+    if (!row.start) {
+      return res.status(400).json({ error: "Invalid event date" });
+    }
 
-    // Validate and format dates
-    let startDate, endDate;
-    if (row.all_day) {
-      // For all-day events, ensure date is in YYYY-MM-DD format
-      startDate = row.start ? row.start.split("T")[0] : null;
-      endDate = row.end ? row.end.split("T")[0] : startDate;
-      if (!startDate) {
+    if (!row.all_day) {
+      if (!row.start.includes("T") || isNaN(new Date(row.start).getTime())) {
         console.error(
-          `[publish] Invalid all-day event date for event ${rawId}: ${row.start}`
-        );
-        return res.status(400).json({ error: "Invalid event date" });
-      }
-    } else {
-      // For timed events, ensure ISO 8601 format
-      startDate = row.start;
-      endDate = row.end || row.start;
-      if (!startDate) {
-        console.error(
-          `[publish] Invalid timed event date for event ${rawId}: ${row.start}`
-        );
-        return res.status(400).json({ error: "Invalid event date" });
-      }
-      // Ensure it's a valid ISO datetime string
-      if (!startDate.includes("T") || isNaN(new Date(startDate).getTime())) {
-        console.error(
-          `[publish] Invalid datetime format for event ${rawId}: ${startDate}`
+          `[publish] Invalid datetime format for event ${rawId}: ${row.start}`
         );
         return res.status(400).json({ error: "Invalid event datetime format" });
       }
     }
 
-    const resource = {
-      summary: row.title || "",
+    const eventTags = row.tags ? JSON.parse(row.tags) : [];
+
+    const oauth2Client = getOAuthClient(req);
+    const result = await publishEventToCalendar({
+      oauth2Client,
+      pool,
+      eventId: rawId,
+      userId: req.session.user.id,
+      title: row.title || "",
       description: row.description || "",
       location: row.location || "",
-      // Store custom data in extendedProperties
-      extendedProperties: {
-        shared: {
-          organization: row.organization || "",
-          tags: row.tags || "[]", // Pass the JSON string
-          poster_url: row.poster_url || "",
-        },
-      },
-    };
-
-    if (row.all_day) {
-      resource.start = { date: startDate };
-      resource.end = { date: endDate };
-    } else {
-      resource.start = { dateTime: startDate, timeZone: "America/New_York" };
-      resource.end = { dateTime: endDate, timeZone: "America/New_York" };
-    }
-
-    console.log(
-      `[publish] Publishing event ${rawId} (source: ${source}) to calendar ${listservCalendarId}`
-    );
-    console.log(`[publish] Event details:`, {
-      title: resource.summary,
-      start: resource.start,
-      end: resource.end,
-      allDay: row.all_day,
+      organization: row.organization || "",
+      eventTags,
+      posterUrl: row.poster_url || "",
+      start: row.start,
+      end: row.end || row.start,
+      allDay: !!row.all_day,
+      logPrefix: "[publish]",
     });
 
-    const insertResp = await calendar.events.insert({
-      calendarId: listservCalendarId,
-      requestBody: resource,
-    });
-
-    if (!insertResp.data || !insertResp.data.id) {
-      console.error(
-        `[publish] Google Calendar insert failed for event ${rawId}:`,
-        insertResp
-      );
-      return res
-        .status(500)
-        .json({ error: "Failed to publish event to Google Calendar" });
+    if (!result.success) {
+      return res.status(500).json({
+        error: "Failed to publish event to Google Calendar",
+        details: result.error,
+      });
     }
 
-    console.log(
-      `[publish] Successfully published event ${rawId} to Google Calendar: ${insertResp.data.id}`
-    );
-
-    // Update event status to 'published' and store google_event_id (don't delete)
-    db.prepare(
-      "UPDATE events SET status='published', google_event_id=?, updated_at=CURRENT_TIMESTAMP WHERE id=? AND user_id=?"
-    ).run(insertResp.data.id, rawId, req.session.user.id);
-
-    res.json({ ok: true, published: { id: `google:${insertResp.data.id}` } });
+    res.json({
+      ok: true,
+      published: { id: `google:${result.google_event_id}` },
+    });
   } catch (e) {
     console.error(`[publish] Error publishing event:`, e);
-    console.error(`[publish] Error details:`, {
-      message: e.message,
-      stack: e.stack,
-      response: e.response?.data,
-    });
     res
       .status(500)
       .json({ error: "Failed to publish event", details: e.message });
@@ -1111,7 +839,6 @@ app.post("/api/events/:compoundId/publish", ensureAuthed, async (req, res) => {
 
 // --- Email Scraping Endpoints ---
 
-// Scrape emails from Gmail
 app.post("/api/scrape/emails", ensureAuthed, async (req, res) => {
   try {
     const oauth2Client = getOAuthClient(req);
@@ -1119,13 +846,13 @@ app.post("/api/scrape/emails", ensureAuthed, async (req, res) => {
 
     const {
       maxResults = 50,
-      query = "to:campus-events@dartmouth.edu",
+      query: searchQuery = "to:campus-events@dartmouth.edu",
       force = false,
     } = req.body;
 
-    const result = await scrapeEmails(oauth2Client, userId, db, {
+    const result = await scrapeEmails(oauth2Client, userId, pool, {
       maxResults,
-      query,
+      query: searchQuery,
       skipExisting: !force,
       force,
     });
@@ -1147,20 +874,19 @@ app.post("/api/scrape/process", ensureAuthed, async (req, res) => {
     let emailsToProcess = [];
 
     if (emailId) {
-      // Process specific email
-      const email = db
-        .prepare("SELECT * FROM scraped_emails WHERE id=? AND user_id=?")
-        .get(emailId, userId);
+      const email = await queryOne(
+        "SELECT * FROM scraped_emails WHERE id = $1 AND user_id = $2",
+        [emailId, userId]
+      );
       if (!email) {
         return res.status(404).json({ error: "Email not found" });
       }
       emailsToProcess = [email];
     } else {
-      // Process all emails (or only unprocessed if reprocess=false)
-      const query = reprocess
-        ? "SELECT * FROM scraped_emails WHERE user_id=? ORDER BY received_date DESC"
-        : "SELECT * FROM scraped_emails WHERE user_id=? AND processed=0 ORDER BY received_date DESC";
-      emailsToProcess = db.prepare(query).all(userId);
+      const queryText = reprocess
+        ? "SELECT * FROM scraped_emails WHERE user_id = $1 ORDER BY received_date DESC"
+        : "SELECT * FROM scraped_emails WHERE user_id = $1 AND processed = 0 ORDER BY received_date DESC";
+      emailsToProcess = await query(queryText, [userId]);
     }
 
     let processed = 0;
@@ -1169,21 +895,16 @@ app.post("/api/scrape/process", ensureAuthed, async (req, res) => {
 
     for (const email of emailsToProcess) {
       try {
-        // Skip if already processed (unless reprocessing)
         if (!reprocess && email.processed) {
           continue;
         }
 
-        // If reprocessing, delete old events first (both local and Google Calendar)
         if (reprocess) {
-          // Get events that will be deleted so we can remove them from Google Calendar
-          const eventsToDelete = db
-            .prepare(
-              "SELECT id, google_event_id, status FROM events WHERE email_id=? AND user_id=?"
-            )
-            .all(email.id, userId);
+          const eventsToDelete = await query(
+            "SELECT id, google_event_id, status FROM events WHERE email_id = $1 AND user_id = $2",
+            [email.id, userId]
+          );
 
-          // Delete from Google Calendar if they were published
           if (eventsToDelete.length > 0) {
             try {
               const oauth2Client = getOAuthClient(req);
@@ -1209,7 +930,6 @@ app.post("/api/scrape/process", ensureAuthed, async (req, res) => {
                       `[process] Failed to delete event ${evt.id} from Google Calendar:`,
                       gcalError.message
                     );
-                    // Continue even if deletion fails
                   }
                 }
               }
@@ -1218,17 +938,16 @@ app.post("/api/scrape/process", ensureAuthed, async (req, res) => {
                 `[process] Failed to authenticate for Google Calendar deletion:`,
                 authError.message
               );
-              // Continue with local deletion even if Google Calendar deletion fails
             }
           }
 
-          // Delete from local database
-          db.prepare("DELETE FROM events WHERE email_id=? AND user_id=?").run(
-            email.id,
-            userId
+          await execute(
+            "DELETE FROM events WHERE email_id = $1 AND user_id = $2",
+            [email.id, userId]
           );
-          db.prepare("UPDATE scraped_emails SET processed=0 WHERE id=?").run(
-            email.id
+          await execute(
+            "UPDATE scraped_emails SET processed = 0 WHERE id = $1",
+            [email.id]
           );
         }
 
@@ -1247,21 +966,7 @@ app.post("/api/scrape/process", ensureAuthed, async (req, res) => {
             .randomBytes(12)
             .toString("hex")}`;
 
-          // Use tags from LLM parsing (assigned based on event_type_des.json)
-          const llmTags = event.tags || [];
-          
-          // Still include org categories from server-side assignment (for organization-based filtering)
-          const eventForOrgTagging = {
-            title: event.title || "",
-            description: event.description || "",
-            location: event.location || "",
-            organization: event.organization || "",
-          };
-          const orgKeys = assignOrgCategories(eventForOrgTagging).map(slug);
-
-          // Normalize LLM tag names (slugify) for consistency and combine with org categories
-          const normalizedLlmTags = llmTags.map(tag => slug(tag));
-          const tagsJson = JSON.stringify([...normalizedLlmTags, ...orgKeys]);
+          const tagsJson = event.tags ? JSON.stringify(event.tags) : "[]";
 
           const start = combineDateTime(
             event.startDate,
@@ -1278,8 +983,6 @@ app.post("/api/scrape/process", ensureAuthed, async (req, res) => {
             continue;
           }
 
-          // Validate: if end date is different from start date, reset to same day
-          // Most campus events are single-day; multi-day is likely a parsing error
           if (
             end &&
             event.endDate &&
@@ -1294,7 +997,6 @@ app.post("/api/scrape/process", ensureAuthed, async (req, res) => {
                 endDate: event.endDate,
               }
             );
-            // Keep the end time but use the start date
             end = combineDateTime(event.startDate, event.endTime, event.allDay);
           }
 
@@ -1307,131 +1009,73 @@ app.post("/api/scrape/process", ensureAuthed, async (req, res) => {
             end = start;
           }
 
-          // Check for duplicates:
-          // 1. Same email + same title + same start date = duplicate (skip)
-          // 2. Same title + same start date + same organization = duplicate (skip)
-          // 3. Same title + same start date but different organization = keep both
           const startDateOnly = start.split("T")[0];
 
-          // First check: duplicate from same email
-          const duplicateFromSameEmail = db
-            .prepare(
-              "SELECT id FROM events WHERE user_id=? AND email_id=? AND title=? AND start LIKE ?"
-            )
-            .get(userId, email.id, event.title, `${startDateOnly}%`);
+          const duplicateFromSameEmail = await queryOne(
+            "SELECT id FROM events WHERE user_id = $1 AND email_id = $2 AND title = $3 AND start LIKE $4",
+            [userId, email.id, event.title, `${startDateOnly}%`]
+          );
 
           if (duplicateFromSameEmail) {
-            continue; // Skip duplicate from same email
+            continue;
           }
 
-          // Second check: duplicate with same title, start date, and organization
-          const duplicateSameOrg = db
-            .prepare(
-              "SELECT id FROM events WHERE user_id=? AND title=? AND organization=? AND start LIKE ?"
-            )
-            .get(
-              userId,
-              event.title,
-              event.organization || "",
-              `${startDateOnly}%`
-            );
+          const duplicateSameOrg = await queryOne(
+            "SELECT id FROM events WHERE user_id = $1 AND title = $2 AND organization = $3 AND start LIKE $4",
+            [userId, event.title, event.organization || "", `${startDateOnly}%`]
+          );
 
           if (duplicateSameOrg) {
-            continue; // Skip duplicate with same organization
+            continue;
           }
 
-          eventInsert.run({
-            id: eventId,
-            user_id: userId,
-            source: "email",
-            email_id: email.id,
+          await execute(
+            `INSERT INTO events (id, user_id, source, email_id, title, description, location, organization, tags, poster_url, start, "end", all_day, confidence_score, status)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
+            [
+              eventId,
+              userId,
+              "email",
+              email.id,
+              event.title || "",
+              event.description || "",
+              event.location || "",
+              event.organization || "",
+              tagsJson,
+              event.posterUrl || "",
+              start,
+              end || null,
+              event.allDay ? 1 : 0,
+              event.confidenceScore || null,
+              "draft",
+            ]
+          );
+
+          // Auto-publish email-sourced events to Google Calendar
+          const oauth2Client = getOAuthClient(req);
+          await publishEventToCalendar({
+            oauth2Client,
+            pool,
+            eventId,
+            userId,
             title: event.title || "",
             description: event.description || "",
             location: event.location || "",
             organization: event.organization || "",
-            tags: tagsJson,
-            poster_url: event.posterUrl || "",
+            eventTags: event.tags || [],
+            posterUrl: event.posterUrl || "",
             start,
-            end: end || null,
-            all_day: event.allDay ? 1 : 0,
-            confidence_score: event.confidenceScore || null,
-            status: "draft",
+            end: end || start,
+            allDay: event.allDay,
+            logPrefix: "[process]",
           });
-
-          // Auto-publish email-sourced events to Google Calendar
-          try {
-            const oauth2Client = getOAuthClient(req);
-            const calendar = google.calendar({
-              version: "v3",
-              auth: oauth2Client,
-            });
-            const { id: listservCalendarId } =
-              await getOrCreateListServCalendar(req, oauth2Client);
-
-            let startDate, endDate;
-            if (event.allDay) {
-              startDate = start ? start.split("T")[0] : null;
-              endDate = end ? end.split("T")[0] : startDate;
-            } else {
-              startDate = start;
-              endDate = end || start;
-            }
-
-            if (startDate) {
-              const resource = {
-                summary: event.title || "",
-                description: event.description || "",
-                location: event.location || "",
-                extendedProperties: {
-                  shared: {
-                    organization: event.organization || "",
-                    tags: tagsJson,
-                    poster_url: event.posterUrl || "",
-                  },
-                },
-              };
-
-              if (event.allDay) {
-                resource.start = { date: startDate };
-                resource.end = { date: endDate };
-              } else {
-                resource.start = {
-                  dateTime: startDate,
-                  timeZone: "America/New_York",
-                };
-                resource.end = {
-                  dateTime: endDate,
-                  timeZone: "America/New_York",
-                };
-              }
-
-              const insertResp = await calendar.events.insert({
-                calendarId: listservCalendarId,
-                requestBody: resource,
-              });
-
-              if (insertResp.data && insertResp.data.id) {
-                db.prepare(
-                  "UPDATE events SET status='published', google_event_id=?, updated_at=CURRENT_TIMESTAMP WHERE id=? AND user_id=?"
-                ).run(insertResp.data.id, eventId, userId);
-              } else {
-                console.warn(
-                  `[process] Failed to auto-publish event ${eventId} to Google Calendar`
-                );
-              }
-            }
-          } catch (publishError) {
-            console.error(
-              `[process] Error auto-publishing event ${eventId}:`,
-              publishError.message
-            );
-          }
 
           eventsCreated++;
         }
 
-        db.prepare("UPDATE scraped_emails SET processed=1 WHERE id=?").run(
-          email.id
+        await execute(
+          "UPDATE scraped_emails SET processed = 1 WHERE id = $1",
+          [email.id]
         );
         processed++;
       } catch (error) {
@@ -1455,29 +1099,43 @@ app.post("/api/scrape/process", ensureAuthed, async (req, res) => {
 });
 
 // Get scraped emails
-app.get("/api/scraped-emails", ensureAuthed, (req, res) => {
+app.get("/api/scraped-emails", ensureAuthed, async (req, res) => {
   try {
     const userId = req.session.user.id;
     const { limit = 50, offset = 0, processed = null } = req.query;
 
-    let query = "SELECT * FROM scraped_emails WHERE user_id=?";
+    let queryText = "SELECT * FROM scraped_emails WHERE user_id = $1";
     const params = [userId];
+    let paramIndex = 2;
 
     if (processed !== null) {
-      query += " AND processed=?";
+      queryText += ` AND processed = $${paramIndex}`;
       params.push(processed === "true" ? 1 : 0);
+      paramIndex++;
     }
 
-    query += " ORDER BY received_date DESC LIMIT ? OFFSET ?";
+    queryText += ` ORDER BY received_date DESC LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
     params.push(parseInt(limit), parseInt(offset));
 
-    const emails = db.prepare(query).all(...params);
+    const emails = await query(queryText, params);
 
-    // Parse attachments JSON for each email
-    const emailsWithAttachments = emails.map((email) => ({
-      ...email,
-      attachments: email.attachments ? JSON.parse(email.attachments) : null,
-    }));
+    const emailsWithAttachments = emails.map((email) => {
+      // Parse attachments and strip base64 data to reduce response size
+      // The actual attachment data is fetched via /api/scraped-emails/:emailId/attachments/:contentId
+      let attachmentsMeta = null;
+      if (email.attachments) {
+        try {
+          const parsed = JSON.parse(email.attachments);
+          attachmentsMeta = parsed.map(({ data, ...meta }) => meta); // Strip base64 data
+        } catch (e) {
+          attachmentsMeta = null;
+        }
+      }
+      return {
+        ...email,
+        attachments: attachmentsMeta,
+      };
+    });
 
     res.json({ emails: emailsWithAttachments });
   } catch (e) {
@@ -1486,26 +1144,27 @@ app.get("/api/scraped-emails", ensureAuthed, (req, res) => {
   }
 });
 
-// Get extracted events from emails (now from unified events table)
-app.get("/api/email-events", ensureAuthed, (req, res) => {
+// Get extracted events from emails
+app.get("/api/email-events", ensureAuthed, async (req, res) => {
   try {
-    const userId = req.session.user.id;
     const { status = null, limit = 50, offset = 0 } = req.query;
 
-    let query = "SELECT * FROM events WHERE user_id=? AND source='email'";
-    const params = [userId];
+    // Email events are campus-wide, visible to all authenticated users
+    let queryText = "SELECT * FROM events WHERE source = 'email'";
+    const params = [];
+    let paramIndex = 1;
 
     if (status) {
-      query += " AND status=?";
+      queryText += ` AND status = $${paramIndex}`;
       params.push(status);
+      paramIndex++;
     }
 
-    query += " ORDER BY created_at DESC LIMIT ? OFFSET ?";
+    queryText += ` ORDER BY created_at DESC LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
     params.push(parseInt(limit), parseInt(offset));
 
-    const events = db.prepare(query).all(...params);
+    const events = await query(queryText, params);
 
-    // Parse tags JSON for each event
     const eventsWithParsedTags = events.map((event) => ({
       ...event,
       tags: event.tags ? JSON.parse(event.tags) : [],
@@ -1519,22 +1178,35 @@ app.get("/api/email-events", ensureAuthed, (req, res) => {
 });
 
 // Export scraped emails to JSON file
-app.get("/api/scraped-emails/export", ensureAuthed, (req, res) => {
+app.get("/api/scraped-emails/export", ensureAuthed, async (req, res) => {
   try {
     const userId = req.session.user.id;
-    const emails = db
-      .prepare(
-        "SELECT * FROM scraped_emails WHERE user_id=? ORDER BY received_date DESC"
-      )
-      .all(userId);
+    const { includeAttachmentData = "false" } = req.query;
 
-    // Parse attachments JSON for each email
-    const emailsWithAttachments = emails.map((email) => ({
-      ...email,
-      attachments: email.attachments ? JSON.parse(email.attachments) : null,
-    }));
+    // Exclude attachment data by default to avoid Neon's 64MB response limit
+    const columns = includeAttachmentData === "true"
+      ? "*"
+      : "id, user_id, gmail_message_id, thread_id, from_email, from_name, subject, body_text, body_html, received_date, scraped_at, processed, attachments";
 
-    // Write to JSON file
+    const emails = await query(
+      `SELECT ${columns} FROM scraped_emails WHERE user_id = $1 ORDER BY received_date DESC`,
+      [userId]
+    );
+
+    const emailsWithAttachments = emails.map((email) => {
+      if (!email.attachments) return { ...email, attachments: null };
+      try {
+        const parsed = JSON.parse(email.attachments);
+        // Strip base64 data unless explicitly requested
+        const attachments = includeAttachmentData === "true"
+          ? parsed
+          : parsed.map(({ data, ...meta }) => meta);
+        return { ...email, attachments };
+      } catch (e) {
+        return { ...email, attachments: null };
+      }
+    });
+
     const exportPath = path.join(__dirname, "scraped_emails_export.json");
     fs.writeFileSync(
       exportPath,
@@ -1561,14 +1233,15 @@ app.get("/api/scraped-emails/export", ensureAuthed, (req, res) => {
 app.get(
   "/api/scraped-emails/:emailId/attachments/:contentId",
   ensureAuthed,
-  (req, res) => {
+  async (req, res) => {
     try {
       const userId = req.session.user.id;
       const { emailId, contentId } = req.params;
 
-      const email = db
-        .prepare("SELECT * FROM scraped_emails WHERE id=? AND user_id=?")
-        .get(emailId, userId);
+      const email = await queryOne(
+        "SELECT * FROM scraped_emails WHERE id = $1 AND user_id = $2",
+        [emailId, userId]
+      );
 
       if (!email) {
         return res.status(404).json({ error: "Email not found" });
@@ -1580,7 +1253,6 @@ app.get(
 
       const attachments = JSON.parse(email.attachments);
 
-      // Try exact match first, then case-insensitive match, then partial match
       const attachment = attachments.find((att) => {
         if (!att.contentId) return false;
         const attId = att.contentId.toLowerCase();
@@ -1604,7 +1276,6 @@ app.get(
         return res.status(404).json({ error: "Attachment not found" });
       }
 
-      // Decode base64 and send as image
       const imageBuffer = Buffer.from(attachment.data, "base64");
       res.setHeader("Content-Type", attachment.mimeType || "image/jpeg");
       res.setHeader("Content-Length", imageBuffer.length);
@@ -1616,41 +1287,38 @@ app.get(
   }
 );
 
-// Update email event poster_url (email events are already drafts, just need to set poster)
-app.post("/api/email-events/:eventId/to-draft", ensureAuthed, (req, res) => {
+// Update email event poster_url
+app.post("/api/email-events/:eventId/to-draft", ensureAuthed, async (req, res) => {
   try {
     const userId = req.session.user.id;
     const eventId = req.params.eventId;
 
-    const event = db
-      .prepare(
-        "SELECT * FROM events WHERE id=? AND user_id=? AND source='email'"
-      )
-      .get(eventId, userId);
+    const event = await queryOne(
+      "SELECT * FROM events WHERE id = $1 AND user_id = $2 AND source = 'email'",
+      [eventId, userId]
+    );
     if (!event) {
       return res.status(404).json({ error: "Event not found" });
     }
 
-    // Get the source email to check for attachments
-    const email = db
-      .prepare("SELECT * FROM scraped_emails WHERE id=? AND user_id=?")
-      .get(event.email_id, userId);
+    const email = await queryOne(
+      "SELECT * FROM scraped_emails WHERE id = $1 AND user_id = $2",
+      [event.email_id, userId]
+    );
 
-    // Generate poster_url from first attachment if available
     let posterUrl = "";
     if (email && email.attachments) {
       try {
         const attachments = JSON.parse(email.attachments);
         if (attachments && attachments.length > 0) {
           const firstAttachment = attachments[0];
-          // Generate URL to serve the image
           const baseUrl = `${req.protocol}://${req.get("host")}`;
           posterUrl = `${baseUrl}/api/scraped-emails/${email.id}/attachments/${firstAttachment.contentId}`;
 
-          // Update the event with poster_url
-          db.prepare(
-            "UPDATE events SET poster_url=? WHERE id=? AND user_id=?"
-          ).run(posterUrl, eventId, userId);
+          await execute(
+            "UPDATE events SET poster_url = $1 WHERE id = $2 AND user_id = $3",
+            [posterUrl, eventId, userId]
+          );
         }
       } catch (e) {
         console.error("[to-draft] Error parsing attachments:", e);
@@ -1668,7 +1336,7 @@ app.post("/api/email-events/:eventId/to-draft", ensureAuthed, (req, res) => {
 app.post("/api/scrape/auto-run", ensureAuthed, async (req, res) => {
   try {
     console.log("[manual-scrape] Manually triggered automated scrape");
-    const result = await runAutomatedScrape(db);
+    const result = await runAutomatedScrape(pool);
     res.json(result);
   } catch (e) {
     console.error("[manual-scrape] Error:", e);
@@ -1692,7 +1360,6 @@ app.post("/api/clear-listserv-calendar", ensureAuthed, async (req, res) => {
 
     console.log(`[clear-calendar] Fetching events from ListServ calendar...`);
 
-    // Get all events
     const events = await calendar.events.list({
       calendarId: listservCalendarId,
       maxResults: 2500,
@@ -1703,9 +1370,8 @@ app.post("/api/clear-listserv-calendar", ensureAuthed, async (req, res) => {
     console.log(`[clear-calendar] Found ${eventList.length} events to delete`);
 
     let deleted = 0;
-    const errors = [];
+    const deleteErrors = [];
 
-    // Delete each event
     for (const event of eventList) {
       try {
         await calendar.events.delete({
@@ -1723,19 +1389,19 @@ app.post("/api/clear-listserv-calendar", ensureAuthed, async (req, res) => {
           `[clear-calendar] Failed to delete ${event.id}:`,
           error.message
         );
-        errors.push({ eventId: event.id, error: error.message });
+        deleteErrors.push({ eventId: event.id, error: error.message });
       }
     }
 
     console.log(
-      `[clear-calendar] Complete: ${deleted} deleted, ${errors.length} errors`
+      `[clear-calendar] Complete: ${deleted} deleted, ${deleteErrors.length} errors`
     );
 
     res.json({
       success: true,
       deleted,
       total: eventList.length,
-      errors: errors.length > 0 ? errors : undefined,
+      errors: deleteErrors.length > 0 ? deleteErrors : undefined,
     });
   } catch (e) {
     console.error("[clear-calendar] Error:", e);
@@ -1757,26 +1423,24 @@ app.get("*", (req, res, next) => {
   next();
 });
 
-// --- Setup Automated Email Scraping (Every 12 Hours) ---
-// Cron schedule: '0 */12 * * *' runs at minute 0 of every 12th hour (00:00, 12:00)
-// Alternative: '0 0,12 * * *' explicitly runs at midnight and noon
-cron.schedule("0 */12 * * *", async () => {
-  console.log("\n[CRON] ⏰ Automated email scrape triggered");
+// --- Setup Automated Email Scraping (Every 8 Hours) ---
+cron.schedule("0 */8 * * *", async () => {
+  console.log("\n[CRON] Automated email scrape triggered");
   try {
-    const result = await runAutomatedScrape(db);
+    const result = await runAutomatedScrape(pool);
     if (result.success) {
       console.log(
-        `[CRON] ✅ Scrape successful: ${result.eventsCreated} events created`
+        `[CRON] Scrape successful: ${result.eventsCreated} events created`
       );
     } else {
-      console.error(`[CRON] ❌ Scrape failed: ${result.error}`);
+      console.error(`[CRON] Scrape failed: ${result.error}`);
     }
   } catch (error) {
-    console.error("[CRON] ❌ Automated scrape error:", error.message);
+    console.error("[CRON] Automated scrape error:", error.message);
   }
 });
 
-console.log("✅ [CRON] Automated email scraping scheduled every 12 hours");
+console.log("[CRON] Automated email scraping scheduled every 8 hours");
 
 app.listen(PORT, () =>
   console.log(`Server listening on http://localhost:${PORT}`)

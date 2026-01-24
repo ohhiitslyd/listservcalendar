@@ -18,10 +18,12 @@ export const useMemoizedCounts = (events, listservCalendarId) =>
 
       if (!isListServ) return;
 
-      // Categories might exist either directly or inside extendedProps
-      const cats = ev.categories || ev?.extendedProps?.categories || [];
-      cats.forEach((c) => {
-        counts[c] = (counts[c] || 0) + 1;
+      // Tags might exist either directly or inside extendedProps
+      const tags = ev.tags || ev?.extendedProps?.tags || [];
+      // Handle both array and string formats
+      const tagArray = Array.isArray(tags) ? tags : [];
+      tagArray.forEach((t) => {
+        counts[t] = (counts[t] || 0) + 1;
       });
     });
 
