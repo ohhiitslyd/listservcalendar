@@ -514,11 +514,12 @@ app.get("/api/events", ensureAuthed, async (req, res) => {
     }
 
     // Get local events from PostgreSQL
-    // Email-sourced events are campus-wide, visible to all users
-    // Manual/draft events remain user-specific
+    // Email-sourced events are campus-wide, visible to all users (regardless of status)
+    // Manual/draft events remain user-specific (only unpublished ones)
     const localEventsRaw = await query(
-      `SELECT * FROM events WHERE status != 'published'
-       AND (source = 'email' OR user_id = $1)`,
+      `SELECT * FROM events WHERE
+       source = 'email'
+       OR (user_id = $1 AND status != 'published')`,
       [req.session.user.id]
     );
 
