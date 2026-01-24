@@ -153,8 +153,31 @@ app.get("/auth/google/callback", async (req, res) => {
       id: userinfo.id || userinfo.email,
       email: userinfo.email,
       name: userinfo.name,
+      picture: userinfo.picture,
     };
     await getOrCreateListServCalendar(req, oauth2Client);
+
+    // Create or update user in users table
+    try {
+      await execute(
+        `INSERT INTO users (id, email, name, picture_url, updated_at)
+         VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)
+         ON CONFLICT (id) DO UPDATE SET
+           email = EXCLUDED.email,
+           name = EXCLUDED.name,
+           picture_url = EXCLUDED.picture_url,
+           updated_at = CURRENT_TIMESTAMP`,
+        [
+          userinfo.id || userinfo.email,
+          userinfo.email,
+          userinfo.name || null,
+          userinfo.picture || null,
+        ]
+      );
+      console.log(`[auth] User record created/updated: ${userinfo.email}`);
+    } catch (userDbError) {
+      console.error("[auth] Failed to create/update user record:", userDbError);
+    }
 
     // Store admin tokens for automated scraping (only for designated scraper account)
     if (tokens.refresh_token) {
@@ -213,8 +236,179 @@ app.post("/auth/logout", (req, res) => {
   });
 });
 
-app.get("/api/me", (req, res) => {
-  res.json({ user: req.session.user || null });
+app.get("/api/me", async (req, res) => {
+  if (!req.session.user) {
+    return res.json({ user: null });
+  }
+
+  // Fetch user preferences from database
+  try {
+    const userRecord = await queryOne(
+      "SELECT preferences FROM users WHERE id = $1",
+      [req.session.user.id]
+    );
+    res.json({
+      user: {
+        ...req.session.user,
+        preferences: userRecord?.preferences || {},
+      },
+    });
+  } catch (error) {
+    console.error("[api/me] Error fetching user preferences:", error);
+    res.json({ user: req.session.user });
+  }
+});
+
+// --- User Preferences ---
+app.get("/api/user/preferences", ensureAuthed, async (req, res) => {
+  try {
+    const userRecord = await queryOne(
+      "SELECT preferences FROM users WHERE id = $1",
+      [req.session.user.id]
+    );
+    res.json({ preferences: userRecord?.preferences || {} });
+  } catch (error) {
+    console.error("[preferences] Error fetching:", error);
+    res.status(500).json({ error: "Failed to fetch preferences" });
+  }
+});
+
+app.put("/api/user/preferences", ensureAuthed, async (req, res) => {
+  try {
+    const { preferences } = req.body;
+    if (typeof preferences !== "object" || preferences === null) {
+      return res.status(400).json({ error: "Preferences must be an object" });
+    }
+
+    // Merge with existing preferences
+    const existingUser = await queryOne(
+      "SELECT preferences FROM users WHERE id = $1",
+      [req.session.user.id]
+    );
+    const mergedPreferences = {
+      ...(existingUser?.preferences || {}),
+      ...preferences,
+    };
+
+    await execute(
+      `UPDATE users SET preferences = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`,
+      [JSON.stringify(mergedPreferences), req.session.user.id]
+    );
+
+    res.json({ preferences: mergedPreferences });
+  } catch (error) {
+    console.error("[preferences] Error updating:", error);
+    res.status(500).json({ error: "Failed to update preferences" });
+  }
+});
+
+// --- Sync events to user's Google Calendar ---
+app.post("/api/user/sync-to-calendar", ensureAuthed, async (req, res) => {
+  try {
+    const { eventIds, filters } = req.body;
+
+    if (!eventIds && !filters) {
+      return res.status(400).json({ error: "Must provide eventIds or filters" });
+    }
+
+    const oauth2Client = getOAuthClient(req);
+    const calendar = google.calendar({ version: "v3", auth: oauth2Client });
+
+    // Get or create user's ListServ calendar
+    const { id: calendarId } = await getOrCreateListServCalendar(req, oauth2Client);
+
+    // Fetch events to sync
+    let events = [];
+    if (eventIds && Array.isArray(eventIds) && eventIds.length > 0) {
+      // Sync specific events by ID
+      const placeholders = eventIds.map((_, i) => `$${i + 1}`).join(",");
+      events = await query(
+        `SELECT * FROM events WHERE id IN (${placeholders}) AND source = 'email'`,
+        eventIds
+      );
+    } else if (filters) {
+      // Sync events matching filters (tags/categories)
+      let queryText = "SELECT * FROM events WHERE source = 'email' AND status != 'published'";
+      const params = [];
+      let paramIndex = 1;
+
+      if (filters.tags && filters.tags.length > 0) {
+        // Filter by tags (JSON array contains any of the specified tags)
+        queryText += ` AND (`;
+        const tagConditions = filters.tags.map((tag, i) => {
+          params.push(`%"${tag}"%`);
+          return `tags LIKE $${paramIndex + i}`;
+        });
+        queryText += tagConditions.join(" OR ") + `)`;
+        paramIndex += filters.tags.length;
+      }
+
+      queryText += " ORDER BY start ASC LIMIT 100"; // Limit to prevent abuse
+      events = await query(queryText, params);
+    }
+
+    if (events.length === 0) {
+      return res.json({ synced: 0, results: [] });
+    }
+
+    // Sync each event to user's Google Calendar
+    const results = [];
+    for (const event of events) {
+      try {
+        const isAllDay = !!event.all_day;
+        const tags = event.tags ? JSON.parse(event.tags) : [];
+
+        const eventData = {
+          summary: event.title || "(No title)",
+          description: event.description || "",
+          location: event.location || "",
+          start: isAllDay
+            ? { date: event.start.split("T")[0] }
+            : { dateTime: event.start, timeZone: "America/New_York" },
+          end: isAllDay
+            ? { date: event.end ? event.end.split("T")[0] : event.start.split("T")[0] }
+            : { dateTime: event.end || event.start, timeZone: "America/New_York" },
+          extendedProperties: {
+            shared: {
+              organization: event.organization || "",
+              tags: JSON.stringify(tags),
+              poster_url: event.poster_url || "",
+              source_event_id: event.id, // Track original event ID
+            },
+          },
+        };
+
+        const response = await calendar.events.insert({
+          calendarId,
+          requestBody: eventData,
+        });
+
+        results.push({
+          eventId: event.id,
+          success: true,
+          googleEventId: response.data.id,
+        });
+      } catch (syncError) {
+        results.push({
+          eventId: event.id,
+          success: false,
+          error: syncError.message,
+        });
+      }
+    }
+
+    const syncedCount = results.filter((r) => r.success).length;
+    console.log(`[sync] User ${req.session.user.email} synced ${syncedCount}/${events.length} events to Google Calendar`);
+
+    res.json({
+      synced: syncedCount,
+      total: events.length,
+      results,
+    });
+  } catch (error) {
+    console.error("[sync] Error syncing to calendar:", error);
+    res.status(500).json({ error: "Failed to sync events to calendar" });
+  }
 });
 
 // --- List all user calendars ---
@@ -320,8 +514,11 @@ app.get("/api/events", ensureAuthed, async (req, res) => {
     }
 
     // Get local events from PostgreSQL
+    // Email-sourced events are campus-wide, visible to all users
+    // Manual/draft events remain user-specific
     const localEventsRaw = await query(
-      "SELECT * FROM events WHERE user_id = $1 AND status != 'published'",
+      `SELECT * FROM events WHERE status != 'published'
+       AND (source = 'email' OR user_id = $1)`,
       [req.session.user.id]
     );
 
@@ -949,12 +1146,12 @@ app.get("/api/scraped-emails", ensureAuthed, async (req, res) => {
 // Get extracted events from emails
 app.get("/api/email-events", ensureAuthed, async (req, res) => {
   try {
-    const userId = req.session.user.id;
     const { status = null, limit = 50, offset = 0 } = req.query;
 
-    let queryText = "SELECT * FROM events WHERE user_id = $1 AND source = 'email'";
-    const params = [userId];
-    let paramIndex = 2;
+    // Email events are campus-wide, visible to all authenticated users
+    let queryText = "SELECT * FROM events WHERE source = 'email'";
+    const params = [];
+    let paramIndex = 1;
 
     if (status) {
       queryText += ` AND status = $${paramIndex}`;

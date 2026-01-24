@@ -94,6 +94,24 @@ export async function initializeSchema() {
       )
     `);
 
+    // Users table for user profiles and preferences
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS users (
+        id TEXT PRIMARY KEY,
+        email TEXT NOT NULL UNIQUE,
+        name TEXT,
+        picture_url TEXT,
+        preferences JSONB DEFAULT '{}',
+        created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // Create index on users email
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)
+    `);
+
     console.log("[db] Schema initialized successfully");
   } finally {
     client.release();
