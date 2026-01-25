@@ -401,7 +401,7 @@ export const AppProvider = ({ children }) => {
           });
           if (res.ok) {
             const data = await res.json();
-            setAvailableOrgCats(data.categories || []);
+            setAvailableOrgCats(data.orgCategories || []);
           } else {
             setAvailableOrgCats([]);
           }

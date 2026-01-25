@@ -101,3 +101,43 @@ node test-scraper.js
 # Or via CLI:
 neonctl branches delete --project-id <project-id> --branch dev-yourname
 ```
+
+## Production Notes
+
+Before deploying to production:
+
+1. **Environment Variables**: Ensure `NODE_ENV=production` is set. This enables:
+   - Secure cookies (HTTPS-only)
+   - Production SSL settings for database
+
+2. **Session Storage**: Sessions are stored in-memory by default. For production with multiple instances, use a persistent session store:
+   ```bash
+   npm install connect-pg-simple
+   ```
+   Then configure in index.js to use PostgreSQL for session storage.
+
+3. **Rate Limiting**: Add rate limiting middleware to prevent API abuse:
+   ```bash
+   npm install express-rate-limit
+   ```
+   Example configuration:
+   ```javascript
+   import rateLimit from 'express-rate-limit';
+   const limiter = rateLimit({
+     windowMs: 15 * 60 * 1000, // 15 minutes
+     max: 100, // limit each IP to 100 requests per windowMs
+   });
+   app.use('/api/', limiter);
+   ```
+
+4. **Error Handling**: Consider wrapping API error responses to avoid exposing internal details:
+   ```javascript
+   // In production, return generic error messages
+   if (process.env.NODE_ENV === 'production') {
+     res.status(500).json({ error: 'Internal server error' });
+   } else {
+     res.status(500).json({ error: err.message });
+   }
+   ```
+
+5. **HTTPS**: Ensure the app runs behind a reverse proxy (e.g., nginx) with HTTPS enabled for secure cookie transmission.

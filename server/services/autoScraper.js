@@ -123,7 +123,7 @@ function createOAuthClientFromTokens(tokenData) {
  * @param {boolean} allDay - Whether it's an all-day event
  * @returns {string|null} - Combined datetime or null
  */
-function combineDateTime(date, time, allDay) {
+export function combineDateTime(date, time, allDay) {
   if (!date) return null;
   if (time && !allDay) {
     return `${date}T${time}`;
@@ -199,6 +199,20 @@ async function processUnprocessedEmails(userId, pool, oauth2Client) {
             const endDate = new Date(startDate);
             endDate.setHours(endDate.getHours() + 1);
             end = endDate.toISOString();
+          }
+
+          // Check for duplicate from same email (prevent LLM parsing same event twice)
+          const startDateOnly = start.split("T")[0];
+          const duplicateFromSameEmail = await pool.query(
+            "SELECT id FROM events WHERE user_id = $1 AND email_id = $2 AND title = $3 AND start LIKE $4",
+            [userId, email.id, event.title, `${startDateOnly}%`]
+          );
+
+          if (duplicateFromSameEmail.rows.length > 0) {
+            console.log(
+              `[autoScraper] Skipping duplicate event from same email: ${event.title}`
+            );
+            continue;
           }
 
           const eventId = `event_${Math.random().toString(36).substr(2, 16)}`;

@@ -238,25 +238,6 @@ function extractOrganization(fromName) {
 }
 
 /**
- * Helper function to convert time string to 24-hour format
- */
-function parseTimeTo24Hour(timeStr) {
-  const match = timeStr.match(/(\d{1,2}):?(\d{2})?\s*(AM|PM|am|pm)?/i);
-  if (!match) return null;
-
-  let hours = parseInt(match[1], 10);
-  const minutes = match[2] ? parseInt(match[2], 10) : 0;
-  const ampm = match[3]?.toUpperCase();
-
-  if (ampm === "PM" && hours !== 12) hours += 12;
-  if (ampm === "AM" && hours === 12) hours = 0;
-
-  return `${hours.toString().padStart(2, "0")}:${minutes
-    .toString()
-    .padStart(2, "0")}:00`;
-}
-
-/**
  * Process a single raw event object from LLM response
  * Applies vision extraction, date/time parsing, validation, and formatting
  */

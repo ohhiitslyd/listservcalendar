@@ -112,6 +112,20 @@ export async function initializeSchema() {
       CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)
     `);
 
+    // Create indexes for frequently queried columns
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_events_source ON events(source)
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_events_status ON events(status)
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_events_email_id ON events(email_id)
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_scraped_emails_processed ON scraped_emails(processed)
+    `);
+
     console.log("[db] Schema initialized successfully");
   } finally {
     client.release();
