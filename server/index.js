@@ -87,10 +87,16 @@ if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET || !GOOGLE_REDIRECT_URI) {
 }
 
 const app = express();
+
+// Trust first proxy (nginx, ALB, Cloudflare, etc.) so secure cookies work behind reverse proxy
+const isProduction = process.env.NODE_ENV === "production";
+if (isProduction) {
+  app.set("trust proxy", 1);
+}
+
 app.use(express.json());
 app.use(cookieParser());
 
-const isProduction = process.env.NODE_ENV === "production";
 app.use(
   session({
     secret: SESSION_SECRET,
