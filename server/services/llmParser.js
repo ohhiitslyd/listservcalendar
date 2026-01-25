@@ -300,7 +300,8 @@ Look carefully at ALL text in the image including stylized/decorative fonts. Ret
                     {
                       type: "image_url",
                       image_url: {
-                        url: `data:${imageMimeType};base64,${imageData}`,
+                        // Convert Gmail's URL-safe base64 to standard base64
+                        url: `data:${imageMimeType};base64,${imageData.replace(/-/g, '+').replace(/_/g, '/')}`,
                         detail: "high",
                       },
                     },
@@ -510,15 +511,27 @@ export async function parseEmailForEvents(emailData) {
       const attachmentsList =
         typeof attachments === "string" ? JSON.parse(attachments) : attachments;
       if (Array.isArray(attachmentsList) && attachmentsList.length > 0) {
-        // Use the first image attachment as the poster
-        const imageAttachment =
-          attachmentsList.find(
-            (att) => att.mimeType && att.mimeType.startsWith("image/")
-          ) || attachmentsList[0];
+        // Filter to only image attachments
+        const imageAttachments = attachmentsList.filter(
+          (att) => att.mimeType && att.mimeType.startsWith("image/")
+        );
 
-        if (imageAttachment && imageAttachment.contentId) {
-          // Construct the URL to serve the attachment
-          posterUrl = `/api/scraped-emails/${emailId}/attachments/${imageAttachment.contentId}`;
+        if (imageAttachments.length > 0) {
+          // Use first image found, but fall back to largest if first is too small (< 10KB)
+          const firstImage = imageAttachments[0];
+          const largestImage = imageAttachments.reduce((max, att) =>
+            (att.size || 0) > (max.size || 0) ? att : max
+          );
+
+          const MIN_POSTER_SIZE = 10 * 1024; // 10KB threshold
+          const selectedImage =
+            (firstImage.size || 0) < MIN_POSTER_SIZE && (largestImage.size || 0) > (firstImage.size || 0)
+              ? largestImage
+              : firstImage;
+
+          if (selectedImage && selectedImage.contentId) {
+            posterUrl = `/api/scraped-emails/${emailId}/attachments/${selectedImage.contentId}`;
+          }
         }
       }
     } catch (e) {

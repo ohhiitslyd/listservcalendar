@@ -115,24 +115,34 @@ export async function fetchEmailContent(oauth2Client, messageId) {
         partHeaders.find((h) => h.name.toLowerCase() === name.toLowerCase())
           ?.value || "";
 
-      // Check if this is an inline attachment (image with Content-ID)
+      // Check for image attachments (both inline with Content-ID and regular attachments)
       const contentId = getPartHeader("Content-ID");
+      const contentDisposition = getPartHeader("Content-Disposition");
       const filename =
-        getPartHeader("Content-Name") || getPartHeader("Filename");
+        getPartHeader("Content-Name") ||
+        getPartHeader("Filename") ||
+        part.filename ||
+        contentDisposition?.match(/filename="?([^";\n]+)"?/i)?.[1];
       const mimeType = part.mimeType || "";
 
-      // Inline attachments have Content-ID and are typically images
-      // Check for both direct data and attachmentId (for large attachments)
       const hasData = part.body?.data;
       const hasAttachmentId = part.body?.attachmentId;
       const isImage = mimeType.startsWith("image/");
 
-      if (contentId && isImage && (hasData || hasAttachmentId)) {
+      // Capture both inline images (with Content-ID) and regular image attachments
+      if (isImage && (hasData || hasAttachmentId)) {
+        // Generate a unique ID for attachments without Content-ID
+        const attachmentIndex = attachments.length;
+        const generatedId = contentId
+          ? contentId.replace(/[<>]/g, "")
+          : `attachment_${attachmentIndex}_${Date.now()}`;
+
         const attachmentData = {
-          contentId: contentId.replace(/[<>]/g, ""),
+          contentId: generatedId,
           mimeType: mimeType,
-          filename: filename || `image.${mimeType.split("/")[1]}`,
+          filename: filename || `image_${attachmentIndex}.${mimeType.split("/")[1] || "jpg"}`,
           size: part.body.size || 0,
+          isInline: !!contentId, // Track if this was an inline image
         };
 
         if (hasData) {

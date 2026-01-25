@@ -175,22 +175,33 @@ async function processUnprocessedEmails(userId, pool, oauth2Client) {
             continue;
           }
 
-          // Validate: if end date is different from start date, reset to same day
-          if (
-            end &&
-            event.endDate &&
-            event.startDate &&
-            event.endDate !== event.startDate
-          ) {
-            console.warn(
-              `[autoScraper] Multi-day event detected (likely parsing error), resetting end to same day:`,
-              {
-                title: event.title,
-                startDate: event.startDate,
-                endDate: event.endDate,
-              }
-            );
-            end = combineDateTime(event.startDate, event.endTime, event.allDay);
+          // Validate multi-day events: allow them but cap duration and fix obvious errors
+          if (end && start) {
+            const startMs = new Date(start).getTime();
+            const endMs = new Date(end).getTime();
+            const durationDays = (endMs - startMs) / (1000 * 60 * 60 * 24);
+
+            // If end is before start, swap them
+            if (endMs < startMs) {
+              console.warn(
+                `[autoScraper] End before start detected, swapping:`,
+                { title: event.title, start, end }
+              );
+              const temp = end;
+              end = start;
+              start = temp;
+            }
+            // Cap events at 14 days max (likely LLM parsing error if longer)
+            else if (durationDays > 14) {
+              console.warn(
+                `[autoScraper] Event duration ${durationDays.toFixed(1)} days exceeds 14 day limit, capping:`,
+                { title: event.title, startDate: event.startDate, endDate: event.endDate }
+              );
+              const cappedEnd = new Date(startMs + 14 * 24 * 60 * 60 * 1000);
+              end = event.allDay
+                ? cappedEnd.toISOString().split("T")[0]
+                : cappedEnd.toISOString();
+            }
           }
 
           // If we have a start time but no end time, default to 1 hour duration
