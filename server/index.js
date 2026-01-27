@@ -355,6 +355,232 @@ app.put("/api/user/preferences", ensureAuthed, async (req, res) => {
   }
 });
 
+// --- Sync calendar based on user preferences (called when Apply Filters is clicked) ---
+app.post("/api/user/sync-calendar-by-preferences", ensureAuthed, async (req, res) => {
+  try {
+    const userId = req.session.user.id;
+    const oauth2Client = getOAuthClient(req);
+    const calendar = google.calendar({ version: "v3", auth: oauth2Client });
+    const { id: listservCalendarId } = await getOrCreateListServCalendar(
+      req,
+      oauth2Client
+    );
+
+    // Get user preferences
+    const userRecord = await queryOne(
+      "SELECT organization_preference, event_type_preference FROM users WHERE id = $1",
+      [userId]
+    );
+
+    const orgPrefs = userRecord?.organization_preference || [];
+    const eventTypePrefs = userRecord?.event_type_preference || [];
+
+    // If no preferences, publish ALL events (show everything)
+    // This means the user wants to see all events, so we sync all email-sourced events
+    const showAllEvents = orgPrefs.length === 0 && eventTypePrefs.length === 0;
+
+    // Query database for events matching preferences
+    // Get all email-sourced events (they're shared/campus-wide)
+    let queryText = `SELECT * FROM events WHERE source = 'email'`;
+    const params = [];
+    let paramIndex = 1;
+
+    // Filter by event type preferences (tags) - only if preferences are set
+    if (!showAllEvents && eventTypePrefs.length > 0) {
+      queryText += ` AND (`;
+      const tagConditions = eventTypePrefs.map((tag) => {
+        params.push(`%"${tag}"%`);
+        const condition = `tags LIKE $${paramIndex}`;
+        paramIndex++;
+        return condition;
+      });
+      queryText += tagConditions.join(" OR ") + `)`;
+    }
+
+    queryText += " ORDER BY start ASC";
+    let matchingEvents = await query(queryText, params);
+
+    // Filter by organization preferences in memory
+    // (Organization matching is complex due to hierarchical keys, so we do it in memory)
+    // Only filter if preferences are set (not showing all events)
+    if (!showAllEvents && orgPrefs.length > 0 && matchingEvents.length > 0) {
+      // Extract organization names from hierarchical keys
+      // If key is "music:a_cappella:dartmouth_cords", the org name is "Dartmouth Cords"
+      // For now, we'll do a simple match: if the event's organization appears in any preference key
+      matchingEvents = matchingEvents.filter(event => {
+        const eventOrg = (event.organization || "").toLowerCase();
+        return orgPrefs.some(pref => {
+          // If preference is a hierarchical key, check if org name appears in it
+          // Or if it's a simple name, do exact match
+          const prefLower = pref.toLowerCase();
+          // Check if event org matches the last part of hierarchical key (after last colon)
+          if (pref.includes(':')) {
+            const lastPart = pref.split(':').pop().toLowerCase();
+            // Convert snake_case to title case for matching
+            const orgNameFromKey = lastPart.split('_').map(w => 
+              w.charAt(0).toUpperCase() + w.slice(1)
+            ).join(' ').toLowerCase();
+            return eventOrg.includes(orgNameFromKey) || 
+                   orgNameFromKey.includes(eventOrg) ||
+                   eventOrg === prefLower;
+          }
+          return eventOrg === prefLower || eventOrg.includes(prefLower) || prefLower.includes(eventOrg);
+        });
+      });
+    }
+
+    // Get current events from Google Calendar
+    const now = new Date();
+    const timeMin = new Date(now.getFullYear() - 1, 0, 1).toISOString();
+    const timeMax = new Date(
+      now.getFullYear() + 2,
+      11,
+      31,
+      23,
+      59,
+      59
+    ).toISOString();
+
+    let nextPageToken = null;
+    const currentGCalEvents = [];
+    do {
+      const response = await calendar.events.list({
+        calendarId: listservCalendarId,
+        timeMin,
+        timeMax,
+        maxResults: 2500,
+        pageToken: nextPageToken,
+        singleEvents: true,
+      });
+      currentGCalEvents.push(...(response.data.items || []));
+      nextPageToken = response.data.nextPageToken;
+    } while (nextPageToken);
+
+    // Create maps for efficient lookup
+    const matchingEventIds = new Set(matchingEvents.map(e => e.id));
+    const gcalEventMap = new Map(); // Map: source_event_id -> google event
+    currentGCalEvents.forEach(gcalEvent => {
+      const sourceEventId = gcalEvent.extendedProperties?.shared?.source_event_id;
+      if (sourceEventId) {
+        gcalEventMap.set(sourceEventId, gcalEvent);
+      }
+    });
+
+    // Publish events that match but aren't in Google Calendar
+    let publishedCount = 0;
+    const publishResults = [];
+    for (const event of matchingEvents) {
+      // Check if already published to this user's calendar
+      const existingGCalEvent = gcalEventMap.get(event.id);
+      
+      if (!existingGCalEvent) {
+        // Need to publish this event (don't update database since it's shared)
+        const tags = event.tags ? JSON.parse(event.tags) : [];
+        const isAllDay = !!event.all_day;
+        
+        const eventData = {
+          summary: event.title || "(No title)",
+          description: event.description || "",
+          location: event.location || "",
+          start: isAllDay
+            ? { date: event.start.split("T")[0] }
+            : { dateTime: event.start, timeZone: "America/New_York" },
+          end: isAllDay
+            ? { date: (event.end || event.start).split("T")[0] }
+            : { dateTime: event.end || event.start, timeZone: "America/New_York" },
+          extendedProperties: {
+            shared: {
+              organization: event.organization || "",
+              tags: JSON.stringify(tags),
+              poster_url: event.poster_url || "",
+              source_event_id: event.id, // Track original database event ID
+            },
+          },
+        };
+
+        try {
+          const response = await calendar.events.insert({
+            calendarId: listservCalendarId,
+            requestBody: eventData,
+          });
+          publishedCount++;
+          publishResults.push({ 
+            eventId: event.id, 
+            action: "published",
+            googleEventId: response.data.id 
+          });
+        } catch (error) {
+          console.error(`[sync-by-prefs] Failed to publish event ${event.title}:`, error.message);
+          publishResults.push({ 
+            eventId: event.id, 
+            action: "failed", 
+            error: error.message 
+          });
+        }
+      } else {
+        publishResults.push({ eventId: event.id, action: "already_exists" });
+      }
+    }
+
+    // Delete Google Calendar events that don't match current preferences
+    // If showing all events (no preferences), don't delete anything
+    let deletedCount = 0;
+    const deleteResults = [];
+    if (!showAllEvents) {
+      for (const gcalEvent of currentGCalEvents) {
+        const sourceEventId = gcalEvent.extendedProperties?.shared?.source_event_id;
+        
+        // If this event doesn't have a source_event_id or doesn't match current filters, delete it
+        if (!sourceEventId || !matchingEventIds.has(sourceEventId)) {
+          try {
+            await calendar.events.delete({
+              calendarId: listservCalendarId,
+              eventId: gcalEvent.id,
+            });
+            deletedCount++;
+            deleteResults.push({ 
+              googleEventId: gcalEvent.id, 
+              action: "deleted",
+              reason: sourceEventId ? "no_longer_matches_filters" : "unknown_source"
+            });
+          } catch (error) {
+            console.error(`[sync] Failed to delete event ${gcalEvent.id}:`, error.message);
+            deleteResults.push({ 
+              googleEventId: gcalEvent.id, 
+              action: "delete_failed", 
+              error: error.message 
+            });
+          }
+        }
+      }
+    }
+
+    console.log(
+      `[sync-by-prefs] User ${req.session.user.email}: showAllEvents=${showAllEvents}, Published ${publishedCount}, Deleted ${deletedCount}, Total matching: ${matchingEvents.length}`
+    );
+
+    const message = showAllEvents
+      ? `All events synced: ${publishedCount} events published to your calendar`
+      : `Calendar synced: ${publishedCount} events published, ${deletedCount} events removed`;
+
+    res.json({
+      success: true,
+      published: publishedCount,
+      deleted: deletedCount,
+      totalMatching: matchingEvents.length,
+      publishResults,
+      deleteResults,
+      message,
+    });
+  } catch (error) {
+    console.error("[sync-by-prefs] Error:", error);
+    res.status(500).json({ 
+      error: "Failed to sync calendar by preferences",
+      details: error.message 
+    });
+  }
+});
+
 // --- Organization Preferences (separate endpoint) ---
 app.get("/api/user/preferences/organization", ensureAuthed, async (req, res) => {
   try {

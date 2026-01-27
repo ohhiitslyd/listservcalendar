@@ -4,7 +4,7 @@ import { AppContext } from "../../context/AppContext";
 import { api } from "../../api/calendarApi";
 import "./Filters.css";
 
-export const Filters = () => {
+export const Filters = ({ onClose }) => {
   const {
     //tag level cats 
     availableCats,
@@ -38,23 +38,32 @@ export const Filters = () => {
   // Calculate total selected count
   const totalSelected = selectedCats.size + selectedOrgCats.size;
 
-  // Apply filters - save to user preferences
+  // Apply filters - save to user preferences and sync calendar
   const applyFilters = async () => {
     try {
       // Convert Sets to arrays
       const orgPrefsArray = Array.from(selectedOrgCats);
       const eventTypePrefsArray = Array.from(selectedCats);
 
+      // Save preferences
       await api.updatePreferences({
         organizationPreference: orgPrefsArray,
         eventTypePreference: eventTypePrefsArray,
       });
 
-      // Show success feedback (you can add a toast notification here if needed)
-      console.log("Filters saved successfully");
+      // Sync calendar based on preferences
+      await api.syncCalendarByPreferences();
+      
+      // Close dropdown immediately
+      if (onClose) {
+        onClose();
+      }
     } catch (error) {
-      console.error("Failed to save filters:", error);
-      alert("Failed to save filters. Please try again.");
+      console.error("Failed to apply filters:", error);
+      // Close dropdown even on error
+      if (onClose) {
+        onClose();
+      }
     }
   };
 

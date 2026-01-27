@@ -168,4 +168,20 @@ export const api = {
     fetch("/api/user/preferences", { credentials: "include" }).then((r) =>
       r.json()
     ),
+
+  /* -----------------------------------------------------------------
+   * Sync Calendar by Preferences
+   * ----------------------------------------------------------------- */
+  syncCalendarByPreferences: async (): Promise<{
+    success: boolean;
+    published: number;
+    deleted: number;
+    totalMatching: number;
+    message: string;
+  }> =>
+    fetch("/api/user/sync-calendar-by-preferences", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+    }).then((r) => r.json()),
 };

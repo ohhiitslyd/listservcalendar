@@ -103,6 +103,7 @@ export async function publishEventToCalendar({
           organization: organization || "",
           tags: JSON.stringify(eventTags || []),
           poster_url: posterUrl || "",
+          source_event_id: eventId, // Track original database event ID for matching
         },
       },
     };
