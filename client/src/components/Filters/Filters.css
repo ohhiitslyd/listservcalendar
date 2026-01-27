@@ -53,8 +53,15 @@
   display: flex;
   gap: 0;
   align-items: center;
+  justify-content: space-between;
   padding: 16px 20px;
   flex-shrink: 0;
+}
+
+.filters-tabs-group {
+  display: flex;
+  gap: 0;
+  align-items: center;
 }
 
 .filter-tab {
@@ -89,6 +96,21 @@
 .filter-tab.active {
   background: #d4e9c4;
   font-weight: 500;
+}
+
+.filters-clear-all-tab {
+  background: transparent;
+  border: none;
+  font-size: 14px;
+  font-weight: 500;
+  font-family: 'Poppins', sans-serif;
+  color: #000000;
+  cursor: pointer;
+  padding: 7px 10px;
+}
+
+.filters-clear-all-tab:hover {
+  text-decoration: underline;
 }
 
 /* Content */

@@ -244,13 +244,15 @@ app.get("/api/me", async (req, res) => {
   // Fetch user preferences from database
   try {
     const userRecord = await queryOne(
-      "SELECT preferences FROM users WHERE id = $1",
+      "SELECT organization_preference, event_type_preference, preferences FROM users WHERE id = $1",
       [req.session.user.id]
     );
     res.json({
       user: {
         ...req.session.user,
         preferences: userRecord?.preferences || {},
+        organizationPreference: userRecord?.organization_preference || [],
+        eventTypePreference: userRecord?.event_type_preference || [],
       },
     });
   } catch (error) {
@@ -263,10 +265,14 @@ app.get("/api/me", async (req, res) => {
 app.get("/api/user/preferences", ensureAuthed, async (req, res) => {
   try {
     const userRecord = await queryOne(
-      "SELECT preferences FROM users WHERE id = $1",
+      "SELECT organization_preference, event_type_preference, preferences FROM users WHERE id = $1",
       [req.session.user.id]
     );
-    res.json({ preferences: userRecord?.preferences || {} });
+    res.json({ 
+      preferences: userRecord?.preferences || {},
+      organizationPreference: userRecord?.organization_preference || [],
+      eventTypePreference: userRecord?.event_type_preference || [],
+    });
   } catch (error) {
     console.error("[preferences] Error fetching:", error);
     res.status(500).json({ error: "Failed to fetch preferences" });
@@ -275,30 +281,149 @@ app.get("/api/user/preferences", ensureAuthed, async (req, res) => {
 
 app.put("/api/user/preferences", ensureAuthed, async (req, res) => {
   try {
-    const { preferences } = req.body;
-    if (typeof preferences !== "object" || preferences === null) {
-      return res.status(400).json({ error: "Preferences must be an object" });
+    const { preferences, organizationPreference, eventTypePreference } = req.body;
+    
+    // Support both old format (preferences object) and new format (separate columns)
+    if (preferences && typeof preferences === "object" && preferences !== null) {
+      // Legacy: Merge with existing preferences
+      const existingUser = await queryOne(
+        "SELECT preferences FROM users WHERE id = $1",
+        [req.session.user.id]
+      );
+      const mergedPreferences = {
+        ...(existingUser?.preferences || {}),
+        ...preferences,
+      };
+
+      await execute(
+        `UPDATE users SET preferences = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`,
+        [JSON.stringify(mergedPreferences), req.session.user.id]
+      );
+
+      return res.json({ preferences: mergedPreferences });
     }
 
-    // Merge with existing preferences
-    const existingUser = await queryOne(
-      "SELECT preferences FROM users WHERE id = $1",
+    // New format: Update separate preference columns
+    const updates = [];
+    const values = [];
+    let paramIndex = 1;
+
+    if (organizationPreference !== undefined) {
+      if (!Array.isArray(organizationPreference)) {
+        return res.status(400).json({ error: "organizationPreference must be an array" });
+      }
+      // Replace with new array (or merge if you want to add to existing)
+      // For now, we'll replace - change to union if you want merging behavior
+      updates.push(`organization_preference = $${paramIndex}`);
+      values.push(organizationPreference);
+      paramIndex++;
+    }
+
+    if (eventTypePreference !== undefined) {
+      if (!Array.isArray(eventTypePreference)) {
+        return res.status(400).json({ error: "eventTypePreference must be an array" });
+      }
+      // Replace with new array (or merge if you want to add to existing)
+      updates.push(`event_type_preference = $${paramIndex}`);
+      values.push(eventTypePreference);
+      paramIndex++;
+    }
+
+    if (updates.length === 0) {
+      return res.status(400).json({ error: "No preferences provided to update" });
+    }
+
+    values.push(req.session.user.id);
+    await execute(
+      `UPDATE users SET ${updates.join(", ")}, updated_at = CURRENT_TIMESTAMP WHERE id = $${paramIndex}`,
+      values
+    );
+
+    // Return updated preferences
+    const updatedUser = await queryOne(
+      "SELECT organization_preference, event_type_preference FROM users WHERE id = $1",
       [req.session.user.id]
     );
-    const mergedPreferences = {
-      ...(existingUser?.preferences || {}),
-      ...preferences,
-    };
 
-    await execute(
-      `UPDATE users SET preferences = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`,
-      [JSON.stringify(mergedPreferences), req.session.user.id]
-    );
-
-    res.json({ preferences: mergedPreferences });
+    res.json({ 
+      organizationPreference: updatedUser?.organization_preference || [],
+      eventTypePreference: updatedUser?.event_type_preference || [],
+    });
   } catch (error) {
     console.error("[preferences] Error updating:", error);
     res.status(500).json({ error: "Failed to update preferences" });
+  }
+});
+
+// --- Organization Preferences (separate endpoint) ---
+app.get("/api/user/preferences/organization", ensureAuthed, async (req, res) => {
+  try {
+    const userRecord = await queryOne(
+      "SELECT organization_preference FROM users WHERE id = $1",
+      [req.session.user.id]
+    );
+    res.json({ organizationPreference: userRecord?.organization_preference || [] });
+  } catch (error) {
+    console.error("[org-preferences] Error fetching:", error);
+    res.status(500).json({ error: "Failed to fetch organization preferences" });
+  }
+});
+
+app.put("/api/user/preferences/organization", ensureAuthed, async (req, res) => {
+  try {
+    const { organizationPreference } = req.body;
+    if (!Array.isArray(organizationPreference)) {
+      return res.status(400).json({ error: "organizationPreference must be an array" });
+    }
+
+    // Replace with new array (use Set to remove duplicates)
+    const uniquePrefs = [...new Set(organizationPreference)];
+
+    await execute(
+      `UPDATE users SET organization_preference = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`,
+      [uniquePrefs, req.session.user.id]
+    );
+
+    res.json({ organizationPreference: uniquePrefs });
+  } catch (error) {
+    console.error("[org-preferences] Error updating:", error);
+    res.status(500).json({ error: "Failed to update organization preferences" });
+  }
+});
+
+// --- Event Type Preferences (separate endpoint) ---
+app.get("/api/user/preferences/event-type", ensureAuthed, async (req, res) => {
+  try {
+    const userRecord = await queryOne(
+      "SELECT event_type_preference FROM users WHERE id = $1",
+      [req.session.user.id]
+    );
+    res.json({ eventTypePreference: userRecord?.event_type_preference || [] });
+  } catch (error) {
+    console.error("[event-type-preferences] Error fetching:", error);
+    res.status(500).json({ error: "Failed to fetch event type preferences" });
+  }
+});
+
+app.put("/api/user/preferences/event-type", ensureAuthed, async (req, res) => {
+  try {
+    const { eventTypePreference } = req.body;
+    if (!Array.isArray(eventTypePreference)) {
+      return res.status(400).json({ error: "eventTypePreference must be an array" });
+    }
+
+    // Replace with new array (use Set to remove duplicates)
+    const uniquePrefs = [...new Set(eventTypePreference)];
+
+    await execute(
+      `UPDATE users SET event_type_preference = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`,
+      [uniquePrefs, req.session.user.id]
+    );
+
+    res.json({ eventTypePreference: uniquePrefs });
+  } catch (error) {
+    console.error("[event-type-preferences] Error updating:", error);
+    res.status(500).json({ error: "Failed to update event type preferences" });
   }
 });
 
