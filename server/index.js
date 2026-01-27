@@ -941,6 +941,150 @@ app.get("/api/event-categories", ensureAuthed, (req, res) => {
   res.json({ categories });
 });
 
+// =======================
+// Org Categories (for Organization filter tab)
+// =======================
+
+// Path to org category JSON (your file is in get_orgs/)
+const ORG_CATEGORIES_PATH = path.join(__dirname, "..", "get_orgs", "org_categories.json");
+// Path to org filters JSON (org -> emails + categories)
+const ORG_FILTERS_PATH = path.join(__dirname, "..", "get_orgs", "org_filters.json");
+
+// Load org categories once at server start
+let ORG_CATEGORIES = [];
+try {
+  const raw = fs.readFileSync(ORG_CATEGORIES_PATH, "utf8");
+  const parsed = JSON.parse(raw);
+
+  // Accept either: ["Academic", ...] OR { categories: ["Academic", ...] }
+  if (Array.isArray(parsed)) {
+    ORG_CATEGORIES = parsed;
+  } else if (parsed && Array.isArray(parsed.categories)) {
+    ORG_CATEGORIES = parsed.categories;
+  } else {
+    ORG_CATEGORIES = [];
+  }
+
+  console.log(
+    "[org-categories] loaded",
+    ORG_CATEGORIES.length,
+    "top-level categories from",
+    ORG_CATEGORIES_PATH
+  );
+} catch (e) {
+  ORG_CATEGORIES = [];
+  console.warn(
+    "[org-categories] Could not read org_categories.json. Organization categories will be empty.",
+    e
+  );
+}
+
+// Load org filters once at server start
+let ORG_FILTERS = [];
+try {
+  const raw = fs.readFileSync(ORG_FILTERS_PATH, "utf8");
+  const parsed = JSON.parse(raw);
+
+  if (Array.isArray(parsed)) {
+    ORG_FILTERS = parsed;
+  } else {
+    ORG_FILTERS = [];
+  }
+
+  console.log(
+    "[org-filters] loaded",
+    ORG_FILTERS.length,
+    "organizations from",
+    ORG_FILTERS_PATH
+  );
+} catch (e) {
+  ORG_FILTERS = [];
+  console.warn(
+    "[org-filters] Could not read org_filters.json. Org dropdowns will be empty.",
+    e
+  );
+}
+
+// Endpoint to populate the Organization filter tab
+app.get("/api/org-categories", ensureAuthed, (req, res) => {
+  try {
+    // helper: match how you already key categories
+    const toKey = (s) => String(s || "").trim().toLowerCase().replace(/\s+/g, "_");
+
+    // 1) Type nodes (top-level categories)
+    const typeNodes = (ORG_CATEGORIES || [])
+      .filter((x) => typeof x === "string" && x.trim().length > 0)
+      .map((name) => {
+        const label = name.trim();
+        const key = toKey(label);
+        return { key, label, level: "type" };
+      });
+
+    // for quick "does this category exist?"
+    const validTypeKeySet = new Set(typeNodes.map((n) => n.key));
+    const typeLabelByKey = new Map(typeNodes.map((n) => [n.key, n.label]));
+
+    // 2) Subcategory nodes: one per category to hold orgs (keeps your existing UI working)
+    // key format: "<typeKey>:all"
+    const subcategoryNodes = typeNodes.map((t) => ({
+      key: `${t.key}:all`,
+      // Your Filters.jsx strips "<Type Label> • " off subcategory labels
+      // so this shows as "Organizations"
+      label: `${t.label} • Organizations`,
+      level: "subcategory",
+    }));
+
+    // 3) Organization nodes under each category’s :all bucket
+    // key format: "<typeKey>:all:<orgKey>"
+    const orgNodes = [];
+
+    for (const row of ORG_FILTERS || []) {
+      const orgName = row?.organization;
+      if (!orgName || typeof orgName !== "string") continue;
+
+      const orgLabel = orgName.trim();
+      const orgKey = toKey(orgLabel);
+
+      const categories = Array.isArray(row.categories) ? row.categories : [];
+      for (const catName of categories) {
+        const typeKey = toKey(catName);
+
+        // only attach if that category exists in org_categories.json
+        if (!validTypeKeySet.has(typeKey)) continue;
+
+        orgNodes.push({
+          key: `${typeKey}:all:${orgKey}`,
+          label: orgLabel,
+          level: "organization",
+          emails: Array.isArray(row.emails) ? row.emails : [], // optional
+        });
+      }
+    }
+
+    // Optional: sort orgs alphabetically within each category
+    orgNodes.sort((a, b) => {
+      const [aType] = a.key.split(":");
+      const [bType] = b.key.split(":");
+      if (aType !== bType) {
+        const aLabel = typeLabelByKey.get(aType) || aType;
+        const bLabel = typeLabelByKey.get(bType) || bType;
+        return aLabel.localeCompare(bLabel);
+      }
+      return String(a.label || "").localeCompare(String(b.label || ""));
+    });
+
+    res.json({
+      categories: [...typeNodes, ...subcategoryNodes, ...orgNodes],
+    });
+  } catch (e) {
+    console.error("[org-categories] endpoint error:", e);
+    res.status(500).json({
+      error: "Failed to load org categories",
+      details: e.message,
+      categories: [],
+    });
+  }
+});
 // --- Drafts (now using unified events table) ---
 app.post("/api/drafts", ensureAuthed, async (req, res) => {
   try {
