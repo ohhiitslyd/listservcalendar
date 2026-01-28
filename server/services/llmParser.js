@@ -242,7 +242,7 @@ function extractOrganization(fromName) {
  * Applies vision extraction, date/time parsing, validation, and formatting
  */
 async function processRawEvent(rawEvent, context) {
-  const { attachments, emailId, posterUrl, organization, received_date, cleanedText, apiKey, subject } = context;
+  const { attachments, emailId, posterUrl, organization, organizationEmail, received_date, cleanedText, apiKey, subject } = context;
 
   // Make a copy to avoid mutating the original
   const parsed = { ...rawEvent };
@@ -429,6 +429,7 @@ Look carefully at ALL text in the image including stylized/decorative fonts. Ret
     allDay: effectiveAllDay,
     posterUrl: posterUrl || null,
     organization: organization,
+    organizationEmail: organizationEmail,
     tags: tags,
     confidenceScore: 0.95,
   };
@@ -477,6 +478,7 @@ export async function parseEmailForEvents(emailData) {
     body_html,
     received_date,
     from_name,
+    from_email,
     attachments,
     id: emailId,
   } = emailData;
@@ -726,6 +728,7 @@ Now extract from the email above. Return ONLY valid JSON:`;
         emailId,
         posterUrl,
         organization,
+        organizationEmail: from_email || null,
         received_date,
         cleanedText,
         apiKey,
