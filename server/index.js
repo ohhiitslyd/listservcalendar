@@ -400,32 +400,26 @@ app.post("/api/user/sync-calendar-by-preferences", ensureAuthed, async (req, res
     queryText += " ORDER BY start ASC";
     let matchingEvents = await query(queryText, params);
 
-    // Filter by organization preferences in memory
-    // (Organization matching is complex due to hierarchical keys, so we do it in memory)
-    // Only filter if preferences are set (not showing all events)
+    // Filter by organization preferences using organization_email
     if (!showAllEvents && orgPrefs.length > 0 && matchingEvents.length > 0) {
-      // Extract organization names from hierarchical keys
-      // If key is "music:a_cappella:dartmouth_cords", the org name is "Dartmouth Cords"
-      // For now, we'll do a simple match: if the event's organization appears in any preference key
-      matchingEvents = matchingEvents.filter(event => {
-        const eventOrg = (event.organization || "").toLowerCase();
-        return orgPrefs.some(pref => {
-          // If preference is a hierarchical key, check if org name appears in it
-          // Or if it's a simple name, do exact match
-          const prefLower = pref.toLowerCase();
-          // Check if event org matches the last part of hierarchical key (after last colon)
-          if (pref.includes(':')) {
-            const lastPart = pref.split(':').pop().toLowerCase();
-            // Convert snake_case to title case for matching
-            const orgNameFromKey = lastPart.split('_').map(w => 
-              w.charAt(0).toUpperCase() + w.slice(1)
-            ).join(' ').toLowerCase();
-            return eventOrg.includes(orgNameFromKey) || 
-                   orgNameFromKey.includes(eventOrg) ||
-                   eventOrg === prefLower;
-          }
-          return eventOrg === prefLower || eventOrg.includes(prefLower) || prefLower.includes(eventOrg);
-        });
+      const allowedOrgEmails = buildAllowedOrgEmailSet(orgPrefs);
+
+      console.log("[sync-by-prefs] orgPrefs =", orgPrefs);
+      console.log("[sync-by-prefs] allowedOrgEmails size =", allowedOrgEmails.size);
+      console.log("[sync-by-prefs] allowedOrgEmails sample =", [...allowedOrgEmails].slice(0, 30));
+      console.log(
+        "[sync-by-prefs] matchingEvents org_email sample =",
+        matchingEvents.slice(0, 20).map(e => ({
+          id: e.id,
+          title: e.title,
+          organization: e.organization,
+          organization_email: e.organization_email
+        }))
+      );
+
+      matchingEvents = matchingEvents.filter((event) => {
+        const evtEmail = String(event.organization_email || "").trim().toLowerCase();
+        return evtEmail && allowedOrgEmails.has(evtEmail);
       });
     }
 
@@ -491,6 +485,7 @@ app.post("/api/user/sync-calendar-by-preferences", ensureAuthed, async (req, res
           extendedProperties: {
             shared: {
               organization: event.organization || "",
+              organization_email: event.organization_email || "",
               tags: JSON.stringify(tags),
               poster_url: event.poster_url || "",
               source_event_id: event.id, // Track original database event ID
@@ -557,6 +552,7 @@ app.post("/api/user/sync-calendar-by-preferences", ensureAuthed, async (req, res
 
     console.log(
       `[sync-by-prefs] User ${req.session.user.email}: showAllEvents=${showAllEvents}, Published ${publishedCount}, Deleted ${deletedCount}, Total matching: ${matchingEvents.length}`
+
     );
 
     const message = showAllEvents
@@ -722,6 +718,7 @@ app.post("/api/user/sync-to-calendar", ensureAuthed, async (req, res) => {
           extendedProperties: {
             shared: {
               organization: event.organization || "",
+              organization_email: event.organization_email || "",
               tags: JSON.stringify(tags),
               poster_url: event.poster_url || "",
               source_event_id: event.id, // Track original event ID
@@ -857,6 +854,7 @@ app.get("/api/events", ensureAuthed, async (req, res) => {
           end: isAllDay ? ev.end.date : ev.end?.dateTime,
           allDay: isAllDay,
           organization: props.organization || "",
+          organization_email: props.organization_email || "",
           tags: JSON.parse(props.tags || "[]"),
           poster_url: props.poster_url || "",
         };
@@ -884,6 +882,7 @@ app.get("/api/events", ensureAuthed, async (req, res) => {
       end: e.end,
       allDay: !!e.all_day,
       organization: e.organization || "",
+      organization_email: e.organization_email || "",
       tags: e.tags ? JSON.parse(e.tags) : [],
       poster_url: e.poster_url || "",
     }));
@@ -1005,11 +1004,40 @@ try {
   );
 }
 
+// ---------- Org preference -> allowed email helper ----------
+const toKey = (s) => String(s || "").trim().toLowerCase().replace(/\s+/g, "_");
+
+// pref is like "type:all:org_key" (your UI), OR could be just "org_key"
+function buildAllowedOrgEmailSet(orgPrefs) {
+  const allowed = new Set();
+
+  for (const pref of orgPrefs || []) {
+    if (!pref) continue;
+
+    const orgKey = String(pref).includes(":")
+      ? String(pref).split(":").pop()
+      : String(pref);
+
+    const match = (ORG_FILTERS || []).find((row) => {
+      const rowKey = toKey(row?.organization);
+      return rowKey === toKey(orgKey);
+    });
+
+    const emails = Array.isArray(match?.emails) ? match.emails : [];
+    for (const em of emails) {
+      const normalized = String(em).trim().toLowerCase();
+      if (normalized) allowed.add(normalized);
+    }
+  }
+
+  return allowed;
+}
+
 // Endpoint to populate the Organization filter tab
 app.get("/api/org-categories", ensureAuthed, (req, res) => {
   try {
     // helper: match how you already key categories
-    const toKey = (s) => String(s || "").trim().toLowerCase().replace(/\s+/g, "_");
+    // const toKey = (s) => String(s || "").trim().toLowerCase().replace(/\s+/g, "_");
 
     // 1) Type nodes (top-level categories)
     const typeNodes = (ORG_CATEGORIES || [])
@@ -1305,6 +1333,7 @@ app.post("/api/events/:compoundId/publish", ensureAuthed, async (req, res) => {
       description: row.description || "",
       location: row.location || "",
       organization: row.organization || "",
+      organizationEmail: row.organization_email || "",
       eventTags,
       posterUrl: row.poster_url || "",
       start: row.start,
@@ -1524,9 +1553,13 @@ app.post("/api/scrape/process", ensureAuthed, async (req, res) => {
             continue;
           }
 
+          const senderEmail =
+            (email.from_email || email.fromEmail || "").trim().toLowerCase();
+
+
           await execute(
-            `INSERT INTO events (id, user_id, source, email_id, title, description, location, organization, tags, poster_url, start, "end", all_day, confidence_score, status)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
+            `INSERT INTO events (id, user_id, source, email_id, title, description, location, organization, organization_email, tags, poster_url, start, "end", all_day, confidence_score, status)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
             [
               eventId,
               userId,
@@ -1536,6 +1569,7 @@ app.post("/api/scrape/process", ensureAuthed, async (req, res) => {
               event.description || "",
               event.location || "",
               event.organization || "",
+              senderEmail, 
               tagsJson,
               event.posterUrl || "",
               start,
@@ -1557,6 +1591,7 @@ app.post("/api/scrape/process", ensureAuthed, async (req, res) => {
             description: event.description || "",
             location: event.location || "",
             organization: event.organization || "",
+            organizationEmail: senderEmail,
             eventTags: event.tags || [],
             posterUrl: event.posterUrl || "",
             start,

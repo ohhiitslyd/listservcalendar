@@ -74,6 +74,7 @@ export async function publishEventToCalendar({
   description,
   location,
   organization,
+  organizationEmail = "", 
   eventTags = [],
   posterUrl = "",
   start,
@@ -101,6 +102,7 @@ export async function publishEventToCalendar({
       extendedProperties: {
         shared: {
           organization: organization || "",
+          organization_email: organizationEmail || "",
           tags: JSON.stringify(eventTags || []),
           poster_url: posterUrl || "",
           source_event_id: eventId, // Track original database event ID for matching

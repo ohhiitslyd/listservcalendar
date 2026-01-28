@@ -209,6 +209,7 @@ export async function initializeSchema() {
         description TEXT,
         location TEXT,
         organization TEXT,
+        organization_email TEXT,
         tags TEXT,
         poster_url TEXT,
         start TEXT NOT NULL,
@@ -220,6 +221,12 @@ export async function initializeSchema() {
         created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
       )
+    `);
+
+    // Add organization_email column if it doesn't exist
+    await client.query(`
+      ALTER TABLE events
+      ADD COLUMN IF NOT EXISTS organization_email TEXT
     `);
 
     // App settings table
