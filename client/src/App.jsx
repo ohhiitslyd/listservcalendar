@@ -28,7 +28,6 @@ const InnerApp = () => {
     setCreateModalOpen,
     setSelectedEvent,
     selectedEvent,
-
     setCurrentViewRange,
     // **NOTE:** we *do not* destructure `onSelect` or `onEventClick`
     // because we will define them locally (see below).

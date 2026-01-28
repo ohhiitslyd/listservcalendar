@@ -111,7 +111,7 @@ export const Header = () => {
           </button>
           {filtersDropdownOpen && (
             <div className="dropdown-content filters-dropdown">
-              <Filters />
+              <Filters onClose={() => setFiltersDropdownOpen(false)} />
             </div>
           )}
         </div>
