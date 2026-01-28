@@ -216,8 +216,9 @@ export const Filters = ({ onClose }) => {
           hierarchy[typeKey].subcategories[subKeyFull].organizations[cat.key] = {
             key: cat.key,
             label: cat.label,
-            level: 'organization',
+            level: "organization",
             count: orgCategoryCounts[cat.key] || 0,
+            emails: Array.isArray(cat.emails) ? cat.emails : [], // ✅ ADD THIS
           };
           console.log(`Added organization: ${cat.label} (${cat.key}) to ${typeKey}:${subKey} (subKeyFull: ${subKeyFull})`);
         } else {
