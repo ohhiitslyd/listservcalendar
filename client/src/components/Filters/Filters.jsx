@@ -1,9 +1,10 @@
 // src/components/Filters/Filters.jsx
 import React, { useContext, useState, useMemo } from "react";
 import { AppContext } from "../../context/AppContext";
+import { api } from "../../api/calendarApi";
 import "./Filters.css";
 
-export const Filters = () => {
+export const Filters = ({ onClose }) => {
   const {
     //tag level cats 
     availableCats,
@@ -36,6 +37,35 @@ export const Filters = () => {
 
   // Calculate total selected count
   const totalSelected = selectedCats.size + selectedOrgCats.size;
+
+  // Apply filters - save to user preferences and sync calendar
+  const applyFilters = async () => {
+    try {
+      // Convert Sets to arrays
+      const orgPrefsArray = Array.from(selectedOrgCats);
+      const eventTypePrefsArray = Array.from(selectedCats);
+
+      // Save preferences
+      await api.updatePreferences({
+        organizationPreference: orgPrefsArray,
+        eventTypePreference: eventTypePrefsArray,
+      });
+
+      // Sync calendar based on preferences
+      await api.syncCalendarByPreferences();
+      
+      // Close dropdown immediately
+      if (onClose) {
+        onClose();
+      }
+    } catch (error) {
+      console.error("Failed to apply filters:", error);
+      // Close dropdown even on error
+      if (onClose) {
+        onClose();
+      }
+    }
+  };
 
 
 
@@ -382,17 +412,28 @@ export const Filters = () => {
 
       {/* Tabs */}
       <div className="filters-tabs">
+        <div className="filters-tabs-group">
+          <button
+            className={`filter-tab ${activeTab === 'organizations' ? 'active' : ''}`}
+            onClick={() => setActiveTab('organizations')}
+          >
+            Organizations
+          </button>
+          <button
+            className={`filter-tab ${activeTab === 'event-types' ? 'active' : ''}`}
+            onClick={() => setActiveTab('event-types')}
+          >
+            Event Types
+          </button>
+        </div>
         <button
-          className={`filter-tab ${activeTab === 'organizations' ? 'active' : ''}`}
-          onClick={() => setActiveTab('organizations')}
+          onClick={() => {
+            clearAll();
+            setExcludeMode(false);
+          }}
+          className="filters-clear-all-tab"
         >
-          Organizations
-        </button>
-        <button
-          className={`filter-tab ${activeTab === 'event-types' ? 'active' : ''}`}
-          onClick={() => setActiveTab('event-types')}
-        >
-          Event Types
+          Clear All
         </button>
       </div>
 
@@ -598,13 +639,10 @@ export const Filters = () => {
         </div>
 
         <button
-          onClick={() => {
-            clearAll();
-            setExcludeMode(false);
-          }}
-          className="filters-clear-all"
+          onClick={applyFilters}
+          className="filters-apply-btn"
         >
-          Clear All
+          Apply filters
         </button>
       </div>
     </div>

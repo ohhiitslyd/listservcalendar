@@ -133,6 +133,7 @@ export const AppProvider = ({ children }) => {
     await fetch("/auth/logout", { method: "POST", credentials: "include" });
     setUser(null);
     setEvents([]);
+    // Preferences will be cleared in the useEffect when user becomes null
   };
 
   /* -------------------------------------------------
@@ -409,6 +410,24 @@ export const AppProvider = ({ children }) => {
           setAvailableOrgCats([]);
         }
       })();
+
+      // c) Load saved user preferences and apply them
+      (async () => {
+        try {
+          const prefsData = await api.fetchPreferences();
+          // Apply organization preferences
+          if (prefsData.organizationPreference && Array.isArray(prefsData.organizationPreference) && prefsData.organizationPreference.length > 0) {
+            setSelectedOrgCats(new Set(prefsData.organizationPreference));
+          }
+          // Apply event type preferences
+          if (prefsData.eventTypePreference && Array.isArray(prefsData.eventTypePreference) && prefsData.eventTypePreference.length > 0) {
+            setSelectedCats(new Set(prefsData.eventTypePreference));
+          }
+        } catch (error) {
+          console.error("Failed to load user preferences:", error);
+          // Continue without preferences if fetch fails
+        }
+      })();
     } else {
       // user logged out → clear all data
       setCalendars([]);
@@ -416,6 +435,10 @@ export const AppProvider = ({ children }) => {
       setEvents([]);
       setListservCalendarId(null);
       setAllEventsForCounts([]);
+      // Clear preferences when logging out
+      setSelectedOrgCats(new Set());
+      setSelectedCats(new Set());
+      setExcludeMode(false);
       // No need to call fetchCategories(null) – the hook already clears its state when `user` is falsy
     }
   }, [user, fetchCategories]); // `fetchCategories` should be memoised (useCallback) inside the hook

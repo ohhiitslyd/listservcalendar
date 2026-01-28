@@ -136,4 +136,52 @@ export const api = {
     fetch("/api/org-categories", { credentials: "include" }).then((r) =>
       r.json()
     ),
+
+  /* -----------------------------------------------------------------
+   * User Preferences
+   * ----------------------------------------------------------------- */
+  updatePreferences: async ({
+    organizationPreference,
+    eventTypePreference,
+  }: {
+    organizationPreference?: string[];
+    eventTypePreference?: string[];
+  }): Promise<{
+    organizationPreference: string[];
+    eventTypePreference: string[];
+  }> =>
+    fetch("/api/user/preferences", {
+      method: "PUT",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        organizationPreference,
+        eventTypePreference,
+      }),
+    }).then((r) => r.json()),
+
+  fetchPreferences: async (): Promise<{
+    preferences: any;
+    organizationPreference: string[];
+    eventTypePreference: string[];
+  }> =>
+    fetch("/api/user/preferences", { credentials: "include" }).then((r) =>
+      r.json()
+    ),
+
+  /* -----------------------------------------------------------------
+   * Sync Calendar by Preferences
+   * ----------------------------------------------------------------- */
+  syncCalendarByPreferences: async (): Promise<{
+    success: boolean;
+    published: number;
+    deleted: number;
+    totalMatching: number;
+    message: string;
+  }> =>
+    fetch("/api/user/sync-calendar-by-preferences", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+    }).then((r) => r.json()),
 };
