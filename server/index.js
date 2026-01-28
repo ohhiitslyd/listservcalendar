@@ -10,7 +10,7 @@ import fs from "fs";
 import cron from "node-cron";
 import { scrapeEmails } from "./services/emailScraper.js";
 import { parseEmailForEvents } from "./services/llmParser.js";
-import { runAutomatedScrape } from "./services/autoScraper.js";
+import { runAutomatedScrape, combineDateTime } from "./services/autoScraper.js";
 import {
   publishEventToCalendar,
   getOrCreateListServCalendar as getOrCreateListServCalendarShared,
@@ -51,6 +51,26 @@ try {
 // Export EVENT_TYPE_RULES for use in other modules
 export { EVENT_TYPE_RULES };
 
+// Load organization-based filters (organization_events.json)
+const ORG_DESCRIPTOR_PATH = path.join(__dirname, "organization_events.json");
+
+let ORGANIZATION_RULES = { categories: {} };
+try {
+  const rawOrg = fs.readFileSync(ORG_DESCRIPTOR_PATH, "utf8");
+  ORGANIZATION_RULES = JSON.parse(rawOrg);
+  console.log(
+    "[org-categories] loaded",
+    Object.keys(ORGANIZATION_RULES.categories || {}).length,
+    "top-level org categories from",
+    ORG_DESCRIPTOR_PATH
+  );
+} catch (e) {
+  console.warn(
+    "Could not read organization_events.json. Org category filtering will be empty.",
+    e
+  );
+}
+
 const {
   PORT = 3000,
   SESSION_SECRET = "dev-secret",
@@ -67,27 +87,101 @@ if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET || !GOOGLE_REDIRECT_URI) {
 }
 
 const app = express();
+
+// Trust first proxy (nginx, ALB, Cloudflare, etc.) so secure cookies work behind reverse proxy
+const isProduction = process.env.NODE_ENV === "production";
+if (isProduction) {
+  app.set("trust proxy", 1);
+}
+
 app.use(express.json());
 app.use(cookieParser());
+
 app.use(
   session({
     secret: SESSION_SECRET,
     resave: false,
     saveUninitialized: false,
-    cookie: { httpOnly: true, sameSite: "lax", secure: false },
+    cookie: {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: isProduction, // Enable secure cookies in production (HTTPS)
+    },
   })
 );
 
 // Initialize PostgreSQL schema
 await initializeSchema();
 
-// Helper function for combining date and time
-function combineDateTime(date, time, allDay) {
-  if (!date) return null;
-  if (time && !allDay) {
-    return `${date}T${time}`;
+// --- Helper functions for organization filtering ---
+const slug = (s = "") =>
+  String(s)
+    .normalize("NFKD")
+    .toLowerCase()
+    .replace(/\s+/g, "_")
+    .replace(/[^a-z0-9_:]/g, "");
+
+const lowerArray = (arr = []) => arr.map((x) => String(x).toLowerCase());
+
+function toTextBlob(ev) {
+  const {
+    title = "",
+    description = "",
+    location = "",
+    organization = "",
+  } = ev || {};
+  return `${title} ${description} ${location} ${organization}`.toLowerCase();
+}
+
+function matchesAnyKeyword(blob, keywords = []) {
+  return keywords.some((kw) => blob.includes(String(kw).toLowerCase()));
+}
+
+/**
+ * assignOrgCategories(ev) -> array of organization category keys
+ * Uses ORGANIZATION_RULES.categories hierarchy
+ */
+function assignOrgCategories(ev) {
+  const blob = toTextBlob(ev);
+  const out = [];
+
+  const cats = ORGANIZATION_RULES?.categories || {};
+  for (const [typeKeyRaw, typeDef] of Object.entries(cats)) {
+    const typeKey = slug(typeKeyRaw);
+    const subcats = typeDef?.subcategories || {};
+
+    // Type-level matching
+    const typeHit =
+      Array.isArray(typeDef?.must_include_any) &&
+      matchesAnyKeyword(blob, lowerArray(typeDef.must_include_any));
+    if (typeHit) out.push(typeKey);
+
+    for (const [subKeyRaw, subDef] of Object.entries(subcats)) {
+      const subKey = slug(subKeyRaw);
+
+      // Subcategory-level matching
+      const subHit =
+        Array.isArray(subDef?.must_include_any) &&
+        matchesAnyKeyword(blob, lowerArray(subDef.must_include_any));
+      if (subHit) {
+        out.push(`${typeKey}:${subKey}`);
+      }
+
+      // Organization-level matching
+      const orgs = subDef?.organizations || {};
+      for (const [orgKeyRaw, orgDef] of Object.entries(orgs)) {
+        const orgKey = slug(orgKeyRaw);
+        const orgHit =
+          Array.isArray(orgDef?.must_include_any) &&
+          matchesAnyKeyword(blob, lowerArray(orgDef.must_include_any));
+        if (orgHit) {
+          out.push(`${typeKey}:${subKey}:${orgKey}`);
+        }
+      }
+    }
   }
-  return date;
+
+  return out;
 }
 
 function ensureAuthed(req, res, next) {
@@ -805,67 +899,11 @@ app.get("/api/calendar", ensureAuthed, async (req, res) => {
   }
 });
 
-// --- Get events (multi-calendar) ---
+// --- Get events (from local Neon database only) ---
 app.get("/api/events", ensureAuthed, async (req, res) => {
   try {
-    const oauth2Client = getOAuthClient(req);
-    const calendar = google.calendar({ version: "v3", auth: oauth2Client });
-    const { id: listservCalendarId } = await getOrCreateListServCalendar(
-      req,
-      oauth2Client
-    );
-
-    const now = new Date();
-    const timeMin =
-      req.query.timeMin ||
-      new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString();
-    const timeMax =
-      req.query.timeMax ||
-      new Date(
-        now.getFullYear(),
-        now.getMonth() + 3,
-        0,
-        23,
-        59,
-        59
-      ).toISOString();
-
-    const requestedIds = req.query.calendarIds
-      ? req.query.calendarIds.split(",")
-      : ["primary"];
-
-    const allEvents = [];
-    for (const calId of requestedIds) {
-      const googleResp = await calendar.events.list({
-        calendarId: calId,
-        timeMin,
-        timeMax,
-        singleEvents: true,
-        orderBy: "startTime",
-      });
-      const googleEvents = (googleResp.data.items || []).map((ev) => {
-        const isAllDay = !!ev.start?.date;
-        const props = ev.extendedProperties?.shared || {};
-        return {
-          id: `google:${ev.id}`,
-          calendarId: calId,
-          source: "google",
-          title: ev.summary || "(No title)",
-          description: ev.description || "",
-          location: ev.location || "",
-          start: isAllDay ? ev.start.date : ev.start?.dateTime,
-          end: isAllDay ? ev.end.date : ev.end?.dateTime,
-          allDay: isAllDay,
-          organization: props.organization || "",
-          tags: JSON.parse(props.tags || "[]"),
-          poster_url: props.poster_url || "",
-        };
-      });
-      allEvents.push(...googleEvents);
-    }
-
-    // Get local events from PostgreSQL
-    // Email-sourced events are campus-wide, visible to all users (regardless of status)
+    // Get ALL events from PostgreSQL/Neon database
+    // Email-sourced events are campus-wide, visible to all users
     // Manual/draft events remain user-specific (only unpublished ones)
     const localEventsRaw = await query(
       `SELECT * FROM events WHERE
@@ -886,36 +924,50 @@ app.get("/api/events", ensureAuthed, async (req, res) => {
       organization: e.organization || "",
       tags: e.tags ? JSON.parse(e.tags) : [],
       poster_url: e.poster_url || "",
+      status: e.status || "pending",
+      google_event_id: e.google_event_id || null,
     }));
 
-    const combined = [...localEvents, ...allEvents];
+    // Add organization categories to each event
+    const eventsWithOrgCats = localEvents.map((ev) => {
+      const orgKeys = assignOrgCategories(ev).map(slug);
+      return { ...ev, orgCategories: orgKeys };
+    });
 
-    const isListServ = (ev) => {
-      const isDraft = ev.source === "draft" || ev.source === "email";
-      const isGoogleListServ =
-        ev.source === "google" && ev.calendarId === listservCalendarId;
-      return isDraft || isGoogleListServ;
-    };
-
-    let filtered = combined;
+    // Parse filter parameters
     const categoriesParam = req.query.categories || req.query.eventTypes;
+    const orgCategoriesParam = req.query.orgCategories;
 
-    if (categoriesParam) {
-      const reqCategories = categoriesParam
-        .split(",")
-        .map((s) => s.trim())
-        .filter(Boolean);
+    const reqCategories = categoriesParam
+      ? categoriesParam.split(",").map((s) => s.trim()).filter(Boolean)
+      : null;
 
-      filtered = combined.filter((ev) => {
-        if (!isListServ(ev)) return true;
-        return (ev.tags || []).some((tag) => reqCategories.includes(tag));
+    const reqOrgCategories = orgCategoriesParam
+      ? orgCategoriesParam.split(",").map((s) => slug(s.trim())).filter(Boolean)
+      : null;
+
+    let filtered = eventsWithOrgCats;
+
+    // Apply filters if any are specified
+    if (reqCategories || reqOrgCategories) {
+      filtered = eventsWithOrgCats.filter((ev) => {
+        const matchesTags = reqCategories
+          ? (ev.tags || []).some((tag) => reqCategories.includes(tag))
+          : false;
+
+        const matchesOrg = reqOrgCategories
+          ? (ev.orgCategories || []).some((c) => reqOrgCategories.includes(c))
+          : false;
+
+        // OR logic: match if either filter type matches
+        return matchesTags || matchesOrg;
       });
     }
 
     res.json({ events: filtered });
   } catch (e) {
     console.error(e);
-    res.status(500).json({ error: "Failed to reach events" });
+    res.status(500).json({ error: "Failed to fetch events" });
   }
 });
 
@@ -939,6 +991,44 @@ app.get("/api/event-categories", ensureAuthed, (req, res) => {
     description: def.description,
   }));
   res.json({ categories });
+});
+
+// Organization categories for filtering (keyword-based classification)
+app.get("/api/org-categories", ensureAuthed, (req, res) => {
+  const cats = ORGANIZATION_RULES?.categories || {};
+  const list = [];
+
+  for (const [typeKeyRaw, typeDef] of Object.entries(cats)) {
+    const typeKey = slug(typeKeyRaw);
+    const typeLabel = typeDef.label || typeKeyRaw;
+    list.push({ key: typeKey, label: typeLabel, level: "type" });
+
+    const subcats = typeDef.subcategories || {};
+    for (const [subKeyRaw, subDef] of Object.entries(subcats)) {
+      const subKey = slug(subKeyRaw);
+      const subLabel = subDef.label || subKeyRaw;
+      const subFlatKey = `${typeKey}:${subKey}`;
+      list.push({
+        key: subFlatKey,
+        label: `${typeLabel} • ${subLabel}`,
+        level: "subcategory",
+      });
+
+      const orgs = subDef.organizations || {};
+      for (const [orgKeyRaw, orgDef] of Object.entries(orgs)) {
+        const orgKey = slug(orgKeyRaw);
+        const orgLabel = orgDef.label || orgKeyRaw;
+        const orgFlatKey = `${typeKey}:${subKey}:${orgKey}`;
+        list.push({
+          key: orgFlatKey,
+          label: orgLabel,
+          level: "organization",
+        });
+      }
+    }
+  }
+
+  res.json({ orgCategories: list });
 });
 
 // --- Drafts (now using unified events table) ---
@@ -1381,8 +1471,8 @@ app.post("/api/scrape/process", ensureAuthed, async (req, res) => {
           }
 
           await execute(
-            `INSERT INTO events (id, user_id, source, email_id, title, description, location, organization, tags, poster_url, start, "end", all_day, confidence_score, status)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
+            `INSERT INTO events (id, user_id, source, email_id, title, description, location, organization, organization_email, tags, poster_url, start, "end", all_day, confidence_score, status)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
             [
               eventId,
               userId,
@@ -1392,6 +1482,7 @@ app.post("/api/scrape/process", ensureAuthed, async (req, res) => {
               event.description || "",
               event.location || "",
               event.organization || "",
+              event.organizationEmail || "",
               tagsJson,
               event.posterUrl || "",
               start,
@@ -1558,22 +1649,19 @@ app.get("/api/scraped-emails/export", ensureAuthed, async (req, res) => {
       }
     });
 
-    const exportPath = path.join(__dirname, "scraped_emails_export.json");
-    fs.writeFileSync(
-      exportPath,
-      JSON.stringify(
-        { emails: emailsWithAttachments, exportedAt: new Date().toISOString() },
-        null,
-        2
-      )
-    );
-
-    res.json({
-      success: true,
+    const exportData = {
+      emails: emailsWithAttachments,
+      exportedAt: new Date().toISOString(),
       count: emails.length,
-      filePath: exportPath,
-      message: `Exported ${emails.length} emails to ${exportPath}`,
-    });
+    };
+
+    // Return as downloadable JSON file
+    res.setHeader("Content-Type", "application/json");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="scraped_emails_export_${Date.now()}.json"`
+    );
+    res.json(exportData);
   } catch (e) {
     console.error("[export] Error:", e);
     res.status(500).json({ error: "Failed to export emails" });
@@ -1581,17 +1669,17 @@ app.get("/api/scraped-emails/export", ensureAuthed, async (req, res) => {
 });
 
 // Get attachment image for an email
+// Attachments are accessible to all authenticated users (campus-wide visibility)
 app.get(
   "/api/scraped-emails/:emailId/attachments/:contentId",
   ensureAuthed,
   async (req, res) => {
     try {
-      const userId = req.session.user.id;
       const { emailId, contentId } = req.params;
 
       const email = await queryOne(
-        "SELECT * FROM scraped_emails WHERE id = $1 AND user_id = $2",
-        [emailId, userId]
+        "SELECT * FROM scraped_emails WHERE id = $1",
+        [emailId]
       );
 
       if (!email) {
