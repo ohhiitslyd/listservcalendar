@@ -548,72 +548,15 @@ app.get("/api/calendar", ensureAuthed, async (req, res) => {
   }
 });
 
-// --- Get events (multi-calendar) ---
+// --- Get events (from local Neon database only) ---
 app.get("/api/events", ensureAuthed, async (req, res) => {
   try {
-    const oauth2Client = getOAuthClient(req);
-    const calendar = google.calendar({ version: "v3", auth: oauth2Client });
-    const { id: listservCalendarId } = await getOrCreateListServCalendar(
-      req,
-      oauth2Client
-    );
-
-    const now = new Date();
-    const timeMin =
-      req.query.timeMin ||
-      new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString();
-    const timeMax =
-      req.query.timeMax ||
-      new Date(
-        now.getFullYear(),
-        now.getMonth() + 3,
-        0,
-        23,
-        59,
-        59
-      ).toISOString();
-
-    const requestedIds = req.query.calendarIds
-      ? req.query.calendarIds.split(",")
-      : ["primary"];
-
-    const allEvents = [];
-    for (const calId of requestedIds) {
-      const googleResp = await calendar.events.list({
-        calendarId: calId,
-        timeMin,
-        timeMax,
-        singleEvents: true,
-        orderBy: "startTime",
-      });
-      const googleEvents = (googleResp.data.items || []).map((ev) => {
-        const isAllDay = !!ev.start?.date;
-        const props = ev.extendedProperties?.shared || {};
-        return {
-          id: `google:${ev.id}`,
-          calendarId: calId,
-          source: "google",
-          title: ev.summary || "(No title)",
-          description: ev.description || "",
-          location: ev.location || "",
-          start: isAllDay ? ev.start.date : ev.start?.dateTime,
-          end: isAllDay ? ev.end.date : ev.end?.dateTime,
-          allDay: isAllDay,
-          organization: props.organization || "",
-          tags: JSON.parse(props.tags || "[]"),
-          poster_url: props.poster_url || "",
-        };
-      });
-      allEvents.push(...googleEvents);
-    }
-
-    // Get local events from PostgreSQL
-    // Published email events come from Google Calendar, so exclude them here to avoid duplicates
-    // Unpublished email events (pending review) are included
+    // Get ALL events from PostgreSQL/Neon database
+    // Email-sourced events are campus-wide, visible to all users
     // Manual/draft events remain user-specific (only unpublished ones)
     const localEventsRaw = await query(
       `SELECT * FROM events WHERE
-       (source = 'email' AND status != 'published')
+       source = 'email'
        OR (user_id = $1 AND status != 'published')`,
       [req.session.user.id]
     );
@@ -630,20 +573,15 @@ app.get("/api/events", ensureAuthed, async (req, res) => {
       organization: e.organization || "",
       tags: e.tags ? JSON.parse(e.tags) : [],
       poster_url: e.poster_url || "",
+      status: e.status || "pending",
+      google_event_id: e.google_event_id || null,
     }));
 
     // Add organization categories to each event
-    const combined = [...localEvents, ...allEvents].map((ev) => {
+    const eventsWithOrgCats = localEvents.map((ev) => {
       const orgKeys = assignOrgCategories(ev).map(slug);
       return { ...ev, orgCategories: orgKeys };
     });
-
-    const isListServ = (ev) => {
-      const isDraft = ev.source === "draft" || ev.source === "email";
-      const isGoogleListServ =
-        ev.source === "google" && ev.calendarId === listservCalendarId;
-      return isDraft || isGoogleListServ;
-    };
 
     // Parse filter parameters
     const categoriesParam = req.query.categories || req.query.eventTypes;
@@ -657,13 +595,11 @@ app.get("/api/events", ensureAuthed, async (req, res) => {
       ? orgCategoriesParam.split(",").map((s) => slug(s.trim())).filter(Boolean)
       : null;
 
-    let filtered = combined;
+    let filtered = eventsWithOrgCats;
 
     // Apply filters if any are specified
     if (reqCategories || reqOrgCategories) {
-      filtered = combined.filter((ev) => {
-        if (!isListServ(ev)) return true;
-
+      filtered = eventsWithOrgCats.filter((ev) => {
         const matchesTags = reqCategories
           ? (ev.tags || []).some((tag) => reqCategories.includes(tag))
           : false;
@@ -680,7 +616,7 @@ app.get("/api/events", ensureAuthed, async (req, res) => {
     res.json({ events: filtered });
   } catch (e) {
     console.error(e);
-    res.status(500).json({ error: "Failed to reach events" });
+    res.status(500).json({ error: "Failed to fetch events" });
   }
 });
 
