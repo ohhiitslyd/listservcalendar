@@ -259,7 +259,7 @@ async function processUnprocessedEmails(userId, pool, oauth2Client) {
 
           await pool.query(
             `INSERT INTO events (id, user_id, source, email_id, title, description, location,
-              organization, organization_email, tags, poster_url, start, "end", all_day, confidence_score, status)
+              organization, organization_email, event_tags, poster_url, start, "end", all_day, confidence_score, status)
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
             [
               eventId,

@@ -484,7 +484,7 @@ app.post("/api/user/sync-calendar-by-preferences", ensureAuthed, async (req, res
       queryText += ` AND (`;
       const tagConditions = eventTypePrefs.map((tag) => {
         params.push(`%"${tag}"%`);
-        const condition = `tags LIKE $${paramIndex}`;
+        const condition = `event_tags LIKE $${paramIndex}`;
         paramIndex++;
         return condition;
       });
@@ -569,9 +569,9 @@ app.post("/api/user/sync-calendar-by-preferences", ensureAuthed, async (req, res
       
       if (!existingGCalEvent) {
         // Need to publish this event (don't update database since it's shared)
-        const tags = event.tags ? JSON.parse(event.tags) : [];
+        const tags = event.event_tags ? JSON.parse(event.event_tags) : [];
         const isAllDay = !!event.all_day;
-        
+
         const eventData = {
           summary: event.title || "(No title)",
           description: event.description || "",
@@ -782,7 +782,7 @@ app.post("/api/user/sync-to-calendar", ensureAuthed, async (req, res) => {
         queryText += ` AND (`;
         const tagConditions = filters.tags.map((tag, i) => {
           params.push(`%"${tag}"%`);
-          return `tags LIKE $${paramIndex + i}`;
+          return `event_tags LIKE $${paramIndex + i}`;
         });
         queryText += tagConditions.join(" OR ") + `)`;
         paramIndex += filters.tags.length;
@@ -801,7 +801,7 @@ app.post("/api/user/sync-to-calendar", ensureAuthed, async (req, res) => {
     for (const event of events) {
       try {
         const isAllDay = !!event.all_day;
-        const tags = event.tags ? JSON.parse(event.tags) : [];
+        const tags = event.event_tags ? JSON.parse(event.event_tags) : [];
 
         const eventData = {
           summary: event.title || "(No title)",
@@ -922,7 +922,7 @@ app.get("/api/events", ensureAuthed, async (req, res) => {
       end: e.end,
       allDay: !!e.all_day,
       organization: e.organization || "",
-      tags: e.tags ? JSON.parse(e.tags) : [],
+      tags: e.event_tags ? JSON.parse(e.event_tags) : [],
       poster_url: e.poster_url || "",
       status: e.status || "pending",
       google_event_id: e.google_event_id || null,
@@ -1052,7 +1052,7 @@ app.post("/api/drafts", ensureAuthed, async (req, res) => {
       : tags || "[]";
 
     await execute(
-      `INSERT INTO events (id, user_id, source, email_id, title, description, location, organization, tags, poster_url, start, "end", all_day, confidence_score, status)
+      `INSERT INTO events (id, user_id, source, email_id, title, description, location, organization, event_tags, poster_url, start, "end", all_day, confidence_score, status)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
       [
         id,
@@ -1239,7 +1239,7 @@ app.post("/api/events/:compoundId/publish", ensureAuthed, async (req, res) => {
       }
     }
 
-    const eventTags = row.tags ? JSON.parse(row.tags) : [];
+    const eventTags = row.event_tags ? JSON.parse(row.event_tags) : [];
 
     const oauth2Client = getOAuthClient(req);
     const result = await publishEventToCalendar({
@@ -1471,7 +1471,7 @@ app.post("/api/scrape/process", ensureAuthed, async (req, res) => {
           }
 
           await execute(
-            `INSERT INTO events (id, user_id, source, email_id, title, description, location, organization, organization_email, tags, poster_url, start, "end", all_day, confidence_score, status)
+            `INSERT INTO events (id, user_id, source, email_id, title, description, location, organization, organization_email, event_tags, poster_url, start, "end", all_day, confidence_score, status)
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
             [
               eventId,
@@ -1609,7 +1609,7 @@ app.get("/api/email-events", ensureAuthed, async (req, res) => {
 
     const eventsWithParsedTags = events.map((event) => ({
       ...event,
-      tags: event.tags ? JSON.parse(event.tags) : [],
+      tags: event.event_tags ? JSON.parse(event.event_tags) : [],
     }));
 
     res.json({ events: eventsWithParsedTags });
