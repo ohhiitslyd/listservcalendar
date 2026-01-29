@@ -15,7 +15,7 @@ import { fileURLToPath } from "url";
 
 // Configuration
 const LLM_CONFIG = {
-  model: "gpt-4o",
+  model: "gpt-5-mini",
   temperature: 0.3,
   maxTokens: 600,
   maxRetries: 3,
@@ -455,6 +455,24 @@ Look carefully at ALL text in the image including stylized/decorative fonts. Ret
     }
   }
 
+  // Safety net: detect same-day events where LLM incorrectly set endDate to next day
+  // If event has both start and end times and duration is ~24-26 hours, it's likely
+  // the LLM set endDate to the wrong day (should be same day as startDate)
+  if (event.startTime && event.endTime && !event.allDay && event.startDate !== event.endDate) {
+    const startDateTime = new Date(`${event.startDate}T${event.startTime}`);
+    const endDateTime = new Date(`${event.endDate}T${event.endTime}`);
+    const durationHours = (endDateTime - startDateTime) / (1000 * 60 * 60);
+
+    // If duration is between 24-26 hours, it's likely a same-day event with wrong endDate
+    if (durationHours >= 24 && durationHours <= 26) {
+      console.warn(
+        `[llm-parser] Correcting likely same-day event "${event.title}": ` +
+        `endDate ${event.endDate} → ${event.startDate} (was ${durationHours.toFixed(1)}h duration)`
+      );
+      event.endDate = event.startDate;
+    }
+  }
+
   return event;
 }
 
@@ -650,6 +668,12 @@ DATE EXTRACTION RULES:
 - If this email is NOT about an event (only applications, surveys, reminders), return null for all fields
 - If this email IS about an event, you MUST extract title and startDate
 - Be aggressive about extracting dates from context
+
+CRITICAL - END DATE RULE:
+- For single-day events (meetings, talks, shows, etc.), endDate MUST equal startDate
+- WRONG: startDate: "2026-01-27", endDate: "2026-01-28" for a 1-hour meeting
+- CORRECT: startDate: "2026-01-27", endDate: "2026-01-27" for a 1-hour meeting
+- Only use a different endDate if the event explicitly spans multiple days (conferences, festivals, etc.)
 
 ${FEW_SHOT_EXAMPLES}
 
