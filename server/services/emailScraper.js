@@ -257,7 +257,7 @@ export async function scrapeEmails(oauth2Client, userId, pool, options = {}) {
     // Process each email
     for (const msg of messages) {
       try {
-        // Check if already exists
+        // Check if already exists by gmail_message_id
         const existingResult = await pool.query(
           "SELECT * FROM scraped_emails WHERE gmail_message_id = $1",
           [msg.id]
@@ -271,6 +271,28 @@ export async function scrapeEmails(oauth2Client, userId, pool, options = {}) {
 
         // Fetch full email content
         const emailData = await fetchEmailContent(oauth2Client, msg.id);
+
+        // Check for duplicate email with same subject + from_email + received_date
+        // This catches cases where Gmail assigns different message IDs to the same email
+        // (e.g., when subscribed to multiple lists or BCC scenarios)
+        if (!existing) {
+          const duplicateEmailResult = await pool.query(
+            `SELECT id FROM scraped_emails
+             WHERE user_id = $1
+               AND subject = $2
+               AND from_email = $3
+               AND received_date = $4`,
+            [userId, emailData.subject, emailData.fromEmail, emailData.receivedDate]
+          );
+
+          if (duplicateEmailResult.rows.length > 0) {
+            console.log(
+              `[emailScraper] Skipping duplicate email (same subject/sender/date): "${emailData.subject}" from ${emailData.fromEmail}`
+            );
+            skipped++;
+            continue;
+          }
+        }
 
         if (existing && force) {
           // Update existing email with new data (especially attachments)

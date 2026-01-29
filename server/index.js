@@ -484,7 +484,7 @@ app.post("/api/user/sync-calendar-by-preferences", ensureAuthed, async (req, res
       queryText += ` AND (`;
       const tagConditions = eventTypePrefs.map((tag) => {
         params.push(`%"${tag}"%`);
-        const condition = `tags LIKE $${paramIndex}`;
+        const condition = `event_tags LIKE $${paramIndex}`;
         paramIndex++;
         return condition;
       });
@@ -563,25 +563,37 @@ app.post("/api/user/sync-calendar-by-preferences", ensureAuthed, async (req, res
     // Publish events that match but aren't in Google Calendar
     let publishedCount = 0;
     const publishResults = [];
+    // Helper to normalize datetime strings into an RFC3339-ish format
+    const normalizeDateTime = (value) => {
+      if (!value) return value;
+      // If it already looks like an ISO string with "T", use as-is
+      if (value.includes("T")) return value;
+      // Common legacy format is "YYYY-MM-DD HH:mm:ss" – replace space with "T"
+      return value.replace(" ", "T");
+    };
+
     for (const event of matchingEvents) {
       // Check if already published to this user's calendar
       const existingGCalEvent = gcalEventMap.get(event.id);
       
       if (!existingGCalEvent) {
         // Need to publish this event (don't update database since it's shared)
-        const tags = event.tags ? JSON.parse(event.tags) : [];
+        const tags = event.event_tags ? JSON.parse(event.event_tags) : [];
         const isAllDay = !!event.all_day;
-        
+
+        const startDateTime = normalizeDateTime(event.start);
+        const endDateTime = normalizeDateTime(event.end || event.start);
+
         const eventData = {
           summary: event.title || "(No title)",
           description: event.description || "",
           location: event.location || "",
           start: isAllDay
-            ? { date: event.start.split("T")[0] }
-            : { dateTime: event.start, timeZone: "America/New_York" },
+            ? { date: startDateTime.split("T")[0] }
+            : { dateTime: startDateTime, timeZone: "America/New_York" },
           end: isAllDay
-            ? { date: (event.end || event.start).split("T")[0] }
-            : { dateTime: event.end || event.start, timeZone: "America/New_York" },
+            ? { date: endDateTime.split("T")[0] }
+            : { dateTime: endDateTime, timeZone: "America/New_York" },
           extendedProperties: {
             shared: {
               organization: event.organization || "",
@@ -598,17 +610,39 @@ app.post("/api/user/sync-calendar-by-preferences", ensureAuthed, async (req, res
             requestBody: eventData,
           });
           publishedCount++;
-          publishResults.push({ 
-            eventId: event.id, 
+          publishResults.push({
+            eventId: event.id,
             action: "published",
-            googleEventId: response.data.id 
+            googleEventId: response.data.id,
           });
         } catch (error) {
-          console.error(`[sync-by-prefs] Failed to publish event ${event.title}:`, error.message);
-          publishResults.push({ 
-            eventId: event.id, 
-            action: "failed", 
-            error: error.message 
+          // Log detailed Google API error info to diagnose Bad Request issues
+          const status = error?.response?.status;
+          const data = error?.response?.data;
+          console.error(
+            `[sync-by-prefs] Failed to publish event asdiojasiodjasoidasj "${event.title}":`,
+            `message=${error.message}`,
+            `status=${status}`,
+            `apiError=${JSON.stringify(data)}`
+          );
+          console.error(
+            "[sync-by-prefs] Failing event payload (start/end):",
+            JSON.stringify(
+              {
+                start: eventData.start,
+                end: eventData.end,
+                allDay: isAllDay,
+              },
+              null,
+              2
+            )
+          );
+
+          publishResults.push({
+            eventId: event.id,
+            action: "failed",
+            error: error.message,
+            status,
           });
         }
       } else {
@@ -782,7 +816,7 @@ app.post("/api/user/sync-to-calendar", ensureAuthed, async (req, res) => {
         queryText += ` AND (`;
         const tagConditions = filters.tags.map((tag, i) => {
           params.push(`%"${tag}"%`);
-          return `tags LIKE $${paramIndex + i}`;
+          return `event_tags LIKE $${paramIndex + i}`;
         });
         queryText += tagConditions.join(" OR ") + `)`;
         paramIndex += filters.tags.length;
@@ -798,21 +832,31 @@ app.post("/api/user/sync-to-calendar", ensureAuthed, async (req, res) => {
 
     // Sync each event to user's Google Calendar
     const results = [];
+    // Reuse the same datetime normalizer used in sync-by-preferences
+    const normalizeDateTime = (value) => {
+      if (!value) return value;
+      if (value.includes("T")) return value;
+      return value.replace(" ", "T");
+    };
+
     for (const event of events) {
       try {
         const isAllDay = !!event.all_day;
-        const tags = event.tags ? JSON.parse(event.tags) : [];
+        const tags = event.event_tags ? JSON.parse(event.event_tags) : [];
+
+        const startDateTime = normalizeDateTime(event.start);
+        const endDateTime = normalizeDateTime(event.end || event.start);
 
         const eventData = {
           summary: event.title || "(No title)",
           description: event.description || "",
           location: event.location || "",
           start: isAllDay
-            ? { date: event.start.split("T")[0] }
-            : { dateTime: event.start, timeZone: "America/New_York" },
+            ? { date: startDateTime.split("T")[0] }
+            : { dateTime: startDateTime, timeZone: "America/New_York" },
           end: isAllDay
-            ? { date: event.end ? event.end.split("T")[0] : event.start.split("T")[0] }
-            : { dateTime: event.end || event.start, timeZone: "America/New_York" },
+            ? { date: endDateTime.split("T")[0] }
+            : { dateTime: endDateTime, timeZone: "America/New_York" },
           extendedProperties: {
             shared: {
               organization: event.organization || "",
@@ -922,7 +966,7 @@ app.get("/api/events", ensureAuthed, async (req, res) => {
       end: e.end,
       allDay: !!e.all_day,
       organization: e.organization || "",
-      tags: e.tags ? JSON.parse(e.tags) : [],
+      tags: e.event_tags ? JSON.parse(e.event_tags) : [],
       poster_url: e.poster_url || "",
       status: e.status || "pending",
       google_event_id: e.google_event_id || null,
@@ -1052,7 +1096,7 @@ app.post("/api/drafts", ensureAuthed, async (req, res) => {
       : tags || "[]";
 
     await execute(
-      `INSERT INTO events (id, user_id, source, email_id, title, description, location, organization, tags, poster_url, start, "end", all_day, confidence_score, status)
+      `INSERT INTO events (id, user_id, source, email_id, title, description, location, organization, event_tags, poster_url, start, "end", all_day, confidence_score, status)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
       [
         id,
@@ -1239,7 +1283,7 @@ app.post("/api/events/:compoundId/publish", ensureAuthed, async (req, res) => {
       }
     }
 
-    const eventTags = row.tags ? JSON.parse(row.tags) : [];
+    const eventTags = row.event_tags ? JSON.parse(row.event_tags) : [];
 
     const oauth2Client = getOAuthClient(req);
     const result = await publishEventToCalendar({
@@ -1471,7 +1515,7 @@ app.post("/api/scrape/process", ensureAuthed, async (req, res) => {
           }
 
           await execute(
-            `INSERT INTO events (id, user_id, source, email_id, title, description, location, organization, organization_email, tags, poster_url, start, "end", all_day, confidence_score, status)
+            `INSERT INTO events (id, user_id, source, email_id, title, description, location, organization, organization_email, event_tags, poster_url, start, "end", all_day, confidence_score, status)
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
             [
               eventId,
@@ -1609,7 +1653,7 @@ app.get("/api/email-events", ensureAuthed, async (req, res) => {
 
     const eventsWithParsedTags = events.map((event) => ({
       ...event,
-      tags: event.tags ? JSON.parse(event.tags) : [],
+      tags: event.event_tags ? JSON.parse(event.event_tags) : [],
     }));
 
     res.json({ events: eventsWithParsedTags });

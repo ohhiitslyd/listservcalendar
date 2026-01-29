@@ -226,11 +226,40 @@ async function processUnprocessedEmails(userId, pool, oauth2Client) {
             continue;
           }
 
+          // Check for duplicate event across all emails (same title + start + end + location + organization)
+          // This catches cases where the same event is announced in duplicate emails
+          // with different Gmail message IDs (e.g., sent to multiple lists or BCC scenarios)
+          const eventEnd = end || start;
+          const duplicateAcrossEmails = await pool.query(
+            `SELECT id FROM events
+             WHERE user_id = $1
+               AND title = $2
+               AND start = $3
+               AND "end" = $4
+               AND COALESCE(location, '') = $5
+               AND COALESCE(organization, '') = $6`,
+            [
+              userId,
+              event.title,
+              start,
+              eventEnd,
+              event.location || "",
+              event.organization || "",
+            ]
+          );
+
+          if (duplicateAcrossEmails.rows.length > 0) {
+            console.log(
+              `[autoScraper] Skipping duplicate event (same title/time/location/org): ${event.title}`
+            );
+            continue;
+          }
+
           const eventId = `event_${Math.random().toString(36).substr(2, 16)}`;
 
           await pool.query(
             `INSERT INTO events (id, user_id, source, email_id, title, description, location,
-              organization, organization_email, tags, poster_url, start, "end", all_day, confidence_score, status)
+              organization, organization_email, event_tags, poster_url, start, "end", all_day, confidence_score, status)
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
             [
               eventId,

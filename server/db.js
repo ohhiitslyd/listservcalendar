@@ -209,7 +209,7 @@ export async function initializeSchema() {
         description TEXT,
         location TEXT,
         organization TEXT,
-        tags TEXT,
+        event_tags TEXT,
         poster_url TEXT,
         start TEXT NOT NULL,
         "end" TEXT,
