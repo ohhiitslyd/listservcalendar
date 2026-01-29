@@ -456,20 +456,35 @@ Look carefully at ALL text in the image including stylized/decorative fonts. Ret
   }
 
   // Safety net: detect same-day events where LLM incorrectly set endDate to next day
-  // If event has both start and end times and duration is ~24-26 hours, it's likely
-  // the LLM set endDate to the wrong day (should be same day as startDate)
+  // Only correct if end time is LATER than start time (same-day pattern)
+  // Do NOT correct if end time is EARLIER than start time (overnight pattern)
   if (event.startTime && event.endTime && !event.allDay && event.startDate !== event.endDate) {
     const startDateTime = new Date(`${event.startDate}T${event.startTime}`);
     const endDateTime = new Date(`${event.endDate}T${event.endTime}`);
     const durationHours = (endDateTime - startDateTime) / (1000 * 60 * 60);
 
-    // If duration is between 24-26 hours, it's likely a same-day event with wrong endDate
-    if (durationHours >= 24 && durationHours <= 26) {
+    // Parse just the time portions to compare
+    const startTimeParts = event.startTime.split(':').map(Number);
+    const endTimeParts = event.endTime.split(':').map(Number);
+    const startMinutes = startTimeParts[0] * 60 + startTimeParts[1];
+    const endMinutes = endTimeParts[0] * 60 + endTimeParts[1];
+
+    // If end time is LATER than start time (e.g., 19:00→21:00) but duration is 24-26h,
+    // this is likely a parsing error where LLM set wrong endDate
+    // If end time is EARLIER than start time (e.g., 22:00→08:00), it's a legitimate overnight event
+    const isOvernightPattern = endMinutes < startMinutes;
+
+    if (durationHours >= 24 && durationHours <= 26 && !isOvernightPattern) {
       console.warn(
         `[llm-parser] Correcting likely same-day event "${event.title}": ` +
-        `endDate ${event.endDate} → ${event.startDate} (was ${durationHours.toFixed(1)}h duration)`
+        `endDate ${event.endDate} → ${event.startDate} (was ${durationHours.toFixed(1)}h duration, endTime > startTime)`
       );
       event.endDate = event.startDate;
+    } else if (durationHours >= 24 && durationHours <= 26 && isOvernightPattern) {
+      console.log(
+        `[llm-parser] Keeping overnight event "${event.title}": ` +
+        `${event.startDate} ${event.startTime} → ${event.endDate} ${event.endTime} (endTime < startTime indicates overnight)`
+      );
     }
   }
 
