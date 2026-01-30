@@ -1,5 +1,5 @@
 // src/components/Filters/Filters.jsx
-import React, { useContext, useState, useMemo } from "react";
+import React, { useContext, useState, useMemo, useEffect } from "react";
 import { AppContext } from "../../context/AppContext";
 import { api } from "../../api/calendarApi";
 import "./Filters.css";
@@ -25,25 +25,60 @@ export const Filters = ({ onClose }) => {
     negativeFilterEnabled,
     setNegativeFilterEnabled,
 
+    // events fetching
+    fetchEvents,
+    visibleCalendars,
+    listservCalendarId,
+    setEvents,
+
   } = useContext(AppContext);
 
   const [activeTab, setActiveTab] = useState("organizations");
   const [expandedCategories, setExpandedCategories] = useState(new Set());
 
+  // Local/pending state - only committed to context when "Apply Filters" is clicked
+  const [pendingSelectedCats, setPendingSelectedCats] = useState(new Set(selectedCats));
+  const [pendingSelectedOrgCats, setPendingSelectedOrgCats] = useState(new Set(selectedOrgCats));
+  const [pendingExcludeMode, setPendingExcludeMode] = useState(excludeMode);
+
+  // Initialize pending state from context when component mounts or context changes externally
+  useEffect(() => {
+    setPendingSelectedCats(new Set(selectedCats));
+    setPendingSelectedOrgCats(new Set(selectedOrgCats));
+    setPendingExcludeMode(excludeMode);
+  }, [selectedCats, selectedOrgCats, excludeMode]);
+
   const clearAll = () => {
-    setSelectedCats(new Set());
-    setSelectedOrgCats(new Set());
+    setPendingSelectedCats(new Set());
+    setPendingSelectedOrgCats(new Set());
+    setPendingExcludeMode(false);
   };
 
-  // Calculate total selected count
-  const totalSelected = selectedCats.size + selectedOrgCats.size;
+  // Calculate total selected count from pending state
+  const totalSelected = pendingSelectedCats.size + pendingSelectedOrgCats.size;
 
   // Apply filters - save to user preferences and sync calendar
   const applyFilters = async () => {
+    // Close dropdown immediately when "Apply Filters" is clicked
+    if (onClose) {
+      onClose();
+    }
+
     try {
-      // Convert Sets to arrays
-      const orgPrefsArray = Array.from(selectedOrgCats);
-      const eventTypePrefsArray = Array.from(selectedCats);
+      // Convert pending Sets to arrays
+      const orgPrefsArray = Array.from(pendingSelectedOrgCats);
+      const eventTypePrefsArray = Array.from(pendingSelectedCats);
+
+      // Clear events immediately to prevent flash of unfiltered events
+      // The useEffect in AppContext will automatically fetch filtered events
+      if (setEvents) {
+        setEvents([]);
+      }
+
+      // Commit pending state to context (this will trigger useEffect to fetch filtered events)
+      setSelectedCats(pendingSelectedCats);
+      setSelectedOrgCats(pendingSelectedOrgCats);
+      setExcludeMode(pendingExcludeMode);
 
       // Save preferences
       await api.updatePreferences({
@@ -51,19 +86,15 @@ export const Filters = ({ onClose }) => {
         eventTypePreference: eventTypePrefsArray,
       });
 
-      // Sync calendar based on preferences
-      await api.syncCalendarByPreferences();
+      // Sync calendar based on preferences (publishes to Google Calendar)
+      const syncResult = await api.syncCalendarByPreferences();
+      console.log("[Filters] Sync result:", syncResult);
       
-      // Close dropdown immediately
-      if (onClose) {
-        onClose();
-      }
+      // The useEffect in AppContext will automatically fetch events with the new filters
+      // No need to manually call fetchEvents here - it would cause a race condition
     } catch (error) {
       console.error("Failed to apply filters:", error);
-      // Close dropdown even on error
-      if (onClose) {
-        onClose();
-      }
+      alert(`Failed to apply filters: ${error.message || error.error || "Unknown error"}`);
     }
   };
 
@@ -311,7 +342,7 @@ export const Filters = ({ onClose }) => {
   };
 
   const toggleOrgCategory = (key) => {
-    setSelectedOrgCats((prev) => {
+    setPendingSelectedOrgCats((prev) => {
       const next = new Set(prev);
       const isCurrentlySelected = next.has(key);
       
@@ -391,12 +422,12 @@ export const Filters = ({ onClose }) => {
   };
 
   const toggleEventCategory = (key) => {
-            setSelectedCats((prev) => {
-              const next = new Set(prev);
-              next.has(key) ? next.delete(key) : next.add(key);
-              return next;
-            });
-          };
+    setPendingSelectedCats((prev) => {
+      const next = new Set(prev);
+      next.has(key) ? next.delete(key) : next.add(key);
+      return next;
+    });
+  };
 
           return (
     <div className="filters-wrapper">
@@ -427,10 +458,7 @@ export const Filters = ({ onClose }) => {
           </button>
         </div>
         <button
-          onClick={() => {
-            clearAll();
-            setExcludeMode(false);
-          }}
+          onClick={clearAll}
           className="filters-clear-all-tab"
         >
           Clear All
@@ -443,7 +471,7 @@ export const Filters = ({ onClose }) => {
           <div className="org-filters-list">
             {orgHierarchy && Object.values(orgHierarchy).map((type) => {
               const typeColor = getCategoryColor(type.key);
-              const typeSelected = selectedOrgCats.has(type.key);
+              const typeSelected = pendingSelectedOrgCats.has(type.key);
               const isExpanded = expandedCategories.has(type.key);
               const hasSubcategories = Object.keys(type.subcategories).length > 0;
               
@@ -497,7 +525,7 @@ export const Filters = ({ onClose }) => {
 
                   {/* Subcategories - only show if expanded */}
                   {isExpanded && Object.values(type.subcategories).map((sub) => {
-                    const subSelected = selectedOrgCats.has(sub.key);
+                    const subSelected = pendingSelectedOrgCats.has(sub.key);
                     const hasOrganizations = Object.keys(sub.organizations).length > 0;
                     const isSubExpanded = expandedCategories.has(sub.key);
 
@@ -552,7 +580,7 @@ export const Filters = ({ onClose }) => {
                           const orgs = Object.values(sub.organizations);
                           console.log(`Rendering ${orgs.length} organizations for ${sub.label}:`, orgs.map(o => o.label));
                           return orgs.map((org) => {
-                            const orgSelected = selectedOrgCats.has(org.key);
+                            const orgSelected = pendingSelectedOrgCats.has(org.key);
                             return (
                               <div key={org.key} className="org-filter-item org-filter-item-double-indented">
                                 <label className="org-filter-label">
@@ -590,7 +618,7 @@ export const Filters = ({ onClose }) => {
             {availableCats.map((cat) => {
               const key = cat.key;
               const label = cat.label || key;
-              const active = selectedCats.has(key);
+              const active = pendingSelectedCats.has(key);
               const count = categoryCounts[key] || 0;
 
               return (
@@ -628,8 +656,8 @@ export const Filters = ({ onClose }) => {
           <label className="org-filter-label" style={{ cursor: "pointer" }}>
             <input
               type="checkbox"
-              checked={excludeMode}
-              onChange={(e) => setExcludeMode(e.target.checked)}
+              checked={pendingExcludeMode}
+              onChange={(e) => setPendingExcludeMode(e.target.checked)}
               className="org-filter-checkbox"
             />
             <span className="org-filter-name">

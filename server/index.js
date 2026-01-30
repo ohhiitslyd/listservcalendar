@@ -913,10 +913,15 @@ app.get("/api/calendars", ensureAuthed, async (req, res) => {
       primary: c.primary || false,
       backgroundColor: c.backgroundColor,
     }));
+    
+    // Log for debugging
+    const primaryCal = items.find(c => c.primary);
+    console.log(`[api/calendars] Found ${items.length} calendars, primary: ${primaryCal ? primaryCal.id : 'none'}`);
+    
     res.json({ calendars: items });
   } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: "Failed to fetch calendar list" });
+    console.error("[api/calendars] Error:", e);
+    res.status(500).json({ error: "Failed to fetch calendar list", details: e.message });
   }
 });
 
@@ -946,6 +951,15 @@ app.get("/api/calendar", ensureAuthed, async (req, res) => {
 // --- Get events (from local Neon database only) ---
 app.get("/api/events", ensureAuthed, async (req, res) => {
   try {
+    const oauth2Client = getOAuthClient(req);
+    const calendar = google.calendar({ version: "v3", auth: oauth2Client });
+
+    // Parse calendarIds from query parameter
+    const calendarIdsParam = req.query.calendarIds;
+    const calendarIds = calendarIdsParam
+      ? calendarIdsParam.split(",").map((id) => id.trim()).filter(Boolean)
+      : [];
+
     // Get ALL events from PostgreSQL/Neon database
     // Email-sourced events are campus-wide, visible to all users
     // Manual/draft events remain user-specific (only unpublished ones)
@@ -972,8 +986,62 @@ app.get("/api/events", ensureAuthed, async (req, res) => {
       google_event_id: e.google_event_id || null,
     }));
 
+    // Fetch events from Google Calendar for the specified calendar IDs
+    const allEvents = [...localEvents];
+    const now = new Date();
+    const timeMin = new Date(now.getFullYear() - 1, 0, 1).toISOString();
+    const timeMax = new Date(now.getFullYear() + 1, 11, 31).toISOString();
+
+    for (const calendarId of calendarIds) {
+      try {
+        // Handle "primary" calendar ID - Google Calendar API uses "primary" as a special value
+        const actualCalendarId = calendarId === "primary" ? "primary" : calendarId;
+        
+        const response = await calendar.events.list({
+          calendarId: actualCalendarId,
+          timeMin,
+          timeMax,
+          maxResults: 2500,
+          singleEvents: true,
+          orderBy: "startTime",
+        });
+
+        const gcalEvents = (response.data.items || []).map((item) => {
+          const start = item.start?.dateTime || item.start?.date;
+          const end = item.end?.dateTime || item.end?.date;
+          const isAllDay = !!item.start?.date;
+
+          // Extract metadata from extendedProperties
+          const sharedProps = item.extendedProperties?.shared || {};
+          const tags = sharedProps.tags ? JSON.parse(sharedProps.tags) : [];
+
+          return {
+            id: `gcal:${item.id}`,
+            source: "google",
+            title: item.summary || "(No title)",
+            description: item.description || "",
+            location: item.location || "",
+            start: start,
+            end: end,
+            allDay: isAllDay,
+            organization: sharedProps.organization || "",
+            tags: tags,
+            poster_url: sharedProps.poster_url || "",
+            status: "published",
+            google_event_id: item.id,
+            calendarId: calendarId,
+          };
+        });
+
+        allEvents.push(...gcalEvents);
+      } catch (error) {
+        console.error(`[api/events] Failed to fetch events from calendar ${calendarId}:`, error.message);
+        // Continue with other calendars even if one fails
+      }
+    }
+
     // Add organization categories to each event
-    const eventsWithOrgCats = localEvents.map((ev) => {
+    const eventsWithOrgCats = allEvents.map((ev) => {
       const orgKeys = assignOrgCategories(ev).map(slug);
       return { ...ev, orgCategories: orgKeys };
     });
@@ -1010,7 +1078,7 @@ app.get("/api/events", ensureAuthed, async (req, res) => {
 
     res.json({ events: filtered });
   } catch (e) {
-    console.error(e);
+    console.error("[api/events] Error:", e);
     res.status(500).json({ error: "Failed to fetch events" });
   }
 });
