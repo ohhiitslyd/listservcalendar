@@ -258,31 +258,31 @@ export const AppProvider = ({ children }) => {
   // Fetch events for counts ONLY (NO categoriesParam). This keeps a stable, unfiltered snapshot.
   const fetchEventsForCounts = useCallback(
     async (calendarIds) => {
-      const ids = calendarIds || Array.from(visibleCalendars);
-      const base =
-        ids.length > 0
-          ? `?calendarIds=${encodeURIComponent(ids.join(","))}`
-          : "?";
+    const ids = calendarIds || Array.from(visibleCalendars);
+    const base =
+      ids.length > 0
+        ? `?calendarIds=${encodeURIComponent(ids.join(","))}`
+        : "?";
 
-      const url = `/api/events${base}`;
+    const url = `/api/events${base}`;
       console.log("🔎 fetchEventsForCounts →", url);
 
-      const data = await api.fetchEvents({ calendarIds: ids });
+    const data = await api.fetchEvents({ calendarIds: ids });
 
-      const transformed = (data.events || []).map((ev) => ({
-        ...ev,
-        extendedProps: {
-          description: ev.description ?? "",
-          location: ev.location ?? "",
-          source: ev.source,
-          calendarId: ev.calendarId ?? null,
-          filter: ev.filter ?? ev.tag ?? null,
+    const transformed = (data.events || []).map((ev) => ({
+      ...ev,
+      extendedProps: {
+        description: ev.description ?? "",
+        location: ev.location ?? "",
+        source: ev.source,
+        calendarId: ev.calendarId ?? null,
+        filter: ev.filter ?? ev.tag ?? null,
           tags: ev.tags ?? [],
-          orgCategories: ev.orgCategories ?? [],
-        },
-      }));
+        orgCategories: ev.orgCategories ?? [],
+      },
+    }));
 
-      setAllEventsForCounts(transformed);
+    setAllEventsForCounts(transformed);
     },
     [visibleCalendars]
   );
@@ -316,8 +316,8 @@ export const AppProvider = ({ children }) => {
       const draftData = await draftRes.json();
       if (draftData.id) {
         await fetch(`/api/events/${encodeURIComponent(draftData.id)}/publish`, {
-          method: "POST",
-          credentials: "include",
+            method: "POST",
+            credentials: "include",
         });
       } else {
         alert("Failed to create draft");
@@ -389,27 +389,27 @@ export const AppProvider = ({ children }) => {
   useEffect(() => {
     if (user) {
       // a) calendars + working‑calendar info
-      fetchCalendars();
-      fetchWorkingCalendar();
+    fetchCalendars();
+    fetchWorkingCalendar();
 
       // b) category bubbles – `fetchCategories` expects the user (or we could just call it without args if the hook already checks `user` internally)
-      fetchCategories(user);
+    fetchCategories(user);
       // NEW: fetch org categories list
-      (async () => {
-        try {
-          const res = await fetch("/api/org-categories", {
-            credentials: "include",
-          });
-          if (res.ok) {
-            const data = await res.json();
+    (async () => {
+      try {
+        const res = await fetch("/api/org-categories", {
+          credentials: "include",
+        });
+        if (res.ok) {
+          const data = await res.json();
             setAvailableOrgCats(data.orgCategories || []);
-          } else {
-            setAvailableOrgCats([]);
-          }
-        } catch {
+        } else {
           setAvailableOrgCats([]);
         }
-      })();
+      } catch {
+        setAvailableOrgCats([]);
+      }
+    })();
 
       // c) Load saved user preferences and apply them
       (async () => {
@@ -460,7 +460,7 @@ export const AppProvider = ({ children }) => {
   }, [
     categoriesParam,
     orgCategoriesParam,
-    excludeParam, 
+    excludeParam,
     user,
     visibleCalendars,
     fetchEvents,
@@ -488,6 +488,7 @@ export const AppProvider = ({ children }) => {
 
     // events
     events,
+    setEvents,
     fetchEvents,
     categoriesParam,
 
