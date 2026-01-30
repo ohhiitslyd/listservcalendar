@@ -282,38 +282,37 @@ app.get("/api/user/preferences", ensureAuthed, async (req, res) => {
 app.put("/api/user/preferences", ensureAuthed, async (req, res) => {
   try {
     const { preferences, organizationPreference, eventTypePreference } = req.body;
-    
-    // Support both old format (preferences object) and new format (separate columns)
+
+    // Pull existing preferences once so we can merge if needed
+    const existingUser = await queryOne(
+      "SELECT preferences FROM users WHERE id = $1",
+      [req.session.user.id]
+    );
+
+    let mergedPreferences = existingUser?.preferences || {};
+
     if (preferences && typeof preferences === "object" && preferences !== null) {
-      // Legacy: Merge with existing preferences
-      const existingUser = await queryOne(
-        "SELECT preferences FROM users WHERE id = $1",
-        [req.session.user.id]
-      );
-      const mergedPreferences = {
+      mergedPreferences = {
         ...(existingUser?.preferences || {}),
         ...preferences,
       };
-
-      await execute(
-        `UPDATE users SET preferences = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`,
-        [JSON.stringify(mergedPreferences), req.session.user.id]
-      );
-
-      return res.json({ preferences: mergedPreferences });
     }
 
-    // New format: Update separate preference columns
     const updates = [];
     const values = [];
     let paramIndex = 1;
+
+    // If preferences provided, update preferences JSON blob too
+    if (preferences && typeof preferences === "object" && preferences !== null) {
+      updates.push(`preferences = $${paramIndex}`);
+      values.push(JSON.stringify(mergedPreferences));
+      paramIndex++;
+    }
 
     if (organizationPreference !== undefined) {
       if (!Array.isArray(organizationPreference)) {
         return res.status(400).json({ error: "organizationPreference must be an array" });
       }
-      // Replace with new array (or merge if you want to add to existing)
-      // For now, we'll replace - change to union if you want merging behavior
       updates.push(`organization_preference = $${paramIndex}`);
       values.push(organizationPreference);
       paramIndex++;
@@ -323,7 +322,6 @@ app.put("/api/user/preferences", ensureAuthed, async (req, res) => {
       if (!Array.isArray(eventTypePreference)) {
         return res.status(400).json({ error: "eventTypePreference must be an array" });
       }
-      // Replace with new array (or merge if you want to add to existing)
       updates.push(`event_type_preference = $${paramIndex}`);
       values.push(eventTypePreference);
       paramIndex++;
@@ -333,19 +331,22 @@ app.put("/api/user/preferences", ensureAuthed, async (req, res) => {
       return res.status(400).json({ error: "No preferences provided to update" });
     }
 
+    updates.push(`updated_at = CURRENT_TIMESTAMP`);
+
     values.push(req.session.user.id);
     await execute(
-      `UPDATE users SET ${updates.join(", ")}, updated_at = CURRENT_TIMESTAMP WHERE id = $${paramIndex}`,
+      `UPDATE users SET ${updates.join(", ")} WHERE id = $${paramIndex}`,
       values
     );
 
-    // Return updated preferences
+    // Return the full updated state (what your frontend expects)
     const updatedUser = await queryOne(
-      "SELECT organization_preference, event_type_preference FROM users WHERE id = $1",
+      "SELECT organization_preference, event_type_preference, preferences FROM users WHERE id = $1",
       [req.session.user.id]
     );
 
-    res.json({ 
+    res.json({
+      preferences: updatedUser?.preferences || {},
       organizationPreference: updatedUser?.organization_preference || [],
       eventTypePreference: updatedUser?.event_type_preference || [],
     });
