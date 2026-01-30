@@ -49,6 +49,7 @@ export const Filters = ({ onClose }) => {
       await api.updatePreferences({
         organizationPreference: orgPrefsArray,
         eventTypePreference: eventTypePrefsArray,
+        excludeMode, // ✅ persist exclude mode
       });
 
       // Sync calendar based on preferences

@@ -577,6 +577,9 @@ export const AppProvider = ({ children }) => {
       (async () => {
         try {
           const prefsData = await api.fetchPreferences();
+          if (prefsData?.preferences && typeof prefsData.preferences === "object") {
+            setExcludeMode(!!prefsData.preferences.excludeMode);
+          }
           // Apply organization preferences
           if (prefsData.organizationPreference && Array.isArray(prefsData.organizationPreference) && prefsData.organizationPreference.length > 0) {
             setSelectedOrgCats(new Set(prefsData.organizationPreference));
@@ -585,6 +588,7 @@ export const AppProvider = ({ children }) => {
           if (prefsData.eventTypePreference && Array.isArray(prefsData.eventTypePreference) && prefsData.eventTypePreference.length > 0) {
             setSelectedCats(new Set(prefsData.eventTypePreference));
           }
+
         } catch (error) {
           console.error("Failed to load user preferences:", error);
           // Continue without preferences if fetch fails
@@ -649,7 +653,7 @@ export const AppProvider = ({ children }) => {
     listservCalendarId,
 
     // events
-    events: filteredEvents,
+    events,
     fetchEvents,
     categoriesParam,
 

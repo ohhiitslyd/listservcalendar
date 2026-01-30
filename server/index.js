@@ -368,58 +368,57 @@ app.post("/api/user/sync-calendar-by-preferences", ensureAuthed, async (req, res
 
     // Get user preferences
     const userRecord = await queryOne(
-      "SELECT organization_preference, event_type_preference FROM users WHERE id = $1",
+      "SELECT organization_preference, event_type_preference, preferences FROM users WHERE id = $1",
       [userId]
     );
 
     const orgPrefs = userRecord?.organization_preference || [];
     const eventTypePrefs = userRecord?.event_type_preference || [];
+    const excludeMode = !!(userRecord?.preferences && userRecord.preferences.excludeMode);
 
     // If no preferences, publish ALL events (show everything)
     // This means the user wants to see all events, so we sync all email-sourced events
     const showAllEvents = orgPrefs.length === 0 && eventTypePrefs.length === 0;
 
-    // Query database for events matching preferences
-    // Get all email-sourced events (they're shared/campus-wide)
-    let queryText = `SELECT * FROM events WHERE source = 'email'`;
-    const params = [];
-    let paramIndex = 1;
+    // Pull all email events, then apply include/exclude logic in JS
+    let allEmailEvents = await query(
+      `SELECT * FROM events WHERE source = 'email' ORDER BY start ASC`,
+      []
+    );
 
-    // Filter by event type preferences (tags) - only if preferences are set
-    if (!showAllEvents && eventTypePrefs.length > 0) {
-      queryText += ` AND (`;
-      const tagConditions = eventTypePrefs.map((tag) => {
-        params.push(`%"${tag}"%`);
-        const condition = `tags LIKE $${paramIndex}`;
-        paramIndex++;
-        return condition;
-      });
-      queryText += tagConditions.join(" OR ") + `)`;
-    }
+    // Build org allowed email set (from selected org leaf keys)
+    const allowedOrgEmails = buildAllowedOrgEmailSet(orgPrefs);
 
-    queryText += " ORDER BY start ASC";
-    let matchingEvents = await query(queryText, params);
+    // Helper: does event match selected filters?
+    const eventMatches = (event) => {
+      const evtEmail = String(event.organization_email || "").trim().toLowerCase();
 
-    // Filter by organization preferences using organization_email
-    if (!showAllEvents && orgPrefs.length > 0 && matchingEvents.length > 0) {
-      const allowedOrgEmails = buildAllowedOrgEmailSet(orgPrefs);
+      const tags = event.tags ? JSON.parse(event.tags) : [];
 
-      console.log("[sync-by-prefs] orgPrefs =", orgPrefs);
-      console.log("[sync-by-prefs] allowedOrgEmails size =", allowedOrgEmails.size);
-      console.log("[sync-by-prefs] allowedOrgEmails sample =", [...allowedOrgEmails].slice(0, 30));
-      console.log(
-        "[sync-by-prefs] matchingEvents org_email sample =",
-        matchingEvents.slice(0, 20).map(e => ({
-          id: e.id,
-          title: e.title,
-          organization: e.organization,
-          organization_email: e.organization_email
-        }))
-      );
+      const matchesTags =
+        eventTypePrefs.length === 0
+          ? true
+          : tags.some((t) => eventTypePrefs.includes(t));
 
-      matchingEvents = matchingEvents.filter((event) => {
-        const evtEmail = String(event.organization_email || "").trim().toLowerCase();
-        return evtEmail && allowedOrgEmails.has(evtEmail);
+      const matchesOrg =
+        allowedOrgEmails.size === 0
+          ? true
+          : (evtEmail && allowedOrgEmails.has(evtEmail));
+
+      // AND logic between active filters
+      return matchesTags && matchesOrg;
+    };
+
+    // No filters selected => show all (even if excludeMode is true)
+    const anyFiltersSelected = orgPrefs.length > 0 || eventTypePrefs.length > 0;
+
+    let matchingEvents;
+    if (!anyFiltersSelected) {
+      matchingEvents = allEmailEvents;
+    } else {
+      matchingEvents = allEmailEvents.filter((event) => {
+        const matches = eventMatches(event);
+        return excludeMode ? !matches : matches;
       });
     }
 
@@ -897,17 +896,46 @@ app.get("/api/events", ensureAuthed, async (req, res) => {
     };
 
     let filtered = combined;
+
     const categoriesParam = req.query.categories || req.query.eventTypes;
+    const orgCatsParam = req.query.orgCategories;
+    const exclude = String(req.query.exclude || "") === "1";
 
-    if (categoriesParam) {
-      const reqCategories = categoriesParam
-        .split(",")
-        .map((s) => s.trim())
-        .filter(Boolean);
+    // Parse event-type tag filters
+    const reqCategories = categoriesParam
+      ? categoriesParam.split(",").map((s) => s.trim()).filter(Boolean)
+      : [];
 
+    // Parse org leaf keys and build allowed sender-email set
+    const reqOrgKeys = orgCatsParam
+      ? orgCatsParam.split(",").map((s) => s.trim()).filter(Boolean)
+      : [];
+
+    const allowedOrgEmails = buildAllowedOrgEmailSet(reqOrgKeys);
+
+    // Apply filters (AND between active filters) only to ListServ events.
+    // Non-ListServ events always pass through.
+    if (reqCategories.length > 0 || allowedOrgEmails.size > 0) {
       filtered = combined.filter((ev) => {
         if (!isListServ(ev)) return true;
-        return (ev.tags || []).some((tag) => reqCategories.includes(tag));
+
+        const tags = ev.tags || [];
+        const evtEmail = String(ev.organization_email || "").trim().toLowerCase();
+
+        const matchesTags =
+          reqCategories.length === 0
+            ? true
+            : tags.some((t) => reqCategories.includes(t));
+
+        const matchesOrg =
+          allowedOrgEmails.size === 0
+            ? true
+            : (evtEmail && allowedOrgEmails.has(evtEmail));
+
+        const matches = matchesTags && matchesOrg;
+
+        // exclude=1 means hide matches (keep non-matches)
+        return exclude ? !matches : matches;
       });
     }
 
@@ -1007,16 +1035,20 @@ try {
 // ---------- Org preference -> allowed email helper ----------
 const toKey = (s) => String(s || "").trim().toLowerCase().replace(/\s+/g, "_");
 
-// pref is like "type:all:org_key" (your UI), OR could be just "org_key"
+// pref key format (leaf): "<typeKey>:all:<orgKey>"
 function buildAllowedOrgEmailSet(orgPrefs) {
   const allowed = new Set();
 
   for (const pref of orgPrefs || []) {
     if (!pref) continue;
 
-    const orgKey = String(pref).includes(":")
-      ? String(pref).split(":").pop()
-      : String(pref);
+    const parts = String(pref).split(":");
+
+    // Only accept leaf org nodes, e.g. "music:all:dartmouth_cords"
+    // Ignore type keys like "music" and subcategory keys like "music:all"
+    if (parts.length < 3) continue;
+
+    const orgKey = parts[parts.length - 1];
 
     const match = (ORG_FILTERS || []).find((row) => {
       const rowKey = toKey(row?.organization);
