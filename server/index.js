@@ -993,6 +993,7 @@ app.get("/api/events", ensureAuthed, async (req, res) => {
           allDay: isAllDay,
           organization: props.organization || "",
           organization_email: props.organization_email || "",
+          orgCategories: getOrgCategoriesFromEmail(props.organization_email || ""),
           tags: JSON.parse(props.tags || "[]"),
           poster_url: props.poster_url || "",
         };
@@ -1021,6 +1022,7 @@ app.get("/api/events", ensureAuthed, async (req, res) => {
       allDay: !!e.all_day,
       organization: e.organization || "",
       organization_email: e.organization_email || "",
+      orgCategories: getOrgCategoriesFromEmail(e.organization_email || ""),
       tags: e.event_tags ? JSON.parse(e.event_tags) : [],
       poster_url: e.poster_url || "",
       status: e.status || "pending",
@@ -1200,6 +1202,35 @@ function buildAllowedOrgEmailSet(orgPrefs) {
   }
 
   return allowed;
+}
+
+// Given an event's organization_email, return the list of org category keys
+// (same format as /api/org-categories: "typeKey:all:orgKey") for counts/display.
+function getOrgCategoriesFromEmail(organizationEmail) {
+  const email = String(organizationEmail || "").trim().toLowerCase();
+  if (!email) return [];
+
+  const validTypeKeySet = new Set(
+    (ORG_CATEGORIES || [])
+      .filter((x) => typeof x === "string" && x.trim().length > 0)
+      .map((name) => toKey(name.trim()))
+  );
+
+  const row = (ORG_FILTERS || []).find((r) =>
+    (Array.isArray(r.emails) ? r.emails : []).some(
+      (em) => String(em).trim().toLowerCase() === email
+    )
+  );
+  if (!row || !row.organization) return [];
+
+  const orgKey = toKey(row.organization);
+  const categories = Array.isArray(row.categories) ? row.categories : [];
+  const keys = [];
+  for (const catName of categories) {
+    const typeKey = toKey(catName);
+    if (validTypeKeySet.has(typeKey)) keys.push(`${typeKey}:all:${orgKey}`);
+  }
+  return keys;
 }
 
 // Endpoint to populate the Organization filter tab

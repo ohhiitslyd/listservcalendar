@@ -417,6 +417,41 @@ export const AppProvider = ({ children }) => {
     [visibleCalendars, categoriesParam, orgCategoriesParam, excludeParam, listservCalendarId]
   );
 
+  // Refetch events with explicit filter params (used right after Apply filters so we use the selected values, not stale state)
+  const refetchEventsWithParams = useCallback(
+    async (orgCatsArray, eventTypesArray, exclude) => {
+      const ids = Array.from(visibleCalendars);
+      const base = ids.length > 0 ? `?calendarIds=${encodeURIComponent(ids.join(","))}` : "?";
+      const catParam = Array.isArray(eventTypesArray) && eventTypesArray.length > 0
+        ? `&categories=${encodeURIComponent(eventTypesArray.join(","))}`
+        : "";
+      const orgParam = Array.isArray(orgCatsArray) && orgCatsArray.length > 0
+        ? `&orgCategories=${encodeURIComponent(orgCatsArray.join(","))}`
+        : "";
+      const excParam = exclude ? "&exclude=1" : "";
+      const url = `/api/events${base}${catParam}${orgParam}${excParam}`;
+      console.log("🔎 refetchEventsWithParams →", url);
+      const data = await api.fetchEvents({
+        calendarIds: ids,
+        categoriesParam: catParam,
+        orgCategoriesParam: orgParam,
+        excludeParam: excParam,
+      });
+      const transformed = (data.events || []).map((ev) => ({
+        ...ev,
+        className: ev.calendarId === listservCalendarId || ev.source === "draft" || ev.source === "email" ? "fc-event-listserv" : "fc-event-other",
+        extendedProps: {
+          ...ev.extendedProps,
+          organization: ev.organization ?? "",
+          tags: ev.tags ?? [],
+          orgCategories: ev.orgCategories ?? [],
+        },
+      }));
+      setEvents(transformed);
+    },
+    [visibleCalendars, listservCalendarId]
+  );
+
   // Fetch events for counts ONLY (NO categoriesParam). This keeps a stable, unfiltered snapshot.
   const fetchEventsForCounts = useCallback(
     async (calendarIds) => {
@@ -564,7 +599,8 @@ export const AppProvider = ({ children }) => {
         });
         if (res.ok) {
           const data = await res.json();
-            setAvailableOrgCats(data.orgCategories || []);
+          // Server returns { categories }; support both keys for compatibility
+          setAvailableOrgCats(data.categories || data.orgCategories || []);
         } else {
           setAvailableOrgCats([]);
         }
@@ -691,7 +727,8 @@ export const AppProvider = ({ children }) => {
     selectedOrgCats,
     setSelectedOrgCats,
     orgCategoryCounts,
-    orgHierarchy, 
+    orgHierarchy,
+    refetchEventsWithParams, 
 
     currentViewRange,
     setCurrentViewRange,
