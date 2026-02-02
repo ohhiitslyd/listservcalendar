@@ -15,7 +15,7 @@ import { fileURLToPath } from "url";
 
 // Configuration
 const LLM_CONFIG = {
-  model: "gpt-4o",
+  model: "gpt-5-mini",
   temperature: 0.3,
   maxTokens: 600,
   maxRetries: 3,
@@ -238,30 +238,11 @@ function extractOrganization(fromName) {
 }
 
 /**
- * Helper function to convert time string to 24-hour format
- */
-function parseTimeTo24Hour(timeStr) {
-  const match = timeStr.match(/(\d{1,2}):?(\d{2})?\s*(AM|PM|am|pm)?/i);
-  if (!match) return null;
-
-  let hours = parseInt(match[1], 10);
-  const minutes = match[2] ? parseInt(match[2], 10) : 0;
-  const ampm = match[3]?.toUpperCase();
-
-  if (ampm === "PM" && hours !== 12) hours += 12;
-  if (ampm === "AM" && hours === 12) hours = 0;
-
-  return `${hours.toString().padStart(2, "0")}:${minutes
-    .toString()
-    .padStart(2, "0")}:00`;
-}
-
-/**
  * Process a single raw event object from LLM response
  * Applies vision extraction, date/time parsing, validation, and formatting
  */
 async function processRawEvent(rawEvent, context) {
-  const { attachments, emailId, posterUrl, organization, received_date, cleanedText, apiKey, subject } = context;
+  const { attachments, emailId, posterUrl, organization, organizationEmail, received_date, cleanedText, apiKey, subject } = context;
 
   // Make a copy to avoid mutating the original
   const parsed = { ...rawEvent };
@@ -319,7 +300,8 @@ Look carefully at ALL text in the image including stylized/decorative fonts. Ret
                     {
                       type: "image_url",
                       image_url: {
-                        url: `data:${imageMimeType};base64,${imageData}`,
+                        // Convert Gmail's URL-safe base64 to standard base64
+                        url: `data:${imageMimeType};base64,${imageData.replace(/-/g, '+').replace(/_/g, '/')}`,
                         detail: "high",
                       },
                     },
@@ -447,6 +429,7 @@ Look carefully at ALL text in the image including stylized/decorative fonts. Ret
     allDay: effectiveAllDay,
     posterUrl: posterUrl || null,
     organization: organization,
+    organizationEmail: organizationEmail,
     tags: tags,
     confidenceScore: 0.95,
   };
@@ -469,6 +452,39 @@ Look carefully at ALL text in the image including stylized/decorative fonts. Ret
       correctedEnd.setHours(correctedEnd.getHours() + 1);
       event.endDate = correctedEnd.toISOString().split("T")[0];
       event.endTime = correctedEnd.toTimeString().split(" ")[0];
+    }
+  }
+
+  // Safety net: detect same-day events where LLM incorrectly set endDate to next day
+  // Only correct if end time is LATER than start time (same-day pattern)
+  // Do NOT correct if end time is EARLIER than start time (overnight pattern)
+  if (event.startTime && event.endTime && !event.allDay && event.startDate !== event.endDate) {
+    const startDateTime = new Date(`${event.startDate}T${event.startTime}`);
+    const endDateTime = new Date(`${event.endDate}T${event.endTime}`);
+    const durationHours = (endDateTime - startDateTime) / (1000 * 60 * 60);
+
+    // Parse just the time portions to compare
+    const startTimeParts = event.startTime.split(':').map(Number);
+    const endTimeParts = event.endTime.split(':').map(Number);
+    const startMinutes = startTimeParts[0] * 60 + startTimeParts[1];
+    const endMinutes = endTimeParts[0] * 60 + endTimeParts[1];
+
+    // If end time is LATER than start time (e.g., 19:00→21:00) but duration is 24-26h,
+    // this is likely a parsing error where LLM set wrong endDate
+    // If end time is EARLIER than start time (e.g., 22:00→08:00), it's a legitimate overnight event
+    const isOvernightPattern = endMinutes < startMinutes;
+
+    if (durationHours >= 24 && durationHours <= 26 && !isOvernightPattern) {
+      console.warn(
+        `[llm-parser] Correcting likely same-day event "${event.title}": ` +
+        `endDate ${event.endDate} → ${event.startDate} (was ${durationHours.toFixed(1)}h duration, endTime > startTime)`
+      );
+      event.endDate = event.startDate;
+    } else if (durationHours >= 24 && durationHours <= 26 && isOvernightPattern) {
+      console.log(
+        `[llm-parser] Keeping overnight event "${event.title}": ` +
+        `${event.startDate} ${event.startTime} → ${event.endDate} ${event.endTime} (endTime < startTime indicates overnight)`
+      );
     }
   }
 
@@ -495,6 +511,7 @@ export async function parseEmailForEvents(emailData) {
     body_html,
     received_date,
     from_name,
+    from_email,
     attachments,
     id: emailId,
   } = emailData;
@@ -529,15 +546,27 @@ export async function parseEmailForEvents(emailData) {
       const attachmentsList =
         typeof attachments === "string" ? JSON.parse(attachments) : attachments;
       if (Array.isArray(attachmentsList) && attachmentsList.length > 0) {
-        // Use the first image attachment as the poster
-        const imageAttachment =
-          attachmentsList.find(
-            (att) => att.mimeType && att.mimeType.startsWith("image/")
-          ) || attachmentsList[0];
+        // Filter to only image attachments
+        const imageAttachments = attachmentsList.filter(
+          (att) => att.mimeType && att.mimeType.startsWith("image/")
+        );
 
-        if (imageAttachment && imageAttachment.contentId) {
-          // Construct the URL to serve the attachment
-          posterUrl = `/api/scraped-emails/${emailId}/attachments/${imageAttachment.contentId}`;
+        if (imageAttachments.length > 0) {
+          // Use first image found, but fall back to largest if first is too small (< 10KB)
+          const firstImage = imageAttachments[0];
+          const largestImage = imageAttachments.reduce((max, att) =>
+            (att.size || 0) > (max.size || 0) ? att : max
+          );
+
+          const MIN_POSTER_SIZE = 10 * 1024; // 10KB threshold
+          const selectedImage =
+            (firstImage.size || 0) < MIN_POSTER_SIZE && (largestImage.size || 0) > (firstImage.size || 0)
+              ? largestImage
+              : firstImage;
+
+          if (selectedImage && selectedImage.contentId) {
+            posterUrl = `/api/scraped-emails/${emailId}/attachments/${selectedImage.contentId}`;
+          }
         }
       }
     } catch (e) {
@@ -655,6 +684,12 @@ DATE EXTRACTION RULES:
 - If this email IS about an event, you MUST extract title and startDate
 - Be aggressive about extracting dates from context
 
+CRITICAL - END DATE RULE:
+- For single-day events (meetings, talks, shows, etc.), endDate MUST equal startDate
+- WRONG: startDate: "2026-01-27", endDate: "2026-01-28" for a 1-hour meeting
+- CORRECT: startDate: "2026-01-27", endDate: "2026-01-27" for a 1-hour meeting
+- Only use a different endDate if the event explicitly spans multiple days (conferences, festivals, etc.)
+
 ${FEW_SHOT_EXAMPLES}
 
 Now extract from the email above. Return ONLY valid JSON:`;
@@ -732,6 +767,7 @@ Now extract from the email above. Return ONLY valid JSON:`;
         emailId,
         posterUrl,
         organization,
+        organizationEmail: from_email || null,
         received_date,
         cleanedText,
         apiKey,

@@ -210,7 +210,7 @@ export async function initializeSchema() {
         location TEXT,
         organization TEXT,
         organization_email TEXT,
-        tags TEXT,
+        event_tags TEXT,
         poster_url TEXT,
         start TEXT NOT NULL,
         "end" TEXT,
@@ -227,6 +227,12 @@ export async function initializeSchema() {
     await client.query(`
       ALTER TABLE events
       ADD COLUMN IF NOT EXISTS organization_email TEXT
+    `);
+
+    // Add event_tags column if it doesn't exist (event-type tags, e.g. "Free Food", "Performance")
+    await client.query(`
+      ALTER TABLE events
+      ADD COLUMN IF NOT EXISTS event_tags TEXT
     `);
 
     // App settings table
@@ -271,6 +277,20 @@ export async function initializeSchema() {
     // Create index on users email
     await client.query(`
       CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)
+    `);
+
+    // Create indexes for frequently queried columns
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_events_source ON events(source)
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_events_status ON events(status)
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_events_email_id ON events(email_id)
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_scraped_emails_processed ON scraped_emails(processed)
     `);
 
     // Migration: Add new preference columns if they don't exist

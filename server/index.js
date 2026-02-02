@@ -10,7 +10,7 @@ import fs from "fs";
 import cron from "node-cron";
 import { scrapeEmails } from "./services/emailScraper.js";
 import { parseEmailForEvents } from "./services/llmParser.js";
-import { runAutomatedScrape } from "./services/autoScraper.js";
+import { runAutomatedScrape, combineDateTime } from "./services/autoScraper.js";
 import {
   publishEventToCalendar,
   getOrCreateListServCalendar as getOrCreateListServCalendarShared,
@@ -51,6 +51,26 @@ try {
 // Export EVENT_TYPE_RULES for use in other modules
 export { EVENT_TYPE_RULES };
 
+// Load organization-based filters (organization_events.json)
+const ORG_DESCRIPTOR_PATH = path.join(__dirname, "organization_events.json");
+
+let ORGANIZATION_RULES = { categories: {} };
+try {
+  const rawOrg = fs.readFileSync(ORG_DESCRIPTOR_PATH, "utf8");
+  ORGANIZATION_RULES = JSON.parse(rawOrg);
+  console.log(
+    "[org-categories] loaded",
+    Object.keys(ORGANIZATION_RULES.categories || {}).length,
+    "top-level org categories from",
+    ORG_DESCRIPTOR_PATH
+  );
+} catch (e) {
+  console.warn(
+    "Could not read organization_events.json. Org category filtering will be empty.",
+    e
+  );
+}
+
 const {
   PORT = 3000,
   SESSION_SECRET = "dev-secret",
@@ -67,27 +87,101 @@ if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET || !GOOGLE_REDIRECT_URI) {
 }
 
 const app = express();
+
+// Trust first proxy (nginx, ALB, Cloudflare, etc.) so secure cookies work behind reverse proxy
+const isProduction = process.env.NODE_ENV === "production";
+if (isProduction) {
+  app.set("trust proxy", 1);
+}
+
 app.use(express.json());
 app.use(cookieParser());
+
 app.use(
   session({
     secret: SESSION_SECRET,
     resave: false,
     saveUninitialized: false,
-    cookie: { httpOnly: true, sameSite: "lax", secure: false },
+    cookie: {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: isProduction, // Enable secure cookies in production (HTTPS)
+    },
   })
 );
 
 // Initialize PostgreSQL schema
 await initializeSchema();
 
-// Helper function for combining date and time
-function combineDateTime(date, time, allDay) {
-  if (!date) return null;
-  if (time && !allDay) {
-    return `${date}T${time}`;
+// --- Helper functions for organization filtering ---
+const slug = (s = "") =>
+  String(s)
+    .normalize("NFKD")
+    .toLowerCase()
+    .replace(/\s+/g, "_")
+    .replace(/[^a-z0-9_:]/g, "");
+
+const lowerArray = (arr = []) => arr.map((x) => String(x).toLowerCase());
+
+function toTextBlob(ev) {
+  const {
+    title = "",
+    description = "",
+    location = "",
+    organization = "",
+  } = ev || {};
+  return `${title} ${description} ${location} ${organization}`.toLowerCase();
+}
+
+function matchesAnyKeyword(blob, keywords = []) {
+  return keywords.some((kw) => blob.includes(String(kw).toLowerCase()));
+}
+
+/**
+ * assignOrgCategories(ev) -> array of organization category keys
+ * Uses ORGANIZATION_RULES.categories hierarchy
+ */
+function assignOrgCategories(ev) {
+  const blob = toTextBlob(ev);
+  const out = [];
+
+  const cats = ORGANIZATION_RULES?.categories || {};
+  for (const [typeKeyRaw, typeDef] of Object.entries(cats)) {
+    const typeKey = slug(typeKeyRaw);
+    const subcats = typeDef?.subcategories || {};
+
+    // Type-level matching
+    const typeHit =
+      Array.isArray(typeDef?.must_include_any) &&
+      matchesAnyKeyword(blob, lowerArray(typeDef.must_include_any));
+    if (typeHit) out.push(typeKey);
+
+    for (const [subKeyRaw, subDef] of Object.entries(subcats)) {
+      const subKey = slug(subKeyRaw);
+
+      // Subcategory-level matching
+      const subHit =
+        Array.isArray(subDef?.must_include_any) &&
+        matchesAnyKeyword(blob, lowerArray(subDef.must_include_any));
+      if (subHit) {
+        out.push(`${typeKey}:${subKey}`);
+      }
+
+      // Organization-level matching
+      const orgs = subDef?.organizations || {};
+      for (const [orgKeyRaw, orgDef] of Object.entries(orgs)) {
+        const orgKey = slug(orgKeyRaw);
+        const orgHit =
+          Array.isArray(orgDef?.must_include_any) &&
+          matchesAnyKeyword(blob, lowerArray(orgDef.must_include_any));
+        if (orgHit) {
+          out.push(`${typeKey}:${subKey}:${orgKey}`);
+        }
+      }
+    }
   }
-  return date;
+
+  return out;
 }
 
 function ensureAuthed(req, res, next) {
@@ -394,7 +488,7 @@ app.post("/api/user/sync-calendar-by-preferences", ensureAuthed, async (req, res
     const eventMatches = (event) => {
       const evtEmail = String(event.organization_email || "").trim().toLowerCase();
 
-      const tags = event.tags ? JSON.parse(event.tags) : [];
+      const tags = event.event_tags ? JSON.parse(event.event_tags) : [];
 
       const matchesTags =
         eventTypePrefs.length === 0
@@ -463,25 +557,37 @@ app.post("/api/user/sync-calendar-by-preferences", ensureAuthed, async (req, res
     // Publish events that match but aren't in Google Calendar
     let publishedCount = 0;
     const publishResults = [];
+    // Helper to normalize datetime strings into an RFC3339-ish format
+    const normalizeDateTime = (value) => {
+      if (!value) return value;
+      // If it already looks like an ISO string with "T", use as-is
+      if (value.includes("T")) return value;
+      // Common legacy format is "YYYY-MM-DD HH:mm:ss" – replace space with "T"
+      return value.replace(" ", "T");
+    };
+
     for (const event of matchingEvents) {
       // Check if already published to this user's calendar
       const existingGCalEvent = gcalEventMap.get(event.id);
       
       if (!existingGCalEvent) {
         // Need to publish this event (don't update database since it's shared)
-        const tags = event.tags ? JSON.parse(event.tags) : [];
+        const tags = event.event_tags ? JSON.parse(event.event_tags) : [];
         const isAllDay = !!event.all_day;
-        
+
+        const startDateTime = normalizeDateTime(event.start);
+        const endDateTime = normalizeDateTime(event.end || event.start);
+
         const eventData = {
           summary: event.title || "(No title)",
           description: event.description || "",
           location: event.location || "",
           start: isAllDay
-            ? { date: event.start.split("T")[0] }
-            : { dateTime: event.start, timeZone: "America/New_York" },
+            ? { date: startDateTime.split("T")[0] }
+            : { dateTime: startDateTime, timeZone: "America/New_York" },
           end: isAllDay
-            ? { date: (event.end || event.start).split("T")[0] }
-            : { dateTime: event.end || event.start, timeZone: "America/New_York" },
+            ? { date: endDateTime.split("T")[0] }
+            : { dateTime: endDateTime, timeZone: "America/New_York" },
           extendedProperties: {
             shared: {
               organization: event.organization || "",
@@ -499,17 +605,39 @@ app.post("/api/user/sync-calendar-by-preferences", ensureAuthed, async (req, res
             requestBody: eventData,
           });
           publishedCount++;
-          publishResults.push({ 
-            eventId: event.id, 
+          publishResults.push({
+            eventId: event.id,
             action: "published",
-            googleEventId: response.data.id 
+            googleEventId: response.data.id,
           });
         } catch (error) {
-          console.error(`[sync-by-prefs] Failed to publish event ${event.title}:`, error.message);
-          publishResults.push({ 
-            eventId: event.id, 
-            action: "failed", 
-            error: error.message 
+          // Log detailed Google API error info to diagnose Bad Request issues
+          const status = error?.response?.status;
+          const data = error?.response?.data;
+          console.error(
+            `[sync-by-prefs] Failed to publish event asdiojasiodjasoidasj "${event.title}":`,
+            `message=${error.message}`,
+            `status=${status}`,
+            `apiError=${JSON.stringify(data)}`
+          );
+          console.error(
+            "[sync-by-prefs] Failing event payload (start/end):",
+            JSON.stringify(
+              {
+                start: eventData.start,
+                end: eventData.end,
+                allDay: isAllDay,
+              },
+              null,
+              2
+            )
+          );
+
+          publishResults.push({
+            eventId: event.id,
+            action: "failed",
+            error: error.message,
+            status,
           });
         }
       } else {
@@ -684,7 +812,7 @@ app.post("/api/user/sync-to-calendar", ensureAuthed, async (req, res) => {
         queryText += ` AND (`;
         const tagConditions = filters.tags.map((tag, i) => {
           params.push(`%"${tag}"%`);
-          return `tags LIKE $${paramIndex + i}`;
+          return `event_tags LIKE $${paramIndex + i}`;
         });
         queryText += tagConditions.join(" OR ") + `)`;
         paramIndex += filters.tags.length;
@@ -700,21 +828,31 @@ app.post("/api/user/sync-to-calendar", ensureAuthed, async (req, res) => {
 
     // Sync each event to user's Google Calendar
     const results = [];
+    // Reuse the same datetime normalizer used in sync-by-preferences
+    const normalizeDateTime = (value) => {
+      if (!value) return value;
+      if (value.includes("T")) return value;
+      return value.replace(" ", "T");
+    };
+
     for (const event of events) {
       try {
         const isAllDay = !!event.all_day;
-        const tags = event.tags ? JSON.parse(event.tags) : [];
+        const tags = event.event_tags ? JSON.parse(event.event_tags) : [];
+
+        const startDateTime = normalizeDateTime(event.start);
+        const endDateTime = normalizeDateTime(event.end || event.start);
 
         const eventData = {
           summary: event.title || "(No title)",
           description: event.description || "",
           location: event.location || "",
           start: isAllDay
-            ? { date: event.start.split("T")[0] }
-            : { dateTime: event.start, timeZone: "America/New_York" },
+            ? { date: startDateTime.split("T")[0] }
+            : { dateTime: startDateTime, timeZone: "America/New_York" },
           end: isAllDay
-            ? { date: event.end ? event.end.split("T")[0] : event.start.split("T")[0] }
-            : { dateTime: event.end || event.start, timeZone: "America/New_York" },
+            ? { date: endDateTime.split("T")[0] }
+            : { dateTime: endDateTime, timeZone: "America/New_York" },
           extendedProperties: {
             shared: {
               organization: event.organization || "",
@@ -772,10 +910,15 @@ app.get("/api/calendars", ensureAuthed, async (req, res) => {
       primary: c.primary || false,
       backgroundColor: c.backgroundColor,
     }));
+    
+    // Log for debugging
+    const primaryCal = items.find(c => c.primary);
+    console.log(`[api/calendars] Found ${items.length} calendars, primary: ${primaryCal ? primaryCal.id : 'none'}`);
+    
     res.json({ calendars: items });
   } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: "Failed to fetch calendar list" });
+    console.error("[api/calendars] Error:", e);
+    res.status(500).json({ error: "Failed to fetch calendar list", details: e.message });
   }
 });
 
@@ -802,7 +945,7 @@ app.get("/api/calendar", ensureAuthed, async (req, res) => {
   }
 });
 
-// --- Get events (multi-calendar) ---
+// --- Get events (from local Neon database only) ---
 app.get("/api/events", ensureAuthed, async (req, res) => {
   try {
     const oauth2Client = getOAuthClient(req);
@@ -812,24 +955,19 @@ app.get("/api/events", ensureAuthed, async (req, res) => {
       oauth2Client
     );
 
-    const now = new Date();
-    const timeMin =
-      req.query.timeMin ||
-      new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString();
-    const timeMax =
-      req.query.timeMax ||
-      new Date(
-        now.getFullYear(),
-        now.getMonth() + 3,
-        0,
-        23,
-        59,
-        59
-      ).toISOString();
+    // Parse calendarIds from query parameter
+    const calendarIdsParam = req.query.calendarIds;
+    const calendarIds = calendarIdsParam
+      ? calendarIdsParam.split(",").map((id) => id.trim()).filter(Boolean)
+      : [];
 
     const requestedIds = req.query.calendarIds
       ? req.query.calendarIds.split(",")
       : ["primary"];
+
+    const now = new Date();
+    const timeMin = req.query.timeMin || new Date(now.getFullYear() - 1, 0, 1).toISOString();
+    const timeMax = req.query.timeMax || new Date(now.getFullYear() + 1, 11, 31).toISOString();
 
     const allEvents = [];
     for (const calId of requestedIds) {
@@ -883,10 +1021,13 @@ app.get("/api/events", ensureAuthed, async (req, res) => {
       allDay: !!e.all_day,
       organization: e.organization || "",
       organization_email: e.organization_email || "",
-      tags: e.tags ? JSON.parse(e.tags) : [],
+      tags: e.event_tags ? JSON.parse(e.event_tags) : [],
       poster_url: e.poster_url || "",
+      status: e.status || "pending",
+      google_event_id: e.google_event_id || null,
     }));
 
+    // Combine local + Google events, then apply org + event-type filters (branch logic)
     const combined = [...localEvents, ...allEvents];
 
     const isListServ = (ev) => {
@@ -896,26 +1037,21 @@ app.get("/api/events", ensureAuthed, async (req, res) => {
       return isDraft || isGoogleListServ;
     };
 
-    let filtered = combined;
-
     const categoriesParam = req.query.categories || req.query.eventTypes;
     const orgCatsParam = req.query.orgCategories;
     const exclude = String(req.query.exclude || "") === "1";
 
-    // Parse event-type tag filters
     const reqCategories = categoriesParam
       ? categoriesParam.split(",").map((s) => s.trim()).filter(Boolean)
       : [];
 
-    // Parse org leaf keys and build allowed sender-email set
     const reqOrgKeys = orgCatsParam
       ? orgCatsParam.split(",").map((s) => s.trim()).filter(Boolean)
       : [];
 
     const allowedOrgEmails = buildAllowedOrgEmailSet(reqOrgKeys);
 
-    // Apply filters (AND between active filters) only to ListServ events.
-    // Non-ListServ events always pass through.
+    let filtered = combined;
     if (reqCategories.length > 0 || allowedOrgEmails.size > 0) {
       filtered = combined.filter((ev) => {
         if (!isListServ(ev)) return true;
@@ -934,16 +1070,14 @@ app.get("/api/events", ensureAuthed, async (req, res) => {
             : (evtEmail && allowedOrgEmails.has(evtEmail));
 
         const matches = matchesTags && matchesOrg;
-
-        // exclude=1 means hide matches (keep non-matches)
         return exclude ? !matches : matches;
       });
     }
 
     res.json({ events: filtered });
   } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: "Failed to reach events" });
+    console.error("[api/events] Error:", e);
+    res.status(500).json({ error: "Failed to fetch events" });
   }
 });
 
@@ -972,6 +1106,8 @@ app.get("/api/event-categories", ensureAuthed, (req, res) => {
 // =======================
 // Org Categories (for Organization filter tab)
 // =======================
+// Branch: file-based (org_categories.json + org_filters.json). Main: in-memory ORGANIZATION_RULES.
+// We keep the branch so buildAllowedOrgEmailSet and /api/events filtering by organization_email work.
 
 // Path to org category JSON (your file is in get_orgs/)
 const ORG_CATEGORIES_PATH = path.join(__dirname, "..", "get_orgs", "org_categories.json");
@@ -1167,7 +1303,7 @@ app.post("/api/drafts", ensureAuthed, async (req, res) => {
       : tags || "[]";
 
     await execute(
-      `INSERT INTO events (id, user_id, source, email_id, title, description, location, organization, tags, poster_url, start, "end", all_day, confidence_score, status)
+      `INSERT INTO events (id, user_id, source, email_id, title, description, location, organization, event_tags, poster_url, start, "end", all_day, confidence_score, status)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
       [
         id,
@@ -1354,7 +1490,7 @@ app.post("/api/events/:compoundId/publish", ensureAuthed, async (req, res) => {
       }
     }
 
-    const eventTags = row.tags ? JSON.parse(row.tags) : [];
+    const eventTags = row.event_tags ? JSON.parse(row.event_tags) : [];
 
     const oauth2Client = getOAuthClient(req);
     const result = await publishEventToCalendar({
@@ -1591,7 +1727,7 @@ app.post("/api/scrape/process", ensureAuthed, async (req, res) => {
 
 
           await execute(
-            `INSERT INTO events (id, user_id, source, email_id, title, description, location, organization, organization_email, tags, poster_url, start, "end", all_day, confidence_score, status)
+            `INSERT INTO events (id, user_id, source, email_id, title, description, location, organization, organization_email, event_tags, poster_url, start, "end", all_day, confidence_score, status)
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
             [
               eventId,
@@ -1602,7 +1738,7 @@ app.post("/api/scrape/process", ensureAuthed, async (req, res) => {
               event.description || "",
               event.location || "",
               event.organization || "",
-              senderEmail, 
+              senderEmail,
               tagsJson,
               event.posterUrl || "",
               start,
@@ -1730,7 +1866,7 @@ app.get("/api/email-events", ensureAuthed, async (req, res) => {
 
     const eventsWithParsedTags = events.map((event) => ({
       ...event,
-      tags: event.tags ? JSON.parse(event.tags) : [],
+      tags: event.event_tags ? JSON.parse(event.event_tags) : [],
     }));
 
     res.json({ events: eventsWithParsedTags });
@@ -1770,22 +1906,19 @@ app.get("/api/scraped-emails/export", ensureAuthed, async (req, res) => {
       }
     });
 
-    const exportPath = path.join(__dirname, "scraped_emails_export.json");
-    fs.writeFileSync(
-      exportPath,
-      JSON.stringify(
-        { emails: emailsWithAttachments, exportedAt: new Date().toISOString() },
-        null,
-        2
-      )
-    );
-
-    res.json({
-      success: true,
+    const exportData = {
+      emails: emailsWithAttachments,
+      exportedAt: new Date().toISOString(),
       count: emails.length,
-      filePath: exportPath,
-      message: `Exported ${emails.length} emails to ${exportPath}`,
-    });
+    };
+
+    // Return as downloadable JSON file
+    res.setHeader("Content-Type", "application/json");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="scraped_emails_export_${Date.now()}.json"`
+    );
+    res.json(exportData);
   } catch (e) {
     console.error("[export] Error:", e);
     res.status(500).json({ error: "Failed to export emails" });
@@ -1793,17 +1926,17 @@ app.get("/api/scraped-emails/export", ensureAuthed, async (req, res) => {
 });
 
 // Get attachment image for an email
+// Attachments are accessible to all authenticated users (campus-wide visibility)
 app.get(
   "/api/scraped-emails/:emailId/attachments/:contentId",
   ensureAuthed,
   async (req, res) => {
     try {
-      const userId = req.session.user.id;
       const { emailId, contentId } = req.params;
 
       const email = await queryOne(
-        "SELECT * FROM scraped_emails WHERE id = $1 AND user_id = $2",
-        [emailId, userId]
+        "SELECT * FROM scraped_emails WHERE id = $1",
+        [emailId]
       );
 
       if (!email) {

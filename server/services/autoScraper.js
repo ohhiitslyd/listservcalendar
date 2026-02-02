@@ -123,7 +123,7 @@ function createOAuthClientFromTokens(tokenData) {
  * @param {boolean} allDay - Whether it's an all-day event
  * @returns {string|null} - Combined datetime or null
  */
-function combineDateTime(date, time, allDay) {
+export function combineDateTime(date, time, allDay) {
   if (!date) return null;
   if (time && !allDay) {
     return `${date}T${time}`;
@@ -175,22 +175,33 @@ async function processUnprocessedEmails(userId, pool, oauth2Client) {
             continue;
           }
 
-          // Validate: if end date is different from start date, reset to same day
-          if (
-            end &&
-            event.endDate &&
-            event.startDate &&
-            event.endDate !== event.startDate
-          ) {
-            console.warn(
-              `[autoScraper] Multi-day event detected (likely parsing error), resetting end to same day:`,
-              {
-                title: event.title,
-                startDate: event.startDate,
-                endDate: event.endDate,
-              }
-            );
-            end = combineDateTime(event.startDate, event.endTime, event.allDay);
+          // Validate multi-day events: allow them but cap duration and fix obvious errors
+          if (end && start) {
+            const startMs = new Date(start).getTime();
+            const endMs = new Date(end).getTime();
+            const durationDays = (endMs - startMs) / (1000 * 60 * 60 * 24);
+
+            // If end is before start, swap them
+            if (endMs < startMs) {
+              console.warn(
+                `[autoScraper] End before start detected, swapping:`,
+                { title: event.title, start, end }
+              );
+              const temp = end;
+              end = start;
+              start = temp;
+            }
+            // Cap events at 14 days max (likely LLM parsing error if longer)
+            else if (durationDays > 14) {
+              console.warn(
+                `[autoScraper] Event duration ${durationDays.toFixed(1)} days exceeds 14 day limit, capping:`,
+                { title: event.title, startDate: event.startDate, endDate: event.endDate }
+              );
+              const cappedEnd = new Date(startMs + 14 * 24 * 60 * 60 * 1000);
+              end = event.allDay
+                ? cappedEnd.toISOString().split("T")[0]
+                : cappedEnd.toISOString();
+            }
           }
 
           // If we have a start time but no end time, default to 1 hour duration
@@ -201,12 +212,55 @@ async function processUnprocessedEmails(userId, pool, oauth2Client) {
             end = endDate.toISOString();
           }
 
+          // Check for duplicate from same email (prevent LLM parsing same event twice)
+          const startDateOnly = start.split("T")[0];
+          const duplicateFromSameEmail = await pool.query(
+            "SELECT id FROM events WHERE user_id = $1 AND email_id = $2 AND title = $3 AND start LIKE $4",
+            [userId, email.id, event.title, `${startDateOnly}%`]
+          );
+
+          if (duplicateFromSameEmail.rows.length > 0) {
+            console.log(
+              `[autoScraper] Skipping duplicate event from same email: ${event.title}`
+            );
+            continue;
+          }
+
+          // Check for duplicate event across all emails (same title + start + end + location + organization)
+          // This catches cases where the same event is announced in duplicate emails
+          // with different Gmail message IDs (e.g., sent to multiple lists or BCC scenarios)
+          const eventEnd = end || start;
+          const duplicateAcrossEmails = await pool.query(
+            `SELECT id FROM events
+             WHERE user_id = $1
+               AND title = $2
+               AND start = $3
+               AND "end" = $4
+               AND COALESCE(location, '') = $5
+               AND COALESCE(organization, '') = $6`,
+            [
+              userId,
+              event.title,
+              start,
+              eventEnd,
+              event.location || "",
+              event.organization || "",
+            ]
+          );
+
+          if (duplicateAcrossEmails.rows.length > 0) {
+            console.log(
+              `[autoScraper] Skipping duplicate event (same title/time/location/org): ${event.title}`
+            );
+            continue;
+          }
+
           const eventId = `event_${Math.random().toString(36).substr(2, 16)}`;
 
           await pool.query(
             `INSERT INTO events (id, user_id, source, email_id, title, description, location,
-              organization, tags, poster_url, start, "end", all_day, confidence_score, status)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
+              organization, organization_email, event_tags, poster_url, start, "end", all_day, confidence_score, status)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
             [
               eventId,
               userId,
@@ -216,6 +270,7 @@ async function processUnprocessedEmails(userId, pool, oauth2Client) {
               event.description || "",
               event.location || "",
               event.organization || "",
+              event.organizationEmail || "",
               event.tags ? JSON.stringify(event.tags) : null,
               event.posterUrl || null,
               start,
