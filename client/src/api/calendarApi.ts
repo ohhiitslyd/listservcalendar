@@ -143,13 +143,12 @@ export const api = {
   updatePreferences: async ({
     organizationPreference,
     eventTypePreference,
+    excludeMode,
   }: {
     organizationPreference?: string[];
     eventTypePreference?: string[];
-  }): Promise<{
-    organizationPreference: string[];
-    eventTypePreference: string[];
-  }> =>
+    excludeMode?: boolean;
+  }): Promise<any> =>
     fetch("/api/user/preferences", {
       method: "PUT",
       credentials: "include",
@@ -157,6 +156,8 @@ export const api = {
       body: JSON.stringify({
         organizationPreference,
         eventTypePreference,
+        // store excludeMode inside the "preferences" JSON blob
+        preferences: excludeMode !== undefined ? { excludeMode } : undefined,
       }),
     }).then((r) => r.json()),
 

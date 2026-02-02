@@ -121,6 +121,168 @@ export const AppProvider = ({ children }) => {
     return counts;
   }, [weekFilteredEventsForCounts, listservCalendarId]);
 
+  // Build org hierarchy in context (so we can filter events globally by org emails)
+  const orgHierarchy = useMemo(() => {
+    const hierarchy = {};
+    if (!availableOrgCats || !Array.isArray(availableOrgCats)) return hierarchy;
+
+    // Step 1: types
+    availableOrgCats.forEach((cat) => {
+      if (!cat?.key) return;
+      const parts = cat.key.split(":");
+      const level =
+        cat.level ||
+        (parts.length === 1 ? "type" : parts.length === 2 ? "subcategory" : "organization");
+
+      if (level === "type") {
+        hierarchy[cat.key] = {
+          key: cat.key,
+          label: cat.label,
+          level: "type",
+          subcategories: {},
+          count: orgCategoryCounts[cat.key] || 0,
+        };
+      }
+    });
+
+    // Step 2: subcategories
+    availableOrgCats.forEach((cat) => {
+      if (!cat?.key) return;
+      const parts = cat.key.split(":");
+      const level =
+        cat.level ||
+        (parts.length === 1 ? "type" : parts.length === 2 ? "subcategory" : "organization");
+
+      if (level === "subcategory") {
+        const [typeKey] = parts;
+
+        if (!hierarchy[typeKey]) {
+          hierarchy[typeKey] = {
+            key: typeKey,
+            label: typeKey,
+            level: "type",
+            subcategories: {},
+            count: 0,
+          };
+        }
+
+        const subLabel = cat.label?.includes(" • ") ? cat.label.split(" • ")[1] : cat.label;
+
+        if (!hierarchy[typeKey].subcategories[cat.key]) {
+          hierarchy[typeKey].subcategories[cat.key] = {
+            key: cat.key,
+            label: subLabel || cat.key,
+            level: "subcategory",
+            organizations: {},
+            count: orgCategoryCounts[cat.key] || 0,
+          };
+        }
+      }
+    });
+
+    // Step 3: organizations (leaf nodes) + emails
+    availableOrgCats.forEach((cat) => {
+      if (!cat?.key) return;
+      const parts = cat.key.split(":");
+      const level =
+        cat.level ||
+        (parts.length === 1 ? "type" : parts.length === 2 ? "subcategory" : "organization");
+
+      if (level !== "organization") return;
+      if (parts.length < 3) return;
+
+      const [typeKey, subKey] = parts;
+      const subKeyFull = `${typeKey}:${subKey}`;
+
+      if (!hierarchy[typeKey]) {
+        hierarchy[typeKey] = {
+          key: typeKey,
+          label: typeKey,
+          level: "type",
+          subcategories: {},
+          count: 0,
+        };
+      }
+
+      if (!hierarchy[typeKey].subcategories[subKeyFull]) {
+        hierarchy[typeKey].subcategories[subKeyFull] = {
+          key: subKeyFull,
+          label: subKey,
+          level: "subcategory",
+          organizations: {},
+          count: 0,
+        };
+      }
+
+      if (!hierarchy[typeKey].subcategories[subKeyFull].organizations[cat.key]) {
+        hierarchy[typeKey].subcategories[subKeyFull].organizations[cat.key] = {
+          key: cat.key,
+          label: cat.label,
+          level: "organization",
+          count: orgCategoryCounts[cat.key] || 0,
+          emails: Array.isArray(cat.emails) ? cat.emails : [], // ✅ important
+        };
+      }
+    });
+
+    // Aggregate parent counts from leaf nodes
+    Object.values(hierarchy).forEach((type) => {
+      let typeCount = 0;
+      Object.values(type.subcategories).forEach((sub) => {
+        let subCount = 0;
+        Object.values(sub.organizations).forEach((org) => {
+          subCount += org.count || 0;
+        });
+        sub.count = subCount;
+        typeCount += subCount;
+      });
+      type.count = typeCount;
+    });
+
+    return hierarchy;
+  }, [availableOrgCats, orgCategoryCounts]);
+
+  // UI-level filtering: if org filters are selected, only show listserv events
+  // whose organization_email matches the selected org emails
+  const filteredEvents = useMemo(() => {
+    // Build allowed emails set from selected org leaf nodes
+    const allowed = new Set();
+
+    Object.values(orgHierarchy || {}).forEach((type) => {
+      Object.values(type.subcategories || {}).forEach((sub) => {
+        Object.values(sub.organizations || {}).forEach((org) => {
+          if (selectedOrgCats.has(org.key)) {
+            (org.emails || []).forEach((e) => {
+              const norm = String(e || "").trim().toLowerCase();
+              if (norm) allowed.add(norm);
+            });
+          }
+        });
+      });
+    });
+
+    const orgFilterActive = allowed.size > 0;
+    if (!orgFilterActive) return events;
+
+    const lsId = listservCalendarId;
+
+    return (events || []).filter((ev) => {
+      const isListServGoogle = ev?.extendedProps?.source === "google" && ev?.extendedProps?.calendarId === lsId;
+      const isListServDraft = ev?.extendedProps?.source === "draft";
+      const isListServEmail = ev?.extendedProps?.source === "email";
+      const isListServ = isListServGoogle || isListServDraft || isListServEmail;
+
+      // Only restrict listserv events; keep other calendars visible
+      if (!isListServ) return true;
+
+      const evtEmail = String(ev.organization_email || ev?.extendedProps?.organization_email || "")
+        .trim()
+        .toLowerCase();
+
+      return evtEmail && allowed.has(evtEmail);
+    });
+  }, [events, orgHierarchy, selectedOrgCats, listservCalendarId]);
+
   /* -------------------------------------------------
      3️⃣  AUTH HELPERS
      ------------------------------------------------- */
@@ -253,6 +415,41 @@ export const AppProvider = ({ children }) => {
       setEvents(transformed);
     },
     [visibleCalendars, categoriesParam, orgCategoriesParam, excludeParam, listservCalendarId]
+  );
+
+  // Refetch events with explicit filter params (used right after Apply filters so we use the selected values, not stale state)
+  const refetchEventsWithParams = useCallback(
+    async (orgCatsArray, eventTypesArray, exclude) => {
+      const ids = Array.from(visibleCalendars);
+      const base = ids.length > 0 ? `?calendarIds=${encodeURIComponent(ids.join(","))}` : "?";
+      const catParam = Array.isArray(eventTypesArray) && eventTypesArray.length > 0
+        ? `&categories=${encodeURIComponent(eventTypesArray.join(","))}`
+        : "";
+      const orgParam = Array.isArray(orgCatsArray) && orgCatsArray.length > 0
+        ? `&orgCategories=${encodeURIComponent(orgCatsArray.join(","))}`
+        : "";
+      const excParam = exclude ? "&exclude=1" : "";
+      const url = `/api/events${base}${catParam}${orgParam}${excParam}`;
+      console.log("🔎 refetchEventsWithParams →", url);
+      const data = await api.fetchEvents({
+        calendarIds: ids,
+        categoriesParam: catParam,
+        orgCategoriesParam: orgParam,
+        excludeParam: excParam,
+      });
+      const transformed = (data.events || []).map((ev) => ({
+        ...ev,
+        className: ev.calendarId === listservCalendarId || ev.source === "draft" || ev.source === "email" ? "fc-event-listserv" : "fc-event-other",
+        extendedProps: {
+          ...ev.extendedProps,
+          organization: ev.organization ?? "",
+          tags: ev.tags ?? [],
+          orgCategories: ev.orgCategories ?? [],
+        },
+      }));
+      setEvents(transformed);
+    },
+    [visibleCalendars, listservCalendarId]
   );
 
   // Fetch events for counts ONLY (NO categoriesParam). This keeps a stable, unfiltered snapshot.
@@ -402,7 +599,8 @@ export const AppProvider = ({ children }) => {
         });
         if (res.ok) {
           const data = await res.json();
-            setAvailableOrgCats(data.orgCategories || []);
+          // Server returns { categories }; support both keys for compatibility
+          setAvailableOrgCats(data.categories || data.orgCategories || []);
         } else {
           setAvailableOrgCats([]);
         }
@@ -415,6 +613,9 @@ export const AppProvider = ({ children }) => {
       (async () => {
         try {
           const prefsData = await api.fetchPreferences();
+          if (prefsData?.preferences && typeof prefsData.preferences === "object") {
+            setExcludeMode(!!prefsData.preferences.excludeMode);
+          }
           // Apply organization preferences
           if (prefsData.organizationPreference && Array.isArray(prefsData.organizationPreference) && prefsData.organizationPreference.length > 0) {
             setSelectedOrgCats(new Set(prefsData.organizationPreference));
@@ -423,6 +624,7 @@ export const AppProvider = ({ children }) => {
           if (prefsData.eventTypePreference && Array.isArray(prefsData.eventTypePreference) && prefsData.eventTypePreference.length > 0) {
             setSelectedCats(new Set(prefsData.eventTypePreference));
           }
+
         } catch (error) {
           console.error("Failed to load user preferences:", error);
           // Continue without preferences if fetch fails
@@ -525,6 +727,8 @@ export const AppProvider = ({ children }) => {
     selectedOrgCats,
     setSelectedOrgCats,
     orgCategoryCounts,
+    orgHierarchy,
+    refetchEventsWithParams, 
 
     currentViewRange,
     setCurrentViewRange,
