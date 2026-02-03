@@ -119,16 +119,50 @@ function createOAuthClientFromTokens(tokenData) {
 /**
  * Helper function to combine date and time into ISO string
  * @param {string} date - Date in YYYY-MM-DD format
- * @param {string} time - Time in HH:MM format
+ * @param {string} time - Time in HH:MM:SS or HH:MM format (may contain spaces)
  * @param {boolean} allDay - Whether it's an all-day event
- * @returns {string|null} - Combined datetime or null
+ * @returns {string|null} - Combined datetime in ISO format (YYYY-MM-DDTHH:MM:SS) or date only
  */
 export function combineDateTime(date, time, allDay) {
   if (!date) return null;
-  if (time && !allDay) {
-    return `${date}T${time}`;
+  
+  // For all-day events, return just the date
+  if (allDay || !time) {
+    return date;
   }
-  return date;
+  
+  // Normalize time: remove spaces, ensure proper format
+  const normalizedTime = time.trim().replace(/\s+/g, '');
+  
+  // Ensure time has seconds (HH:MM:SS format)
+  let timeWithSeconds = normalizedTime;
+  if (normalizedTime.match(/^\d{2}:\d{2}$/)) {
+    // If time is in HH:MM format, add :00 for seconds
+    timeWithSeconds = `${normalizedTime}:00`;
+  } else if (!normalizedTime.match(/^\d{2}:\d{2}:\d{2}$/)) {
+    // If time is in unexpected format, try to parse it
+    console.warn(`[combineDateTime] Unexpected time format: ${time}, attempting to parse`);
+  }
+  
+  // Combine date and time with 'T' separator
+  const combined = `${date}T${timeWithSeconds}`;
+  
+  // Validate and normalize using Date object to ensure proper ISO format
+  try {
+    const dateObj = new Date(combined);
+    if (isNaN(dateObj.getTime())) {
+      console.warn(`[combineDateTime] Invalid datetime: ${combined}, returning date only`);
+      return date;
+    }
+    // Return ISO string format (YYYY-MM-DDTHH:MM:SS)
+    // Remove milliseconds and timezone (Z) for database storage
+    // toISOString() returns "2026-01-27T19:30:00.000Z", we want "2026-01-27T19:30:00"
+    const isoString = dateObj.toISOString();
+    return isoString.split('.')[0].replace('Z', '');
+  } catch (error) {
+    console.warn(`[combineDateTime] Error parsing datetime: ${combined}, returning date only`, error);
+    return date;
+  }
 }
 
 /**
@@ -200,7 +234,7 @@ async function processUnprocessedEmails(userId, pool, oauth2Client) {
               const cappedEnd = new Date(startMs + 14 * 24 * 60 * 60 * 1000);
               end = event.allDay
                 ? cappedEnd.toISOString().split("T")[0]
-                : cappedEnd.toISOString();
+                : cappedEnd.toISOString().split('.')[0].replace('Z', '');
             }
           }
 
@@ -209,7 +243,8 @@ async function processUnprocessedEmails(userId, pool, oauth2Client) {
             const startDate = new Date(start);
             const endDate = new Date(startDate);
             endDate.setHours(endDate.getHours() + 1);
-            end = endDate.toISOString();
+            // Normalize to match combineDateTime format (YYYY-MM-DDTHH:MM:SS, no milliseconds or Z)
+            end = endDate.toISOString().split('.')[0].replace('Z', '');
           }
 
           // Check for duplicate from same email (prevent LLM parsing same event twice)
