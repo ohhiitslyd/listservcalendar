@@ -89,8 +89,10 @@ export const api = {
     orgCategoriesParam?: string; 
     excludeParam?: string;
   } = {}): Promise<EventsResponse> => {
+    // Build calendarIds query without over-encoding commas, so the server
+    // can safely split on ",". Individual IDs are safe as-is.
     const idsQuery = calendarIds.length
-      ? `?calendarIds=${encodeURIComponent(calendarIds.join(","))}`
+      ? `?calendarIds=${calendarIds.join(",")}`
       : "?";
 
     // IMPORTANT: append both params if present

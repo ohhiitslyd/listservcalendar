@@ -290,22 +290,22 @@ app.get("/auth/google/callback", async (req, res) => {
              is_scraper_account = EXCLUDED.is_scraper_account,
              updated_at = EXCLUDED.updated_at`,
           [
-            userinfo.id || userinfo.email,
-            userinfo.email,
-            tokens.refresh_token,
-            tokens.access_token || null,
-            tokens.expiry_date
-              ? new Date(tokens.expiry_date).toISOString()
-              : null,
+          userinfo.id || userinfo.email,
+          userinfo.email,
+          tokens.refresh_token,
+          tokens.access_token || null,
+          tokens.expiry_date
+            ? new Date(tokens.expiry_date).toISOString()
+            : null,
             isScraperAccount,
             new Date().toISOString(),
           ]
         );
 
         if (isScraperAccount) {
-          console.log(
+        console.log(
             `[auth] ✓ Stored SCRAPER ACCOUNT tokens: ${userinfo.email}`
-          );
+        );
         } else {
           console.log(
             `[auth] Stored user tokens (not scraper): ${userinfo.email}`
@@ -985,19 +985,32 @@ app.get("/api/events", ensureAuthed, async (req, res) => {
     // Parse calendarIds from query parameter
     const calendarIdsParam = req.query.calendarIds;
     const calendarIds = calendarIdsParam
-      ? calendarIdsParam.split(",").map((id) => id.trim()).filter(Boolean)
+      ? String(calendarIdsParam)
+          .split(",")
+          .map((id) => id.trim())
+          .filter(Boolean)
       : [];
 
-    const requestedIds = req.query.calendarIds
-      ? req.query.calendarIds.split(",")
-      : ["primary"];
+    // Use the parsed calendarIds if provided; otherwise default to "primary"
+    const requestedIds = calendarIds.length > 0 ? calendarIds : ["primary"];
+
+    console.log("[api/events] Requested calendarIds:", requestedIds);
 
     const now = new Date();
-    const timeMin = req.query.timeMin || new Date(now.getFullYear() - 1, 0, 1).toISOString();
-    const timeMax = req.query.timeMax || new Date(now.getFullYear() + 1, 11, 31).toISOString();
+    // Limit window to a much tighter range by default:
+    // - timeMin: ~2 months ago
+    // - timeMax: 1 year from now
+    const defaultMin = new Date(now);
+    defaultMin.setMonth(defaultMin.getMonth() - 2);
+    const defaultMax = new Date(now);
+    defaultMax.setFullYear(defaultMax.getFullYear() + 1);
+
+    const timeMin = req.query.timeMin || defaultMin.toISOString();
+    const timeMax = req.query.timeMax || defaultMax.toISOString();
 
     const allEvents = [];
     for (const calId of requestedIds) {
+      try {
       const googleResp = await calendar.events.list({
         calendarId: calId,
         timeMin,
@@ -1005,7 +1018,12 @@ app.get("/api/events", ensureAuthed, async (req, res) => {
         singleEvents: true,
         orderBy: "startTime",
       });
-      const googleEvents = (googleResp.data.items || []).map((ev) => {
+        const rawItems = googleResp.data.items || [];
+        console.log(
+          `[api/events] Fetched ${rawItems.length} Google events from calendar ${calId}`
+        );
+
+        const googleEvents = rawItems.map((ev) => {
         const isAllDay = !!ev.start?.date;
         const props = ev.extendedProperties?.shared || {};
         return {
@@ -1019,13 +1037,21 @@ app.get("/api/events", ensureAuthed, async (req, res) => {
           end: isAllDay ? ev.end.date : ev.end?.dateTime,
           allDay: isAllDay,
           organization: props.organization || "",
-          organization_email: props.organization_email || "",
-          orgCategories: getOrgCategoriesFromEmail(props.organization_email || ""),
+            organization_email: props.organization_email || "",
+            orgCategories: getOrgCategoriesFromEmail(
+              props.organization_email || ""
+            ),
           tags: JSON.parse(props.tags || "[]"),
           poster_url: props.poster_url || "",
         };
       });
       allEvents.push(...googleEvents);
+      } catch (err) {
+        console.error(
+          `[api/events] Failed to fetch events for calendar ${calId}:`,
+          err.message
+        );
+      }
     }
 
     // Get local events from PostgreSQL
@@ -1058,6 +1084,15 @@ app.get("/api/events", ensureAuthed, async (req, res) => {
 
     // Combine local + Google events, then apply org + event-type filters (branch logic)
     const combined = [...localEvents, ...allEvents];
+
+    // Basic debug counts to help verify primary vs ListServ / email events
+    const debugCounts = {
+      totalCombined: combined.length,
+      google: combined.filter((ev) => ev.source === "google").length,
+      email: combined.filter((ev) => ev.source === "email").length,
+      draft: combined.filter((ev) => ev.source === "draft").length,
+    };
+    console.log("[api/events] Debug counts:", debugCounts);
 
     const isListServ = (ev) => {
       const isDraft = ev.source === "draft" || ev.source === "email";
@@ -1103,7 +1138,7 @@ app.get("/api/events", ensureAuthed, async (req, res) => {
       });
     }
 
-    res.json({ events: filtered });
+    res.json({ events: filtered, debug: debugCounts });
   } catch (e) {
     console.error("[api/events] Error:", e);
     res.status(500).json({ error: "Failed to fetch events" });
@@ -1286,7 +1321,7 @@ app.get("/api/org-categories", ensureAuthed, (req, res) => {
       // Your Filters.jsx strips "<Type Label> • " off subcategory labels
       // so this shows as "Organizations"
       label: `${t.label} • Organizations`,
-      level: "subcategory",
+        level: "subcategory",
     }));
 
     // 3) Organization nodes under each category’s :all bucket
@@ -1374,7 +1409,7 @@ app.post("/api/drafts", ensureAuthed, async (req, res) => {
         organization || "",
         tagsJson,
         poster_url || "",
-        start,
+      start,
         end || null,
         allDay ? 1 : 0,
         null,
@@ -1536,8 +1571,8 @@ app.post("/api/events/:compoundId/publish", ensureAuthed, async (req, res) => {
     if (!row) return res.status(404).json({ error: "Event not found" });
 
     if (!row.start) {
-      return res.status(400).json({ error: "Invalid event date" });
-    }
+        return res.status(400).json({ error: "Invalid event date" });
+      }
 
     if (!row.all_day) {
       if (!row.start.includes("T") || isNaN(new Date(row.start).getTime())) {
@@ -1559,7 +1594,7 @@ app.post("/api/events/:compoundId/publish", ensureAuthed, async (req, res) => {
       title: row.title || "",
       description: row.description || "",
       location: row.location || "",
-      organization: row.organization || "",
+          organization: row.organization || "",
       organizationEmail: row.organization_email || "",
       eventTags,
       posterUrl: row.poster_url || "",
@@ -1774,7 +1809,7 @@ app.post("/api/scrape/process", ensureAuthed, async (req, res) => {
           const duplicateSameOrg = await queryOne(
             "SELECT id FROM events WHERE user_id = $1 AND title = $2 AND organization = $3 AND start LIKE $4",
             [userId, event.title, event.organization || "", `${startDateOnly}%`]
-          );
+            );
 
           if (duplicateSameOrg) {
             continue;
@@ -1799,7 +1834,7 @@ app.post("/api/scrape/process", ensureAuthed, async (req, res) => {
               senderEmail,
               tagsJson,
               event.posterUrl || "",
-              start,
+            start,
               end || null,
               event.allDay ? 1 : 0,
               event.confidenceScore || null,
@@ -1808,16 +1843,16 @@ app.post("/api/scrape/process", ensureAuthed, async (req, res) => {
           );
 
           // Auto-publish email-sourced events to Google Calendar
-          const oauth2Client = getOAuthClient(req);
+            const oauth2Client = getOAuthClient(req);
           await publishEventToCalendar({
             oauth2Client,
             pool,
             eventId,
             userId,
             title: event.title || "",
-            description: event.description || "",
-            location: event.location || "",
-            organization: event.organization || "",
+                description: event.description || "",
+                location: event.location || "",
+                    organization: event.organization || "",
             organizationEmail: senderEmail,
             eventTags: event.tags || [],
             posterUrl: event.posterUrl || "",
@@ -1889,7 +1924,7 @@ app.get("/api/scraped-emails", ensureAuthed, async (req, res) => {
         }
       }
       return {
-        ...email,
+      ...email,
         attachments: attachmentsMeta,
       };
     });
