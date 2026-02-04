@@ -10,7 +10,7 @@ import fs from "fs";
 import cron from "node-cron";
 import { scrapeEmails } from "./services/emailScraper.js";
 import { parseEmailForEvents } from "./services/llmParser.js";
-import { runAutomatedScrape, combineDateTime } from "./services/autoScraper.js";
+import { runAutomatedScrape, combineDateTime, syncAllUserCalendars } from "./services/autoScraper.js";
 import {
   publishEventToCalendar,
   getOrCreateListServCalendar as getOrCreateListServCalendarShared,
@@ -182,6 +182,38 @@ function assignOrgCategories(ev) {
   }
 
   return out;
+}
+
+/**
+ * Check if an event's organization matches any of the given org preference keys.
+ * Handles hierarchical keys like "music:a_cappella:dartmouth_cords".
+ */
+function matchesOrgPreference(eventOrg, orgPrefs) {
+  if (!orgPrefs || orgPrefs.length === 0) return false;
+  const eventOrgLower = (eventOrg || "").toLowerCase();
+  if (!eventOrgLower) return false;
+
+  return orgPrefs.some((pref) => {
+    const prefLower = pref.toLowerCase();
+    if (pref.includes(":")) {
+      const lastPart = pref.split(":").pop().toLowerCase();
+      const orgNameFromKey = lastPart
+        .split("_")
+        .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+        .join(" ")
+        .toLowerCase();
+      return (
+        eventOrgLower.includes(orgNameFromKey) ||
+        orgNameFromKey.includes(eventOrgLower) ||
+        eventOrgLower === prefLower
+      );
+    }
+    return (
+      eventOrgLower === prefLower ||
+      eventOrgLower.includes(prefLower) ||
+      prefLower.includes(eventOrgLower)
+    );
+  });
 }
 
 function ensureAuthed(req, res, next) {
@@ -473,53 +505,32 @@ app.post("/api/user/sync-calendar-by-preferences", ensureAuthed, async (req, res
     // This means the user wants to see all events, so we sync all email-sourced events
     const showAllEvents = orgPrefs.length === 0 && eventTypePrefs.length === 0;
 
-    // Query database for events matching preferences
-    // Get all email-sourced events (they're shared/campus-wide)
-    let queryText = `SELECT * FROM events WHERE source = 'email'`;
-    const params = [];
-    let paramIndex = 1;
+    // Fetch ALL email-sourced events, then filter in memory with OR logic
+    // (matching the /api/events endpoint behavior)
+    let matchingEvents = await query(
+      `SELECT * FROM events WHERE source = 'email' ORDER BY start ASC`
+    );
 
-    // Filter by event type preferences (tags) - only if preferences are set
-    if (!showAllEvents && eventTypePrefs.length > 0) {
-      queryText += ` AND (`;
-      const tagConditions = eventTypePrefs.map((tag) => {
-        params.push(`%"${tag}"%`);
-        const condition = `event_tags LIKE $${paramIndex}`;
-        paramIndex++;
-        return condition;
-      });
-      queryText += tagConditions.join(" OR ") + `)`;
-    }
+    // Apply OR filtering: event matches if it matches ANY tag OR ANY org preference
+    if (!showAllEvents && matchingEvents.length > 0) {
+      matchingEvents = matchingEvents.filter((event) => {
+        // Tag matching
+        let matchesTags = false;
+        if (eventTypePrefs.length > 0) {
+          const eventTags = event.event_tags
+            ? JSON.parse(event.event_tags)
+            : [];
+          matchesTags = eventTags.some((tag) => eventTypePrefs.includes(tag));
+        }
 
-    queryText += " ORDER BY start ASC";
-    let matchingEvents = await query(queryText, params);
+        // Org matching
+        const matchesOrg = matchesOrgPreference(
+          event.organization,
+          orgPrefs
+        );
 
-    // Filter by organization preferences in memory
-    // (Organization matching is complex due to hierarchical keys, so we do it in memory)
-    // Only filter if preferences are set (not showing all events)
-    if (!showAllEvents && orgPrefs.length > 0 && matchingEvents.length > 0) {
-      // Extract organization names from hierarchical keys
-      // If key is "music:a_cappella:dartmouth_cords", the org name is "Dartmouth Cords"
-      // For now, we'll do a simple match: if the event's organization appears in any preference key
-      matchingEvents = matchingEvents.filter(event => {
-        const eventOrg = (event.organization || "").toLowerCase();
-        return orgPrefs.some(pref => {
-          // If preference is a hierarchical key, check if org name appears in it
-          // Or if it's a simple name, do exact match
-          const prefLower = pref.toLowerCase();
-          // Check if event org matches the last part of hierarchical key (after last colon)
-          if (pref.includes(':')) {
-            const lastPart = pref.split(':').pop().toLowerCase();
-            // Convert snake_case to title case for matching
-            const orgNameFromKey = lastPart.split('_').map(w => 
-              w.charAt(0).toUpperCase() + w.slice(1)
-            ).join(' ').toLowerCase();
-            return eventOrg.includes(orgNameFromKey) || 
-                   orgNameFromKey.includes(eventOrg) ||
-                   eventOrg === prefLower;
-          }
-          return eventOrg === prefLower || eventOrg.includes(prefLower) || prefLower.includes(eventOrg);
-        });
+        // OR logic: match if EITHER filter type matches
+        return matchesTags || matchesOrg;
       });
     }
 
@@ -620,7 +631,7 @@ app.post("/api/user/sync-calendar-by-preferences", ensureAuthed, async (req, res
           const status = error?.response?.status;
           const data = error?.response?.data;
           console.error(
-            `[sync-by-prefs] Failed to publish event asdiojasiodjasoidasj "${event.title}":`,
+            `[sync-by-prefs] Failed to publish event "${event.title}":`,
             `message=${error.message}`,
             `status=${status}`,
             `apiError=${JSON.stringify(data)}`
@@ -1989,9 +2000,20 @@ cron.schedule("0 */8 * * *", async () => {
   } catch (error) {
     console.error("[CRON] Automated scrape error:", error.message);
   }
+
+  // After scraping, sync all users' calendars based on their preferences
+  try {
+    console.log("[CRON] Starting per-user calendar sync...");
+    const syncResult = await syncAllUserCalendars(pool);
+    console.log(
+      `[CRON] User sync complete: ${syncResult.synced} users synced, ${syncResult.errors.length} errors`
+    );
+  } catch (error) {
+    console.error("[CRON] Per-user calendar sync error:", error.message);
+  }
 });
 
-console.log("[CRON] Automated email scraping scheduled every 8 hours");
+console.log("[CRON] Automated email scraping + per-user sync scheduled every 8 hours");
 
 app.listen(PORT, () =>
   console.log(`Server listening on http://localhost:${PORT}`)
