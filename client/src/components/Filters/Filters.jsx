@@ -4,7 +4,7 @@ import { AppContext } from "../../context/AppContext";
 import { api } from "../../api/calendarApi";
 import "./Filters.css";
 
-export const Filters = ({ onClose, showHeader = true }) => {
+export const Filters = ({ onClose, showHeader = true, onPendingKeyChange }) => {
   const {
     //tag level cats
     availableCats,
@@ -99,6 +99,21 @@ export const Filters = ({ onClose, showHeader = true }) => {
 
   // Calculate total selected count from pending state
   const totalSelected = pendingSelectedCats.size + pendingSelectedOrgCats.size;
+  const pendingKey = useMemo(() => {
+    const cats = Array.from(pendingSelectedCats).sort();
+    const orgs = Array.from(pendingSelectedOrgCats).sort();
+    return JSON.stringify({
+      cats,
+      orgs,
+      exclude: !!pendingExcludeMode,
+    });
+  }, [pendingSelectedCats, pendingSelectedOrgCats, pendingExcludeMode]);
+
+  useEffect(() => {
+    if (onPendingKeyChange) {
+      onPendingKeyChange(pendingKey);
+    }
+  }, [pendingKey, onPendingKeyChange]);
 
 
 
