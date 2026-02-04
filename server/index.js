@@ -575,8 +575,35 @@ app.post("/api/user/sync-calendar-by-preferences", ensureAuthed, async (req, res
         const tags = event.event_tags ? JSON.parse(event.event_tags) : [];
         const isAllDay = !!event.all_day;
 
-        const startDateTime = normalizeDateTime(event.start);
-        const endDateTime = normalizeDateTime(event.end || event.start);
+        let startDateTime = normalizeDateTime(event.start);
+        let endDateTime = normalizeDateTime(event.end || event.start);
+
+        // Ensure the end time is after the start time for non-all-day events.
+        // Some legacy/parsing bugs can produce an end that is before start
+        // (e.g. 11pm–12am represented on the same day). Google Calendar
+        // rejects those with `timeRangeEmpty`, so we defensively adjust here.
+        if (!isAllDay && startDateTime) {
+          try {
+            const startMs = Date.parse(startDateTime);
+            const endMs = endDateTime ? Date.parse(endDateTime) : NaN;
+
+            if (!Number.isNaN(startMs)) {
+              if (Number.isNaN(endMs) || endMs <= startMs) {
+                const fixedEnd = new Date(startMs + 60 * 60 * 1000); // +1 hour
+                // Keep a clean RFC3339-ish string without milliseconds
+                endDateTime = fixedEnd.toISOString().split(".")[0];
+                console.warn(
+                  `[sync-by-prefs] Adjusted invalid end time for event ${event.id} (${event.title})`
+                );
+              }
+            }
+          } catch (e) {
+            console.warn(
+              `[sync-by-prefs] Failed to validate/adjust time range for event ${event.id}:`,
+              e.message
+            );
+          }
+        }
 
         const eventData = {
           summary: event.title || "(No title)",
