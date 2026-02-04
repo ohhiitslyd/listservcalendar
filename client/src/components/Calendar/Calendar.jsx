@@ -63,10 +63,9 @@ export const Calendar = ({
           plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
           headerToolbar={false}
           initialView="timeGridWeek"
-          selectable
-          selectMirror
-          // Use filteredEvents if available; fallback to raw events
-          events={filteredEvents || events}
+          selectable={false}
+          selectMirror={false}
+          events={events}
           height="100%"
           dayHeaderFormat={{ weekday: "short" }}
           dayHeaderContent={(arg) => {

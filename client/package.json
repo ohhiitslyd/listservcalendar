@@ -10,16 +10,17 @@
   },
   "dependencies": {
     "@fullcalendar/common": "^5.11.5",
-    "@fullcalendar/react": "^6.1.19",
     "@fullcalendar/core": "^6.1.19",
     "@fullcalendar/daygrid": "^6.1.19",
     "@fullcalendar/interaction": "^6.1.19",
+    "@fullcalendar/react": "^6.1.19",
     "@fullcalendar/timegrid": "^6.1.19",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.3.1",
+    "baseline-browser-mapping": "^2.9.19",
     "vite": "^5.4.0"
   }
 }
