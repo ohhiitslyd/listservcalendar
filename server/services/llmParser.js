@@ -308,7 +308,7 @@ Look carefully at ALL text in the image including stylized/decorative fonts. Ret
                   ],
                 },
               ],
-              max_tokens: LLM_CONFIG.visionMaxTokens,
+              max_completion_tokens: LLM_CONFIG.visionMaxTokens,
               response_format: { type: "json_object" },
             }, 2);
 
@@ -710,7 +710,7 @@ Now extract from the email above. Return ONLY valid JSON:`;
         },
       ],
       temperature: LLM_CONFIG.temperature,
-      max_tokens: LLM_CONFIG.maxTokens * 2, // Increased for multi-event responses
+      max_completion_tokens: LLM_CONFIG.maxTokens * 2, // Increased for multi-event responses
       response_format: { type: "json_object" }, // JSON mode - guarantees valid JSON
     });
 
