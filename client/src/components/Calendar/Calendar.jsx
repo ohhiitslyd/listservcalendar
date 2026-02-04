@@ -41,7 +41,7 @@ export const Calendar = ({
 }) => {
   // 2. CLEAN UP: We only need `events` and `calendarRef` from context now.
   //    The other variables were only for the handlers you're deleting.
-  const { events, calendarRef } = useContext(AppContext);
+  const { filteredEvents, events, calendarRef } = useContext(AppContext);
 
   const { applyFiltersToCalendar } = useEvents();
 
