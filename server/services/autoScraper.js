@@ -604,3 +604,317 @@ export async function runAutomatedScrape(pool) {
     };
   }
 }
+
+// ────────────────────────────────────────────────────────────────
+// Background per-user calendar sync (runs without active session)
+// ────────────────────────────────────────────────────────────────
+
+/**
+ * Check if an event's organization matches any org preference keys.
+ * Mirrors the matchesOrgPreference helper in index.js.
+ */
+function matchesOrgPreference(eventOrg, orgPrefs) {
+  if (!orgPrefs || orgPrefs.length === 0) return false;
+  const eventOrgLower = (eventOrg || "").toLowerCase();
+  if (!eventOrgLower) return false;
+
+  return orgPrefs.some((pref) => {
+    const prefLower = pref.toLowerCase();
+    if (pref.includes(":")) {
+      const lastPart = pref.split(":").pop().toLowerCase();
+      const orgNameFromKey = lastPart
+        .split("_")
+        .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+        .join(" ")
+        .toLowerCase();
+      return (
+        eventOrgLower.includes(orgNameFromKey) ||
+        orgNameFromKey.includes(eventOrgLower) ||
+        eventOrgLower === prefLower
+      );
+    }
+    return (
+      eventOrgLower === prefLower ||
+      eventOrgLower.includes(prefLower) ||
+      prefLower.includes(eventOrgLower)
+    );
+  });
+}
+
+/**
+ * Normalize a datetime string to RFC 3339 format.
+ * Handles legacy "YYYY-MM-DD HH:mm:ss" by replacing space with "T".
+ */
+function normalizeDateTime(value) {
+  if (!value) return value;
+  if (value.includes("T")) return value;
+  return value.replace(" ", "T");
+}
+
+/**
+ * Sync a single user's Google Calendar based on their stored preferences.
+ * Replicates the core logic from POST /api/user/sync-calendar-by-preferences.
+ * @param {Pool} pool - PostgreSQL connection pool
+ * @param {Object} userData - User data with tokens and preferences
+ * @param {Array} allEmailEvents - Pre-fetched email events (shared across all users)
+ */
+async function syncSingleUserCalendar(pool, userData, allEmailEvents) {
+  const {
+    id: userId,
+    email,
+    organization_preference: orgPrefs,
+    event_type_preference: eventTypePrefs,
+  } = userData;
+
+  const oauth2Client = createOAuthClientFromTokens(userData);
+
+  // Persist refreshed tokens back to the database
+  oauth2Client.on("tokens", async (tokens) => {
+    try {
+      await pool.query(
+        `UPDATE admin_tokens SET access_token = $1, token_expiry = $2, updated_at = $3 WHERE user_id = $4`,
+        [
+          tokens.access_token,
+          tokens.expiry_date
+            ? new Date(tokens.expiry_date).toISOString()
+            : null,
+          new Date().toISOString(),
+          userId,
+        ]
+      );
+    } catch (e) {
+      console.error(
+        `[autoSync] Failed to persist refreshed token for ${email}:`,
+        e.message
+      );
+    }
+  });
+
+  const calendar = google.calendar({ version: "v3", auth: oauth2Client });
+  const { id: listservCalendarId } = await getOrCreateListServCalendar(
+    oauth2Client
+  );
+
+  const showAllEvents =
+    (!orgPrefs || orgPrefs.length === 0) &&
+    (!eventTypePrefs || eventTypePrefs.length === 0);
+
+  let matchingEvents = allEmailEvents;
+
+  // Apply OR filtering (same as /api/events endpoint)
+  if (!showAllEvents && matchingEvents.length > 0) {
+    matchingEvents = matchingEvents.filter((event) => {
+      let matchesTags = false;
+      if (eventTypePrefs && eventTypePrefs.length > 0) {
+        const eventTags = event.event_tags
+          ? JSON.parse(event.event_tags)
+          : [];
+        matchesTags = eventTags.some((tag) => eventTypePrefs.includes(tag));
+      }
+      const matchesOrg = matchesOrgPreference(event.organization, orgPrefs);
+      return matchesTags || matchesOrg;
+    });
+  }
+
+  // Fetch current events from user's ListServ calendar
+  const now = new Date();
+  const timeMin = new Date(now.getFullYear() - 1, 0, 1).toISOString();
+  const timeMax = new Date(
+    now.getFullYear() + 2, 11, 31, 23, 59, 59
+  ).toISOString();
+
+  let nextPageToken = null;
+  const currentGCalEvents = [];
+  do {
+    const response = await calendar.events.list({
+      calendarId: listservCalendarId,
+      timeMin,
+      timeMax,
+      maxResults: 2500,
+      pageToken: nextPageToken,
+      singleEvents: true,
+    });
+    currentGCalEvents.push(...(response.data.items || []));
+    nextPageToken = response.data.nextPageToken;
+  } while (nextPageToken);
+
+  // Build lookup maps
+  const matchingEventIds = new Set(matchingEvents.map((e) => e.id));
+  const gcalEventMap = new Map();
+  currentGCalEvents.forEach((gcalEvent) => {
+    const sourceEventId =
+      gcalEvent.extendedProperties?.shared?.source_event_id;
+    if (sourceEventId) {
+      gcalEventMap.set(sourceEventId, gcalEvent);
+    }
+  });
+
+  // Publish matching events not yet in Google Calendar
+  let publishedCount = 0;
+  for (const event of matchingEvents) {
+    if (gcalEventMap.has(event.id)) continue;
+
+    const tags = event.event_tags ? JSON.parse(event.event_tags) : [];
+    const isAllDay = !!event.all_day;
+    const startDT = normalizeDateTime(event.start);
+    const endDT = normalizeDateTime(event.end || event.start);
+
+    const eventData = {
+      summary: event.title || "(No title)",
+      description: event.description || "",
+      location: event.location || "",
+      start: isAllDay
+        ? { date: startDT.split("T")[0] }
+        : { dateTime: startDT, timeZone: "America/New_York" },
+      end: isAllDay
+        ? { date: endDT.split("T")[0] }
+        : { dateTime: endDT, timeZone: "America/New_York" },
+      extendedProperties: {
+        shared: {
+          organization: event.organization || "",
+          tags: JSON.stringify(tags),
+          poster_url: event.poster_url || "",
+          source_event_id: event.id,
+        },
+      },
+    };
+
+    try {
+      await calendar.events.insert({
+        calendarId: listservCalendarId,
+        requestBody: eventData,
+      });
+      publishedCount++;
+    } catch (error) {
+      console.error(
+        `[autoSync] Failed to publish "${event.title}" for ${email}:`,
+        error.message
+      );
+    }
+  }
+
+  // Delete GCal events that no longer match preferences
+  let deletedCount = 0;
+  if (!showAllEvents) {
+    for (const gcalEvent of currentGCalEvents) {
+      const sourceEventId =
+        gcalEvent.extendedProperties?.shared?.source_event_id;
+      if (!sourceEventId || !matchingEventIds.has(sourceEventId)) {
+        try {
+          await calendar.events.delete({
+            calendarId: listservCalendarId,
+            eventId: gcalEvent.id,
+          });
+          deletedCount++;
+        } catch (error) {
+          console.error(
+            `[autoSync] Failed to delete event ${gcalEvent.id} for ${email}:`,
+            error.message
+          );
+        }
+      }
+    }
+  }
+
+  console.log(
+    `[autoSync] ${email}: ${matchingEvents.length} matching, ${publishedCount} published, ${deletedCount} deleted`
+  );
+
+  return { publishedCount, deletedCount, matchingCount: matchingEvents.length };
+}
+
+const SYNC_BATCH_SIZE = 5;
+let _syncRunning = false;
+
+/**
+ * Sync all users' Google Calendars based on their stored preferences.
+ * Runs as a background job — no active session required.
+ * Processes users in batches of SYNC_BATCH_SIZE for rate limiting.
+ * Uses an in-memory lock to prevent overlapping runs.
+ */
+export async function syncAllUserCalendars(pool) {
+  if (_syncRunning) {
+    console.log(`[autoSync] Skipping — previous sync still running`);
+    return { synced: 0, skipped: 0, errors: [], skippedReason: "already_running" };
+  }
+
+  _syncRunning = true;
+  console.log(`[autoSync] Starting per-user calendar sync...`);
+  const startTime = new Date();
+  const results = { synced: 0, skipped: 0, errors: [] };
+
+  try {
+    // Fetch ALL email events ONCE (shared across all user syncs)
+    const allEmailEventsResult = await pool.query(
+      `SELECT * FROM events WHERE source = 'email' ORDER BY start ASC`
+    );
+    const allEmailEvents = allEmailEventsResult.rows;
+    console.log(
+      `[autoSync] Loaded ${allEmailEvents.length} email events from DB (shared)`
+    );
+
+    // Get all users with stored tokens and at least one preference set
+    // Skip the scraper account (already gets events during runAutomatedScrape)
+    const usersResult = await pool.query(`
+      SELECT u.id, u.email, u.organization_preference, u.event_type_preference,
+             at.refresh_token, at.access_token, at.token_expiry
+      FROM users u
+      INNER JOIN admin_tokens at ON u.id = at.user_id
+      WHERE at.refresh_token IS NOT NULL
+        AND at.is_scraper_account IS NOT TRUE
+        AND (
+          array_length(u.organization_preference, 1) > 0
+          OR array_length(u.event_type_preference, 1) > 0
+        )
+    `);
+
+    const users = usersResult.rows;
+    console.log(
+      `[autoSync] Found ${users.length} users with preferences and tokens`
+    );
+
+    // Process users in batches
+    for (let i = 0; i < users.length; i += SYNC_BATCH_SIZE) {
+      const batch = users.slice(i, i + SYNC_BATCH_SIZE);
+      const batchResults = await Promise.allSettled(
+        batch.map((userData) =>
+          syncSingleUserCalendar(pool, userData, allEmailEvents)
+        )
+      );
+
+      for (let j = 0; j < batchResults.length; j++) {
+        const result = batchResults[j];
+        const userData = batch[j];
+        if (result.status === "fulfilled") {
+          results.synced++;
+        } else {
+          console.error(
+            `[autoSync] Error syncing user ${userData.email}:`,
+            result.reason?.message || result.reason
+          );
+          results.errors.push({
+            userId: userData.id,
+            email: userData.email,
+            error: result.reason?.message || String(result.reason),
+          });
+        }
+      }
+
+      // Small delay between batches for rate limiting
+      if (i + SYNC_BATCH_SIZE < users.length) {
+        await new Promise((r) => setTimeout(r, 500));
+      }
+    }
+  } catch (error) {
+    console.error(`[autoSync] Fatal error:`, error.message);
+    results.errors.push({ error: error.message });
+  } finally {
+    _syncRunning = false;
+  }
+
+  const duration = ((new Date() - startTime) / 1000).toFixed(2);
+  console.log(
+    `[autoSync] Completed in ${duration}s: ${results.synced} synced, ${results.errors.length} errors`
+  );
+  return results;
+}

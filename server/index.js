@@ -10,7 +10,7 @@ import fs from "fs";
 import cron from "node-cron";
 import { scrapeEmails } from "./services/emailScraper.js";
 import { parseEmailForEvents } from "./services/llmParser.js";
-import { runAutomatedScrape, combineDateTime, formatLocalDateTime } from "./services/autoScraper.js";
+import { runAutomatedScrape, combineDateTime, formatLocalDateTime, syncAllUserCalendars } from "./services/autoScraper.js";
 import {
   publishEventToCalendar,
   getOrCreateListServCalendar as getOrCreateListServCalendarShared,
@@ -485,23 +485,21 @@ app.post("/api/user/sync-calendar-by-preferences", ensureAuthed, async (req, res
     const allowedOrgEmails = buildAllowedOrgEmailSet(orgPrefs);
 
     // Helper: does event match selected filters?
+    // Uses OR logic between tags and org (matching /api/events behavior, per #206)
     const eventMatches = (event) => {
       const evtEmail = String(event.organization_email || "").trim().toLowerCase();
-
       const tags = event.event_tags ? JSON.parse(event.event_tags) : [];
 
       const matchesTags =
-        eventTypePrefs.length === 0
-          ? true
-          : tags.some((t) => eventTypePrefs.includes(t));
+        eventTypePrefs.length > 0 &&
+        tags.some((t) => eventTypePrefs.includes(t));
 
       const matchesOrg =
-        allowedOrgEmails.size === 0
-          ? true
-          : (evtEmail && allowedOrgEmails.has(evtEmail));
+        allowedOrgEmails.size > 0 &&
+        evtEmail && allowedOrgEmails.has(evtEmail);
 
-      // AND logic between active filters
-      return matchesTags && matchesOrg;
+      // OR logic: match if EITHER filter type matches
+      return matchesTags || matchesOrg;
     };
 
     // No filters selected => show all (even if excludeMode is true)
@@ -642,7 +640,7 @@ app.post("/api/user/sync-calendar-by-preferences", ensureAuthed, async (req, res
           const status = error?.response?.status;
           const data = error?.response?.data;
           console.error(
-            `[sync-by-prefs] Failed to publish event asdiojasiodjasoidasj "${event.title}":`,
+            `[sync-by-prefs] Failed to publish event "${event.title}":`,
             `message=${error.message}`,
             `status=${status}`,
             `apiError=${JSON.stringify(data)}`
@@ -1124,16 +1122,15 @@ app.get("/api/events", ensureAuthed, async (req, res) => {
         const evtEmail = String(ev.organization_email || "").trim().toLowerCase();
 
         const matchesTags =
-          reqCategories.length === 0
-            ? true
-            : tags.some((t) => reqCategories.includes(t));
+          reqCategories.length > 0 &&
+          tags.some((t) => reqCategories.includes(t));
 
         const matchesOrg =
-          allowedOrgEmails.size === 0
-            ? true
-            : (evtEmail && allowedOrgEmails.has(evtEmail));
+          allowedOrgEmails.size > 0 &&
+          evtEmail && allowedOrgEmails.has(evtEmail);
 
-        const matches = matchesTags && matchesOrg;
+        // OR logic: match if EITHER filter type matches
+        const matches = matchesTags || matchesOrg;
         return exclude ? !matches : matches;
       });
     }
@@ -2227,9 +2224,20 @@ cron.schedule("0 */8 * * *", async () => {
   } catch (error) {
     console.error("[CRON] Automated scrape error:", error.message);
   }
+
+  // After scraping, sync all users' calendars based on their preferences
+  try {
+    console.log("[CRON] Starting per-user calendar sync...");
+    const syncResult = await syncAllUserCalendars(pool);
+    console.log(
+      `[CRON] User sync complete: ${syncResult.synced} users synced, ${syncResult.errors.length} errors`
+    );
+  } catch (error) {
+    console.error("[CRON] Per-user calendar sync error:", error.message);
+  }
 });
 
-console.log("[CRON] Automated email scraping scheduled every 8 hours");
+console.log("[CRON] Automated email scraping + per-user sync scheduled every 8 hours");
 
 app.listen(PORT, () =>
   console.log(`Server listening on http://localhost:${PORT}`)

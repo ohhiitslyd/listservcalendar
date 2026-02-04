@@ -38,6 +38,7 @@ export const AppProvider = ({ children }) => {
   const [selectedOrgCats, setSelectedOrgCats] = useState(new Set());
   // negative filter mode (exclude selected filters instead of include)
   const [excludeMode, setExcludeMode] = useState(false);
+  const [preferencesLoaded, setPreferencesLoaded] = useState(false);
 
   const [activeFilters, setActiveFilters] = useState(new Set());
 
@@ -619,51 +620,44 @@ export const AppProvider = ({ children }) => {
   }, []); // empty deps → run only on mount
 
   // 6.2 When `user` becomes truthy, load everything that needs authentication
+  // Preferences are loaded FIRST so that event fetches use the correct filters.
   useEffect(() => {
     if (user) {
-      // a) calendars + working‑calendar info
-    fetchCalendars();
-    fetchWorkingCalendar();
-
-      // b) category bubbles – `fetchCategories` expects the user (or we could just call it without args if the hook already checks `user` internally)
-    fetchCategories(user);
-      // NEW: fetch org categories list
-    (async () => {
-      try {
-        const res = await fetch("/api/org-categories", {
-          credentials: "include",
-        });
-        if (res.ok) {
-          const data = await res.json();
-          // Server returns { categories }; support both keys for compatibility
-          setAvailableOrgCats(data.categories || data.orgCategories || []);
-        } else {
-          setAvailableOrgCats([]);
-        }
-      } catch {
-        setAvailableOrgCats([]);
-      }
-    })();
-
-      // c) Load saved user preferences and apply them
       (async () => {
+        // a) Load saved user preferences BEFORE fetching events
         try {
           const prefsData = await api.fetchPreferences();
           if (prefsData?.preferences && typeof prefsData.preferences === "object") {
             setExcludeMode(!!prefsData.preferences.excludeMode);
           }
-          // Apply organization preferences
           if (prefsData.organizationPreference && Array.isArray(prefsData.organizationPreference) && prefsData.organizationPreference.length > 0) {
             setSelectedOrgCats(new Set(prefsData.organizationPreference));
           }
-          // Apply event type preferences
           if (prefsData.eventTypePreference && Array.isArray(prefsData.eventTypePreference) && prefsData.eventTypePreference.length > 0) {
             setSelectedCats(new Set(prefsData.eventTypePreference));
           }
-
         } catch (error) {
           console.error("Failed to load user preferences:", error);
-          // Continue without preferences if fetch fails
+        }
+        setPreferencesLoaded(true);
+
+        // b) Now load calendars, categories, and org categories
+        fetchCalendars();
+        fetchWorkingCalendar();
+        fetchCategories(user);
+
+        try {
+          const res = await fetch("/api/org-categories", {
+            credentials: "include",
+          });
+          if (res.ok) {
+            const data = await res.json();
+            setAvailableOrgCats(data.categories || data.orgCategories || []);
+          } else {
+            setAvailableOrgCats([]);
+          }
+        } catch {
+          setAvailableOrgCats([]);
         }
       })();
     } else {
@@ -673,14 +667,13 @@ export const AppProvider = ({ children }) => {
       setEvents([]);
       setListservCalendarId(null);
       setAllEventsForCounts([]);
-      setSelectedEvent(null); // Clear selected event when user logs out
-      // Clear preferences when logging out
+      setSelectedEvent(null);
       setSelectedOrgCats(new Set());
       setSelectedCats(new Set());
       setExcludeMode(false);
-      // No need to call fetchCategories(null) – the hook already clears its state when `user` is falsy
+      setPreferencesLoaded(false);
     }
-  }, [user, fetchCategories]); // `fetchCategories` should be memoised (useCallback) inside the hook
+  }, [user, fetchCategories]);
 
   // 6.2 B Maintain the unfiltered snapshot for counts (no dependency on categoriesParam).
   useEffect(() => {
@@ -692,8 +685,9 @@ export const AppProvider = ({ children }) => {
   }, [user, visibleCalendars, fetchEventsForCounts]);
 
   // 6.3 Refetch events when the selected category filter changes
+  // Wait for preferences to be loaded so the first fetch uses correct filters.
   useEffect(() => {
-    if (user) {
+    if (user && preferencesLoaded) {
       fetchEvents(Array.from(visibleCalendars));
     }
   }, [
@@ -701,6 +695,7 @@ export const AppProvider = ({ children }) => {
     orgCategoriesParam,
     excludeParam,
     user,
+    preferencesLoaded,
     visibleCalendars,
     fetchEvents,
   ]);
