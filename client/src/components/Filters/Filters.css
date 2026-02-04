@@ -165,23 +165,24 @@
 
 .org-filter-item {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
-  height: 33px;
-  padding: 0;
+  gap: 10px;
+  min-height: 33px;
+  padding: 4px 0;
 }
 
 .org-filter-item-indented {
-  padding-left: 30px; /* Indent subcategories */
+  padding-left: 30px; /* Indent organizations under type */
 }
 
 .org-filter-item-double-indented {
-  padding-left: 60px; /* Indent organizations */
+  padding-left: 60px; /* Kept for consistency; orgs now use single indent */
 }
 
 .org-filter-label {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 10px;
   cursor: pointer;
   flex: 1;
@@ -231,9 +232,12 @@
   white-space: normal;
   word-break: break-word;
   overflow-wrap: anywhere;
+  flex: 1;
+  min-width: 0;
 }
 
 .org-filter-count {
+  flex-shrink: 0;
   border-radius: 15px;
   padding: 3px 10px;
   font-size: 12px;

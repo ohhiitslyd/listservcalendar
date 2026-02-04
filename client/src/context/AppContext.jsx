@@ -295,6 +295,7 @@ export const AppProvider = ({ children }) => {
     await fetch("/auth/logout", { method: "POST", credentials: "include" });
     setUser(null);
     setEvents([]);
+    setSelectedEvent(null); // Clear selected event when logging out
     // Preferences will be cleared in the useEffect when user becomes null
   };
 
@@ -304,22 +305,57 @@ export const AppProvider = ({ children }) => {
   const fetchCalendars = async () => {
     const data = await api.fetchCalendars();
     const items = data.calendars || [];
+    console.log("[AppContext] /api/calendars returned:", items);
     setCalendars(items);
 
     // Find ListServ calendar id (if present)
     const ls = items.find(
       (c) => c.summary?.toLowerCase() === "listserv events"
     );
-    if (ls) setListservCalendarId(ls.id);
+    if (ls) {
+      console.log("[AppContext] Detected ListServ calendar:", ls.id);
+      setListservCalendarId(ls.id);
+    }
 
-    // Default visible calendars: primary + ListServ (fallback to “primary”)
-    const defaults = items
-      .filter(
-        (c) => c.primary || c.summary?.toLowerCase() === "listserv events"
-      )
-      .map((c) => c.id);
-    if (!defaults.length) defaults.push("primary");
-    setVisibleCalendars(new Set(defaults));
+    // Robustly determine the primary calendar:
+    // 1) explicit `primary` flag from Google
+    // 2) id or summary matching the user's email (common for primary)
+    // 3) fall back to the first calendar if nothing else matches
+    let primaryCal =
+      items.find((c) => c.primary) || null;
+
+    if (!primaryCal && user?.email) {
+      primaryCal =
+        items.find(
+          (c) =>
+            c.id === user.email ||
+            c.summary === user.email
+        ) || null;
+    }
+
+    if (!primaryCal && items.length > 0) {
+      primaryCal = items[0];
+    }
+
+    console.log("[AppContext] Resolved primary calendar:", primaryCal);
+
+    // Default visible calendars: primary (if we have one) + ListServ
+    const defaultsSet = new Set();
+    if (primaryCal?.id) {
+      defaultsSet.add(primaryCal.id);
+    }
+    if (ls?.id) {
+      defaultsSet.add(ls.id);
+    }
+
+    // Final safety fallback – make sure we always have at least one id
+    if (defaultsSet.size === 0) {
+      defaultsSet.add("primary");
+    }
+
+    const defaults = Array.from(defaultsSet);
+    console.log("[AppContext] Default visible calendars:", defaults);
+    setVisibleCalendars(defaultsSet);
 
     // Load events for the defaults
     await fetchEvents(defaults);
@@ -637,6 +673,7 @@ export const AppProvider = ({ children }) => {
       setEvents([]);
       setListservCalendarId(null);
       setAllEventsForCounts([]);
+      setSelectedEvent(null); // Clear selected event when user logs out
       // Clear preferences when logging out
       setSelectedOrgCats(new Set());
       setSelectedCats(new Set());
@@ -690,6 +727,8 @@ export const AppProvider = ({ children }) => {
 
     // events
     events,
+    // UI-level filtered events (org-filtered listserv events; primary/other cals always included)
+    filteredEvents,
     setEvents,
     fetchEvents,
     categoriesParam,

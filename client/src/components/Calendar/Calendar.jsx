@@ -41,7 +41,7 @@ export const Calendar = ({
 }) => {
   // 2. CLEAN UP: We only need `events` and `calendarRef` from context now.
   //    The other variables were only for the handlers you're deleting.
-  const { events, calendarRef } = useContext(AppContext);
+  const { filteredEvents, events, calendarRef } = useContext(AppContext);
 
   const { applyFiltersToCalendar } = useEvents();
 
@@ -63,8 +63,8 @@ export const Calendar = ({
           plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
           headerToolbar={false}
           initialView="timeGridWeek"
-          selectable
-          selectMirror
+          selectable={false}
+          selectMirror={false}
           events={events}
           height="100%"
           dayHeaderFormat={{ weekday: "short" }}

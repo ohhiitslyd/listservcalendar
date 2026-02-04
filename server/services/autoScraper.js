@@ -1,7 +1,10 @@
 import { google } from "googleapis";
 import { scrapeEmails } from "./emailScraper.js";
 import { parseEmailForEvents } from "./llmParser.js";
-import { publishEventToCalendar } from "./calendarPublisher.js";
+import {
+  publishEventToCalendar,
+  getOrCreateListServCalendar,
+} from "./calendarPublisher.js";
 
 /**
  * Automated Email Scraping Service
@@ -117,18 +120,54 @@ function createOAuthClientFromTokens(tokenData) {
 }
 
 /**
+ * Format a Date object as YYYY-MM-DDTHH:MM:SS using local time components
+ * (avoids .toISOString() which shifts to UTC).
+ */
+export function formatLocalDateTime(d) {
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
+/**
  * Helper function to combine date and time into ISO string
  * @param {string} date - Date in YYYY-MM-DD format
- * @param {string} time - Time in HH:MM format
+ * @param {string} time - Time in HH:MM:SS or HH:MM format (may contain spaces)
  * @param {boolean} allDay - Whether it's an all-day event
- * @returns {string|null} - Combined datetime or null
+ * @returns {string|null} - Combined datetime in ISO format (YYYY-MM-DDTHH:MM:SS) or date only
  */
 export function combineDateTime(date, time, allDay) {
   if (!date) return null;
-  if (time && !allDay) {
-    return `${date}T${time}`;
+  
+  // For all-day events, return just the date
+  if (allDay || !time) {
+    return date;
   }
-  return date;
+  
+  // Normalize time: remove spaces, ensure proper format
+  const normalizedTime = time.trim().replace(/\s+/g, '');
+  
+  // Ensure time has seconds (HH:MM:SS format)
+  let timeWithSeconds = normalizedTime;
+  if (normalizedTime.match(/^\d{2}:\d{2}$/)) {
+    // If time is in HH:MM format, add :00 for seconds
+    timeWithSeconds = `${normalizedTime}:00`;
+  } else if (!normalizedTime.match(/^\d{2}:\d{2}:\d{2}$/)) {
+    // If time is in unexpected format, try to parse it
+    console.warn(`[combineDateTime] Unexpected time format: ${time}, attempting to parse`);
+  }
+  
+  // Combine date and time with 'T' separator
+  const combined = `${date}T${timeWithSeconds}`;
+
+  // Validate the combined string is a real datetime, but return the
+  // original string — NOT a Date-roundtripped one — to avoid UTC conversion.
+  // new Date("2026-01-27T19:30:00").toISOString() would shift to UTC,
+  // turning 7:30 PM EST into 12:30 AM the next day.
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/.test(combined)) {
+    console.warn(`[combineDateTime] Unexpected format: ${combined}, returning date only`);
+    return date;
+  }
+  return combined;
 }
 
 /**
@@ -199,8 +238,8 @@ async function processUnprocessedEmails(userId, pool, oauth2Client) {
               );
               const cappedEnd = new Date(startMs + 14 * 24 * 60 * 60 * 1000);
               end = event.allDay
-                ? cappedEnd.toISOString().split("T")[0]
-                : cappedEnd.toISOString();
+                ? `${cappedEnd.getFullYear()}-${String(cappedEnd.getMonth() + 1).padStart(2, "0")}-${String(cappedEnd.getDate()).padStart(2, "0")}`
+                : formatLocalDateTime(cappedEnd);
             }
           }
 
@@ -209,7 +248,7 @@ async function processUnprocessedEmails(userId, pool, oauth2Client) {
             const startDate = new Date(start);
             const endDate = new Date(startDate);
             endDate.setHours(endDate.getHours() + 1);
-            end = endDate.toISOString();
+            end = formatLocalDateTime(endDate);
           }
 
           // Check for duplicate from same email (prevent LLM parsing same event twice)
@@ -330,6 +369,118 @@ async function processUnprocessedEmails(userId, pool, oauth2Client) {
 }
 
 /**
+ * Clean up old events that ended more than 7 days ago
+ * Only deletes email-sourced events (not manual drafts)
+ * Also deletes published events from Google Calendar if they exist
+ * @param {Pool} pool - PostgreSQL connection pool
+ * @param {Object} oauth2Client - Google OAuth2 client for deleting calendar events
+ * @param {string} listservCalendarId - ListServ calendar ID
+ * @returns {Promise<Object>} - Cleanup results
+ */
+async function cleanupOldEvents(pool, oauth2Client, listservCalendarId) {
+  try {
+    const now = new Date();
+    // Calculate cutoff: 7 days ago (168 hours)
+    const cutoffDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const cutoffISO = cutoffDate.toISOString().split('.')[0].replace('Z', '');
+    
+    console.log(`[autoScraper] Cleaning up events that ended before ${cutoffISO}`);
+
+    // Find all email-sourced events that ended more than 7 days ago
+    // We need to SELECT first to get google_event_id and status for Google Calendar deletion
+    // Use COALESCE to handle events without an end time (use start time instead)
+    const oldEventsResult = await pool.query(
+      `SELECT id, google_event_id, status, COALESCE("end", start) as event_end_time
+       FROM events
+       WHERE source = 'email'
+         AND (
+           -- Event has an end time and it's before cutoff
+           ("end" IS NOT NULL AND "end" < $1)
+           OR
+           -- Event has no end time, use start time
+           ("end" IS NULL AND start < $1)
+         )`,
+      [cutoffISO]
+    );
+
+    const oldEvents = oldEventsResult.rows;
+    
+    if (oldEvents.length === 0) {
+      console.log(`[autoScraper] No old events to clean up`);
+      return { deleted: 0, calendarDeleted: 0, errors: [] };
+    }
+
+    console.log(`[autoScraper] Found ${oldEvents.length} old events to delete`);
+
+    let deletedCount = 0;
+    let calendarDeletedCount = 0;
+    const errors = [];
+
+    // Delete events from Google Calendar first (if published)
+    // We MUST do this BEFORE database deletion because we need google_event_id from the SELECT
+    if (oauth2Client && listservCalendarId) {
+      const calendar = google.calendar({ version: "v3", auth: oauth2Client });
+      
+      for (const event of oldEvents) {
+        if (event.google_event_id && event.status === "published") {
+          try {
+            await calendar.events.delete({
+              calendarId: listservCalendarId,
+              eventId: event.google_event_id,
+            });
+            calendarDeletedCount++;
+          } catch (gcalError) {
+            console.error(
+              `[autoScraper] Failed to delete event ${event.id} from Google Calendar:`,
+              gcalError.message
+            );
+            errors.push({
+              eventId: event.id,
+              error: `Google Calendar deletion failed: ${gcalError.message}`,
+            });
+            // Continue with database deletion even if calendar deletion fails
+          }
+        }
+      }
+    }
+
+    // Delete events from database
+    // This uses the same WHERE clause as the SELECT above
+    // Note: We still need to run DELETE even though we have oldEventsResult,
+    // because SELECT only reads data - it doesn't actually delete anything
+    const deleteResults = await pool.query(
+      `DELETE FROM events
+       WHERE source = 'email'
+         AND (
+           ("end" IS NOT NULL AND "end" < $1)
+           OR
+           ("end" IS NULL AND start < $1)
+         )`,
+      [cutoffISO]
+    );
+
+    deletedCount = deleteResults.rowCount || 0;
+
+    console.log(
+      `[autoScraper] Cleanup complete: ${deletedCount} events deleted from database, ${calendarDeletedCount} deleted from Google Calendar`
+    );
+
+    return {
+      deleted: deletedCount,
+      calendarDeleted: calendarDeletedCount,
+      errors: errors.length > 0 ? errors : undefined,
+    };
+  } catch (error) {
+    console.error("[autoScraper] Error cleaning up old events:", error);
+    return {
+      deleted: 0,
+      calendarDeleted: 0,
+      errors: [{ error: error.message }],
+    };
+  }
+}
+
+/**
  * Main automated scrape function
  * @param {Pool} pool - PostgreSQL connection pool
  * @returns {Promise<Object>} - Scrape results
@@ -394,7 +545,27 @@ export async function runAutomatedScrape(pool) {
       `[autoScraper] Processing complete: ${processResult.processed} emails, ${processResult.eventsCreated} events`
     );
 
-    // Step 6: Save scrape time
+    // Step 6: Clean up old events (more than 7 days past their end time)
+    console.log(`[autoScraper] Cleaning up old events...`);
+    let cleanupResult = { deleted: 0, calendarDeleted: 0, errors: [] };
+    try {
+      const { id: listservCalendarId } = await getOrCreateListServCalendar(
+        oauth2Client
+      );
+      cleanupResult = await cleanupOldEvents(
+        pool,
+        oauth2Client,
+        listservCalendarId
+      );
+    } catch (cleanupError) {
+      console.error(
+        `[autoScraper] Error during cleanup (continuing anyway):`,
+        cleanupError.message
+      );
+      cleanupResult.errors = [{ error: cleanupError.message }];
+    }
+
+    // Step 7: Save scrape time
     await saveLastScrapeTime(pool);
 
     const endTime = new Date();
@@ -412,7 +583,10 @@ export async function runAutomatedScrape(pool) {
       emailsSkipped: scrapeResult.skipped,
       emailsProcessed: processResult.processed,
       eventsCreated: processResult.eventsCreated,
+      eventsDeleted: cleanupResult.deleted,
+      calendarEventsDeleted: cleanupResult.calendarDeleted,
       errors: processResult.errors,
+      cleanupErrors: cleanupResult.errors,
     };
   } catch (error) {
     const endTime = new Date();

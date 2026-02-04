@@ -178,23 +178,23 @@ const InnerApp = () => {
   };
 
   /* -------------------------------------------------
-     handleSelect – called when the user drags on the calendar
+     handleSelect – disabled: users cannot create manual events
      ------------------------------------------------- */
-  const handleSelect = (selectionInfo) => {
-    if (!user) return;
+  // const handleSelect = (selectionInfo) => {
+  //   if (!user) return;
 
-    setSelectionInfo(selectionInfo);
-    setEventForm({ 
-      title: "", 
-      organization: "", 
-      location: "", 
-      description: "", 
-      tags: "", 
-      poster_url: "", 
-      allDay: selectionInfo.allDay
-    });
-    setCreateModalOpen(true);
-  };
+  //   setSelectionInfo(selectionInfo);
+  //   setEventForm({ 
+  //     title: "", 
+  //     organization: "", 
+  //     location: "", 
+  //     description: "", 
+  //     tags: "", 
+  //     poster_url: "", 
+  //     allDay: selectionInfo.allDay
+  //   });
+  //   setCreateModalOpen(true);
+  // };
 
   /* -------------------------------------------------
      handleEventClick – called when an event is clicked
@@ -347,7 +347,6 @@ const InnerApp = () => {
         <div className="app-main-panel">
           {/* MAIN CALENDAR – we forward the handlers with the names FullCalendar expects */}
           <Calendar
-            onSelect={handleSelect}
             onEventClick={handleEventClick}
             onDatesSet={handleDatesSet}
             scrollTime="09:00"

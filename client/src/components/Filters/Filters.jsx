@@ -138,21 +138,7 @@ export const Filters = ({ onClose, showHeader = true, onPendingKeyChange }) => {
     if (!availableOrgCats || !Array.isArray(availableOrgCats)) {
       return hierarchy;
     }
-    
-    // Debug: log what we're receiving
-    console.log('Available org cats:', availableOrgCats);
-    const orgCats = availableOrgCats.filter(c => {
-      const parts = c.key.split(':');
-      const level = c.level || (parts.length === 1 ? 'type' : parts.length === 2 ? 'subcategory' : 'organization');
-      return level === 'organization';
-    });
-    console.log('Organization entries:', orgCats);
-    // Check specifically for the missing ones
-    const cordsEntry = orgCats.find(c => c.key.includes('dartmouth_cords') || c.label === 'Dartmouth Cords');
-    const singsEntry = orgCats.find(c => c.key.includes('dartmouth_sings') || c.label === 'Dartmouth Sings');
-    console.log('Dartmouth Cords entry:', cordsEntry);
-    console.log('Dartmouth Sings entry:', singsEntry);
-    
+
     // Process in order: types first, then subcategories, then organizations
     // This ensures parent nodes exist and aren't overwritten
     
@@ -267,48 +253,24 @@ export const Filters = ({ onClose, showHeader = true, onPendingKeyChange }) => {
             label: cat.label,
             level: "organization",
             count: orgCategoryCounts[cat.key] || 0,
-            emails: Array.isArray(cat.emails) ? cat.emails : [], // ✅ ADD THIS
+            emails: Array.isArray(cat.emails) ? cat.emails : [],
           };
-          console.log(`Added organization: ${cat.label} (${cat.key}) to ${typeKey}:${subKey} (subKeyFull: ${subKeyFull})`);
-        } else {
-          console.warn(`Organization ${cat.label} (${cat.key}) already exists in hierarchy!`);
         }
       }
     });
 
     // Second pass: calculate parent counts from children (aggregate from leaf nodes only)
-    Object.values(hierarchy).forEach(type => {
+    Object.values(hierarchy).forEach((type) => {
       let typeCount = 0;
-      Object.values(type.subcategories).forEach(sub => {
-        // Count only from organizations (leaf nodes), not direct subcategory counts
+      Object.values(type.subcategories).forEach((sub) => {
         let subCount = 0;
-        Object.values(sub.organizations).forEach(org => {
+        Object.values(sub.organizations).forEach((org) => {
           subCount += org.count;
         });
         sub.count = subCount;
         typeCount += subCount;
       });
       type.count = typeCount;
-    });
-
-    // Debug: log final hierarchy
-    console.log('Final hierarchy:', hierarchy);
-    Object.values(hierarchy).forEach(type => {
-      Object.values(type.subcategories).forEach(sub => {
-        const orgNames = Object.values(sub.organizations).map(o => o.label);
-        const orgKeys = Object.keys(sub.organizations);
-        console.log(`${type.label} > ${sub.label}: ${orgNames.length} orgs - ${orgNames.join(', ')}`);
-        console.log(`  Keys: ${orgKeys.join(', ')}`);
-        // Check specifically for missing orgs
-        if (sub.label === 'A Cappella' || sub.key.includes('a_cappella')) {
-          const expectedOrgs = ['Dartmouth Brovertones', 'Dartmouth Aires', 'Dartmouth Cords', 'Dartmouth Decibelles', 
-                                'Dartmouth Rockapellas', 'Dartmouth Dodecaphonics', 'Dartmouth Sings', 'Dartmouth Subtleties'];
-          const missing = expectedOrgs.filter(name => !orgNames.includes(name));
-          if (missing.length > 0) {
-            console.error(`MISSING organizations in A Cappella: ${missing.join(', ')}`);
-          }
-        }
-      });
     });
 
     return hierarchy;
@@ -657,7 +619,6 @@ export const Filters = ({ onClose, showHeader = true, onPendingKeyChange }) => {
                         {/* Organizations - only show if subcategory is expanded */}
                         {isSubExpanded && (() => {
                           const orgs = Object.values(sub.organizations);
-                          console.log(`Rendering ${orgs.length} organizations for ${sub.label}:`, orgs.map(o => o.label));
                           return orgs.map((org) => {
                             const orgSelected = pendingSelectedOrgCats.has(org.key);
                             return (
