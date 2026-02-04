@@ -10,7 +10,7 @@ import fs from "fs";
 import cron from "node-cron";
 import { scrapeEmails } from "./services/emailScraper.js";
 import { parseEmailForEvents } from "./services/llmParser.js";
-import { runAutomatedScrape, combineDateTime } from "./services/autoScraper.js";
+import { runAutomatedScrape, combineDateTime, formatLocalDateTime } from "./services/autoScraper.js";
 import {
   publishEventToCalendar,
   getOrCreateListServCalendar as getOrCreateListServCalendarShared,
@@ -1790,7 +1790,7 @@ app.post("/api/scrape/process", ensureAuthed, async (req, res) => {
             const startDate = new Date(start);
             const endDate = new Date(startDate);
             endDate.setHours(endDate.getHours() + 1);
-            end = endDate.toISOString();
+            end = formatLocalDateTime(endDate);
           } else if (event.allDay && !end) {
             end = start;
           }
