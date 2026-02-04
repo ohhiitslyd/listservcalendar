@@ -130,6 +130,21 @@
   border-color: #d4e9c4;
 }
 
+.refresh-button {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 6px 8px;
+  font-size: 16px;
+  font-weight: 100;
+  opacity: 0.5;
+}
+
+.refresh-button:hover {
+  background: #f5f9f0;
+  border-color: #d4e9c4;
+}
+
 .user-avatar {
   width: 30px;
   height: 30px;

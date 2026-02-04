@@ -121,7 +121,7 @@ export const Header = () => {
       </div>
 
       <div className="app-header-right">
-        <button className="app-header-button" onClick={handleRefresh}>
+        <button className="app-header-button refresh-button" onClick={handleRefresh}>
           <svg className="refresh-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <polyline points="23 4 23 10 17 10"></polyline>
             <polyline points="1 20 1 14 7 14"></polyline>
@@ -137,17 +137,6 @@ export const Header = () => {
           >
             <div className="user-avatar">{getUserInitials()}</div>
             <span className="user-name">{getUserName()}</span>
-            <svg 
-              className={`dropdown-arrow ${userMenuOpen ? 'open' : ''}`} 
-              width="20" 
-              height="20" 
-              viewBox="0 0 24 24" 
-              fill="none" 
-              stroke="currentColor" 
-              strokeWidth="2"
-            >
-              <polyline points="6 9 12 15 18 9"></polyline>
-            </svg>
           </button>
           {userMenuOpen && (
             <div className="dropdown-content user-menu-dropdown">
