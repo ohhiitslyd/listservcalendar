@@ -4,7 +4,7 @@ import { AppContext } from "../../context/AppContext";
 import { api } from "../../api/calendarApi";
 import "./Filters.css";
 
-export const Filters = ({ onClose }) => {
+export const Filters = ({ onClose, showHeader = true }) => {
   const {
     //tag level cats
     availableCats,
@@ -35,6 +35,7 @@ export const Filters = ({ onClose }) => {
 
   const [activeTab, setActiveTab] = useState("organizations");
   const [expandedCategories, setExpandedCategories] = useState(new Set());
+  const [orgSearch, setOrgSearch] = useState("");
 
   // Local/pending state - only committed to context when "Apply Filters" is clicked
   const [pendingSelectedCats, setPendingSelectedCats] = useState(new Set(selectedCats));
@@ -348,6 +349,45 @@ export const Filters = ({ onClose }) => {
     return hierarchy;
   }, [availableOrgCats, orgCategoryCounts]);
 
+  const filteredOrgHierarchy = useMemo(() => {
+    const term = orgSearch.trim().toLowerCase();
+    if (!term) return orgHierarchy;
+
+    const result = {};
+    Object.values(orgHierarchy).forEach((type) => {
+      const typeMatch = (type.label || "").toLowerCase().includes(term);
+      const subcategories = {};
+
+      Object.values(type.subcategories).forEach((sub) => {
+        const subMatch = (sub.label || "").toLowerCase().includes(term);
+        const organizations = {};
+
+        Object.values(sub.organizations).forEach((org) => {
+          const orgMatch = (org.label || "").toLowerCase().includes(term);
+          if (orgMatch || subMatch || typeMatch) {
+            organizations[org.key] = org;
+          }
+        });
+
+        if (subMatch || typeMatch || Object.keys(organizations).length > 0) {
+          subcategories[sub.key] = {
+            ...sub,
+            organizations,
+          };
+        }
+      });
+
+      if (typeMatch || Object.keys(subcategories).length > 0) {
+        result[type.key] = {
+          ...type,
+          subcategories,
+        };
+      }
+    });
+
+    return result;
+  }, [orgHierarchy, orgSearch]);
+
   // Color mapping for categories
   const getCategoryColor = (typeKey) => {
     const colors = {
@@ -365,6 +405,16 @@ export const Filters = ({ onClose }) => {
   // Helper function to check if all children of a subcategory are selected
   const areAllSubcategoryChildrenSelected = (sub, selectedSet) => {
     return Object.values(sub.organizations).every(org => selectedSet.has(org.key));
+  };
+
+  const hasSelectedInSubcategory = (sub) => {
+    if (pendingSelectedOrgCats.has(sub.key)) return true;
+    return Object.values(sub.organizations).some(org => pendingSelectedOrgCats.has(org.key));
+  };
+
+  const hasSelectedInType = (type) => {
+    if (pendingSelectedOrgCats.has(type.key)) return true;
+    return Object.values(type.subcategories).some(sub => hasSelectedInSubcategory(sub));
   };
 
   // Helper function to update parent selection based on children
@@ -485,12 +535,14 @@ export const Filters = ({ onClose }) => {
           return (
     <div className="filters-wrapper">
       {/* Header */}
-      <div className="filters-header">
-        <h4 className="filters-title">Filters</h4>
-        <span className="filters-selected-count">
-          {totalSelected > 0 ? `${totalSelected} filters selected` : ''}
-        </span>
-      </div>
+      {showHeader && (
+        <div className="filters-header">
+          <h4 className="filters-title">Filters</h4>
+          <span className="filters-selected-count">
+            {totalSelected > 0 ? `${totalSelected} filters selected` : ''}
+          </span>
+        </div>
+      )}
 
       
 
@@ -522,10 +574,19 @@ export const Filters = ({ onClose }) => {
       <div className="filters-content">
         {activeTab === 'organizations' ? (
           <div className="org-filters-list">
-            {orgHierarchy && Object.values(orgHierarchy).map((type) => {
+            <div className="org-filters-search">
+              <input
+                type="text"
+                placeholder="Search organizations"
+                value={orgSearch}
+                onChange={(event) => setOrgSearch(event.target.value)}
+                className="org-filters-search-input"
+              />
+            </div>
+            {filteredOrgHierarchy && Object.values(filteredOrgHierarchy).map((type) => {
               const typeColor = getCategoryColor(type.key);
               const typeSelected = pendingSelectedOrgCats.has(type.key);
-              const isExpanded = expandedCategories.has(type.key);
+              const isExpanded = expandedCategories.has(type.key) || hasSelectedInType(type) || !!orgSearch.trim();
               const hasSubcategories = Object.keys(type.subcategories).length > 0;
               
               return (
@@ -580,7 +641,7 @@ export const Filters = ({ onClose }) => {
                   {isExpanded && Object.values(type.subcategories).map((sub) => {
                     const subSelected = pendingSelectedOrgCats.has(sub.key);
                     const hasOrganizations = Object.keys(sub.organizations).length > 0;
-                    const isSubExpanded = expandedCategories.has(sub.key);
+                    const isSubExpanded = expandedCategories.has(sub.key) || hasSelectedInSubcategory(sub) || !!orgSearch.trim();
 
             return (
                       <div key={sub.key}>

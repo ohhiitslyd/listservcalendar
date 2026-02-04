@@ -2,7 +2,7 @@
    src/App.jsx – entry point for the React app
    ------------------------------------------------- */
 
-import React, { useContext } from "react";
+import React, { useContext, useMemo } from "react";
 import { AppProvider, AppContext } from "./context/AppContext";
 
 import { Header } from "./components/Header/Header";
@@ -29,9 +29,71 @@ const InnerApp = () => {
     setSelectedEvent,
     selectedEvent,
     setCurrentViewRange,
+    availableCats,
+    availableOrgCats,
+    selectedOrgCats,
+    selectedCats,
+    setSelectedOrgCats,
+    setSelectedCats,
+    setExcludeMode,
     // **NOTE:** we *do not* destructure `onSelect` or `onEventClick`
     // because we will define them locally (see below).
   } = useContext(AppContext);
+
+  const selectedOrgChips = useMemo(() => {
+    if (!availableOrgCats || !selectedOrgCats) return [];
+    const orgMap = new Map();
+    availableOrgCats.forEach((cat) => {
+      if (!cat?.key) return;
+      const parts = cat.key.split(":");
+      const level =
+        cat.level || (parts.length === 1 ? "type" : parts.length === 2 ? "subcategory" : "organization");
+      if (level === "organization") {
+        orgMap.set(cat.key, cat.label || cat.key);
+      }
+    });
+
+    return Array.from(selectedOrgCats)
+      .filter((key) => orgMap.has(key))
+      .map((key) => ({ key, label: orgMap.get(key) }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }, [availableOrgCats, selectedOrgCats]);
+
+  const selectedEventTypeChips = useMemo(() => {
+    if (!availableCats || !selectedCats) return [];
+    const typeMap = new Map(
+      availableCats.map((cat) => [cat.key, cat.label || cat.key])
+    );
+
+    return Array.from(selectedCats)
+      .filter((key) => typeMap.has(key))
+      .map((key) => ({ key, label: typeMap.get(key) }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }, [availableCats, selectedCats]);
+
+  const totalSelectedFilters = (selectedCats?.size || 0) + (selectedOrgCats?.size || 0);
+
+  const handleClearAll = () => {
+    setSelectedCats(new Set());
+    setSelectedOrgCats(new Set());
+    setExcludeMode(false);
+  };
+
+  const handleRemoveOrgChip = (key) => {
+    setSelectedOrgCats((prev) => {
+      const next = new Set(prev);
+      next.delete(key);
+      return next;
+    });
+  };
+
+  const handleRemoveEventTypeChip = (key) => {
+    setSelectedCats((prev) => {
+      const next = new Set(prev);
+      next.delete(key);
+      return next;
+    });
+  };
 
   /* -------------------------------------------------
      handleSelect – called when the user drags on the calendar
@@ -132,13 +194,76 @@ const InnerApp = () => {
       <Header />
 
       <div className="app-content">
-        {/* MAIN CALENDAR – we forward the handlers with the names FullCalendar expects */}
-        <Calendar
-          onSelect={handleSelect}
-          onEventClick={handleEventClick}
-          onDatesSet={handleDatesSet}
-          scrollTime="09:00"
-        />
+        <div className="app-left-panel">
+          <div className="selected-filters-panel">
+            <div className="selected-filters-header">
+              <span className="selected-filters-title">Selected filters</span>
+              <span className="selected-filters-count">{totalSelectedFilters}</span>
+              <button
+                type="button"
+                className="selected-filters-clear"
+                onClick={handleClearAll}
+              >
+                Clear all
+              </button>
+            </div>
+            <div className="selected-filters-chips">
+              {selectedEventTypeChips.length > 0 && (
+                <div className="selected-filters-group">
+                  <span className="selected-filters-group-title">Event types</span>
+                  <div className="selected-filters-group-chips">
+                    {selectedEventTypeChips.map((chip) => (
+                      <span key={chip.key} className="selected-filter-chip">
+                        <span className="selected-filter-chip-label">{chip.label}</span>
+                        <button
+                          type="button"
+                          className="selected-filter-chip-remove"
+                          onClick={() => handleRemoveEventTypeChip(chip.key)}
+                          aria-label={`Remove ${chip.label}`}
+                        >
+                          ×
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {selectedOrgChips.length > 0 && (
+                <div className="selected-filters-group">
+                  <span className="selected-filters-group-title">Organizations</span>
+                  <div className="selected-filters-group-chips">
+                    {selectedOrgChips.map((chip) => (
+                      <span key={chip.key} className="selected-filter-chip">
+                        <span className="selected-filter-chip-label">{chip.label}</span>
+                        <button
+                          type="button"
+                          className="selected-filter-chip-remove"
+                          onClick={() => handleRemoveOrgChip(chip.key)}
+                          aria-label={`Remove ${chip.label}`}
+                        >
+                          ×
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {selectedOrgChips.length === 0 && selectedEventTypeChips.length === 0 && (
+                <span className="selected-filters-empty">No filters selected.</span>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className="app-main-panel">
+          {/* MAIN CALENDAR – we forward the handlers with the names FullCalendar expects */}
+          <Calendar
+            onSelect={handleSelect}
+            onEventClick={handleEventClick}
+            onDatesSet={handleDatesSet}
+            scrollTime="09:00"
+          />
+        </div>
 
         {/* RIGHT PANEL – event details */}
         <div className="app-right-panel">
@@ -150,13 +275,6 @@ const InnerApp = () => {
             listservCalendarId={listservCalendarId}
           />
         </div>
-      </div>
-
-      {/* FOOTER */}
-      <div className="app-footer">
-        <p>
-          Click any event to view details.
-        </p>
       </div>
 
       {/* MODAL – create event */}

@@ -6,7 +6,7 @@
   width: 262px;
   overflow-y: auto;
   background: white;
-  box-shadow: -4px 0px 4px 0px rgba(0, 0, 0, 0.15);
+  border-left: 0.5px solid #e5e7eb;
 }
 
 .app-right-panel h3 {

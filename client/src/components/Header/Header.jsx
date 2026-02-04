@@ -18,15 +18,11 @@ export const Header = () => {
   const [filtersDropdownOpen, setFiltersDropdownOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [userCalendarsOpen, setUserCalendarsOpen] = useState(false);
-  const filtersDropdownRef = useRef(null);
   const userMenuRef = useRef(null);
 
   // Close dropdowns when clicking outside
   useEffect(() => {
     const handleClickOutside = (event) => {
-      if (filtersDropdownRef.current && !filtersDropdownRef.current.contains(event.target)) {
-        setFiltersDropdownOpen(false);
-      }
       if (userMenuRef.current && !userMenuRef.current.contains(event.target)) {
         setUserMenuOpen(false);
         setUserCalendarsOpen(false);
@@ -98,7 +94,7 @@ export const Header = () => {
         </div>
         
         {/* Filters Button with Dropdown */}
-        <div className="dropdown-container" ref={filtersDropdownRef}>
+        <div className="dropdown-container">
           <button 
             className="app-header-button filters-button"
             onClick={() => setFiltersDropdownOpen(!filtersDropdownOpen)}
@@ -111,14 +107,33 @@ export const Header = () => {
               <span className="filter-count-badge">{totalFiltersCount}</span>
             )}
           </button>
-          {filtersDropdownOpen && (
-            <div className="dropdown-content filters-dropdown">
-              <Filters onClose={() => setFiltersDropdownOpen(false)} />
-            </div>
-          )}
         </div>
 
       </div>
+
+      {filtersDropdownOpen && (
+        <div
+          className="filters-drawer-overlay"
+          onClick={() => setFiltersDropdownOpen(false)}
+        >
+          <div
+            className="filters-drawer"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="filters-drawer-header">
+              <h3>Filters</h3>
+              <button
+                type="button"
+                className="filters-drawer-close"
+                onClick={() => setFiltersDropdownOpen(false)}
+              >
+                ✕
+              </button>
+            </div>
+            <Filters onClose={() => setFiltersDropdownOpen(false)} showHeader={false} />
+          </div>
+        </div>
+      )}
 
       <div className="app-header-right">
         <button className="app-header-button refresh-button" onClick={handleRefresh}>
