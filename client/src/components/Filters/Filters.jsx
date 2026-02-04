@@ -4,7 +4,7 @@ import { AppContext } from "../../context/AppContext";
 import { api } from "../../api/calendarApi";
 import "./Filters.css";
 
-export const Filters = ({ onClose }) => {
+export const Filters = ({ onClose, showHeader = true, onPendingKeyChange }) => {
   const {
     //tag level cats
     availableCats,
@@ -35,6 +35,7 @@ export const Filters = ({ onClose }) => {
 
   const [activeTab, setActiveTab] = useState("organizations");
   const [expandedCategories, setExpandedCategories] = useState(new Set());
+  const [orgSearch, setOrgSearch] = useState("");
 
   // Local/pending state - only committed to context when "Apply Filters" is clicked
   const [pendingSelectedCats, setPendingSelectedCats] = useState(new Set(selectedCats));
@@ -98,57 +99,22 @@ export const Filters = ({ onClose }) => {
 
   // Calculate total selected count from pending state
   const totalSelected = pendingSelectedCats.size + pendingSelectedOrgCats.size;
+  const pendingKey = useMemo(() => {
+    const cats = Array.from(pendingSelectedCats).sort();
+    const orgs = Array.from(pendingSelectedOrgCats).sort();
+    return JSON.stringify({
+      cats,
+      orgs,
+      exclude: !!pendingExcludeMode,
+    });
+  }, [pendingSelectedCats, pendingSelectedOrgCats, pendingExcludeMode]);
 
-  // Apply filters - save to user preferences and sync calendar
-  const applyFilters = async () => {
-    // Close dropdown immediately when "Apply Filters" is clicked
-    if (onClose) {
-      onClose();
+  useEffect(() => {
+    if (onPendingKeyChange) {
+      onPendingKeyChange(pendingKey);
     }
+  }, [pendingKey, onPendingKeyChange]);
 
-    try {
-      // Convert pending Sets to arrays
-      const orgPrefsArray = Array.from(pendingSelectedOrgCats);
-      const eventTypePrefsArray = Array.from(pendingSelectedCats);
-
-      // Clear events immediately to prevent flash of unfiltered events
-      // The useEffect in AppContext will automatically fetch filtered events
-      if (setEvents) {
-        setEvents([]);
-      }
-
-      // Commit pending state to context
-      setSelectedCats(pendingSelectedCats);
-      setSelectedOrgCats(pendingSelectedOrgCats);
-      setExcludeMode(pendingExcludeMode);
-
-      // Refetch events immediately with the params we just selected (avoids stale-state timing)
-      if (refetchEventsWithParams) {
-        await refetchEventsWithParams(
-          Array.from(pendingSelectedOrgCats),
-          Array.from(pendingSelectedCats),
-          pendingExcludeMode
-        );
-      }
-
-      // Save preferences
-      await api.updatePreferences({
-        organizationPreference: orgPrefsArray,
-        eventTypePreference: eventTypePrefsArray,
-        excludeMode: pendingExcludeMode,
-      });
-
-      // Sync calendar based on preferences (publishes to Google Calendar)
-      const syncResult = await api.syncCalendarByPreferences();
-      console.log("[Filters] Sync result:", syncResult);
-      
-      // The useEffect in AppContext will automatically fetch events with the new filters
-      // No need to manually call fetchEvents here - it would cause a race condition
-    } catch (error) {
-      console.error("Failed to apply filters:", error);
-      alert(`Failed to apply filters: ${error.message || error.error || "Unknown error"}`);
-    }
-  };
 
 
 
@@ -310,6 +276,45 @@ export const Filters = ({ onClose }) => {
     return hierarchy;
   }, [availableOrgCats, orgCategoryCounts]);
 
+  const filteredOrgHierarchy = useMemo(() => {
+    const term = orgSearch.trim().toLowerCase();
+    if (!term) return orgHierarchy;
+
+    const result = {};
+    Object.values(orgHierarchy).forEach((type) => {
+      const typeMatch = (type.label || "").toLowerCase().includes(term);
+      const subcategories = {};
+
+      Object.values(type.subcategories).forEach((sub) => {
+        const subMatch = (sub.label || "").toLowerCase().includes(term);
+        const organizations = {};
+
+        Object.values(sub.organizations).forEach((org) => {
+          const orgMatch = (org.label || "").toLowerCase().includes(term);
+          if (orgMatch || subMatch || typeMatch) {
+            organizations[org.key] = org;
+          }
+        });
+
+        if (subMatch || typeMatch || Object.keys(organizations).length > 0) {
+          subcategories[sub.key] = {
+            ...sub,
+            organizations,
+          };
+        }
+      });
+
+      if (typeMatch || Object.keys(subcategories).length > 0) {
+        result[type.key] = {
+          ...type,
+          subcategories,
+        };
+      }
+    });
+
+    return result;
+  }, [orgHierarchy, orgSearch]);
+
   // Color mapping for categories
   const getCategoryColor = (typeKey) => {
     const colors = {
@@ -319,31 +324,49 @@ export const Filters = ({ onClose }) => {
     return colors[typeKey] || '#d4e9c4'; // default green
   };
 
-  // All organizations under a type (flattened from all subcategories)
-  const getTypeOrganizations = (type) => {
-    const orgs = [];
-    Object.values(type.subcategories || {}).forEach((sub) => {
-      Object.values(sub.organizations || {}).forEach((org) => orgs.push(org));
-    });
-    return orgs;
-  };
-
-  // Type is "all selected" when every organization under it is selected
+  // Helper function to check if all children of a type are selected
   const areAllTypeChildrenSelected = (type, selectedSet) => {
-    const orgs = getTypeOrganizations(type);
-    return orgs.length > 0 && orgs.every((org) => selectedSet.has(org.key));
+    return Object.values(type.subcategories).every(sub => selectedSet.has(sub.key));
   };
 
-  // Helper function to update parent selection based on children (type only; no subcategory row in UI)
+  // Helper function to check if all children of a subcategory are selected
+  const areAllSubcategoryChildrenSelected = (sub, selectedSet) => {
+    return Object.values(sub.organizations).every(org => selectedSet.has(org.key));
+  };
+
+  const hasSelectedInSubcategory = (sub) => {
+    if (pendingSelectedOrgCats.has(sub.key)) return true;
+    return Object.values(sub.organizations).some(org => pendingSelectedOrgCats.has(org.key));
+  };
+
+  const hasSelectedInType = (type) => {
+    if (pendingSelectedOrgCats.has(type.key)) return true;
+    return Object.values(type.subcategories).some(sub => hasSelectedInSubcategory(sub));
+  };
+
+  // Helper function to update parent selection based on children
   const updateParentSelection = (next, orgHierarchy) => {
-    Object.values(orgHierarchy).forEach((type) => {
-      const allOrgsSelected = areAllTypeChildrenSelected(type, next);
-      if (allOrgsSelected) {
+    // First, check all subcategories - if all organizations are selected, select the subcategory
+    Object.values(orgHierarchy).forEach(type => {
+      Object.values(type.subcategories).forEach(sub => {
+        const allOrgsSelected = areAllSubcategoryChildrenSelected(sub, next);
+        if (allOrgsSelected && Object.keys(sub.organizations).length > 0) {
+          next.add(sub.key);
+        } else {
+          // If not all organizations are selected, deselect the subcategory
+          next.delete(sub.key);
+        }
+      });
+    });
+    
+    // Then, check all types - if all subcategories are selected, select the type
+    Object.values(orgHierarchy).forEach(type => {
+      const allSubsSelected = areAllTypeChildrenSelected(type, next);
+      if (allSubsSelected && Object.keys(type.subcategories).length > 0) {
         next.add(type.key);
-        Object.values(type.subcategories || {}).forEach((sub) => next.add(sub.key));
       } else {
+        // If not all subcategories are selected, deselect the type
         next.delete(type.key);
-        Object.values(type.subcategories || {}).forEach((sub) => next.delete(sub.key));
       }
     });
   };
@@ -439,12 +462,14 @@ export const Filters = ({ onClose }) => {
           return (
     <div className="filters-wrapper">
       {/* Header */}
-      <div className="filters-header">
-        <h4 className="filters-title">Filters</h4>
-        <span className="filters-selected-count">
-          {totalSelected > 0 ? `${totalSelected} selected` : ''}
-        </span>
-      </div>
+      {showHeader && (
+        <div className="filters-header">
+          <h4 className="filters-title">Filters</h4>
+          <span className="filters-selected-count">
+            {totalSelected > 0 ? `${totalSelected} filters selected` : ''}
+          </span>
+        </div>
+      )}
 
       
 
@@ -476,19 +501,27 @@ export const Filters = ({ onClose }) => {
       <div className="filters-content">
         {activeTab === 'organizations' ? (
           <div className="org-filters-list">
-            {orgHierarchy && Object.values(orgHierarchy).map((type) => {
+            <div className="org-filters-search">
+              <input
+                type="text"
+                placeholder="Search organizations"
+                value={orgSearch}
+                onChange={(event) => setOrgSearch(event.target.value)}
+                className="org-filters-search-input"
+              />
+            </div>
+            {filteredOrgHierarchy && Object.values(filteredOrgHierarchy).map((type) => {
               const typeColor = getCategoryColor(type.key);
               const typeSelected = pendingSelectedOrgCats.has(type.key);
-              const isExpanded = expandedCategories.has(type.key);
-              const typeOrgs = getTypeOrganizations(type);
-              const hasOrganizations = typeOrgs.length > 0;
-
+              const isExpanded = expandedCategories.has(type.key) || hasSelectedInType(type) || !!orgSearch.trim();
+              const hasSubcategories = Object.keys(type.subcategories).length > 0;
+              
               return (
                 <div key={type.key} className="org-filter-group">
                   {/* Type level */}
                   <div className="org-filter-item">
                     <label className="org-filter-label">
-                      {hasOrganizations && (
+                      {hasSubcategories && (
                         <button
                           type="button"
                           className="org-filter-expand-btn"
@@ -497,13 +530,13 @@ export const Filters = ({ onClose }) => {
                             toggleCategoryExpansion(type.key);
                           }}
                         >
-                          <svg
-                            className={`org-filter-expand-icon ${isExpanded ? "expanded" : ""}`}
-                            width="16"
-                            height="16"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
+                          <svg 
+                            className={`org-filter-expand-icon ${isExpanded ? 'expanded' : ''}`}
+                            width="16" 
+                            height="16" 
+                            viewBox="0 0 24 24" 
+                            fill="none" 
+                            stroke="currentColor" 
                             strokeWidth="2"
                           >
                             <polyline points="6 9 12 15 18 9"></polyline>
@@ -519,47 +552,103 @@ export const Filters = ({ onClose }) => {
                       />
                       <span className="org-filter-name">{type.label}</span>
                     </label>
-                    <span
-                      className={`org-filter-count ${typeSelected ? "selected" : ""}`}
-                      style={{
-                        backgroundColor: typeSelected ? typeColor : "transparent",
+                    <span 
+                      className={`org-filter-count ${typeSelected ? 'selected' : ''}`}
+                      style={{ 
+                        backgroundColor: typeSelected ? typeColor : 'transparent',
                         borderColor: typeColor,
-                        color: typeSelected ? "#000" : "#000",
+                        color: typeSelected ? '#000' : '#000'
                       }}
                     >
                       {type.count}
                     </span>
                   </div>
 
-                  {/* Organizations directly under type (no "Organizations" subcategory row) */}
-                  {isExpanded &&
-                    typeOrgs.map((org) => {
-                      const orgSelected = pendingSelectedOrgCats.has(org.key);
-                      return (
-                        <div key={org.key} className="org-filter-item org-filter-item-indented">
+                  {/* Subcategories - only show if expanded */}
+                  {isExpanded && Object.values(type.subcategories).map((sub) => {
+                    const subSelected = pendingSelectedOrgCats.has(sub.key);
+                    const hasOrganizations = Object.keys(sub.organizations).length > 0;
+                    const isSubExpanded = expandedCategories.has(sub.key) || hasSelectedInSubcategory(sub) || !!orgSearch.trim();
+
+            return (
+                      <div key={sub.key}>
+                        <div className="org-filter-item org-filter-item-indented">
                           <label className="org-filter-label">
+                            {hasOrganizations && (
+              <button
+                type="button"
+                                className="org-filter-expand-btn"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  toggleCategoryExpansion(sub.key);
+                                }}
+                              >
+                                <svg 
+                                  className={`org-filter-expand-icon ${isSubExpanded ? 'expanded' : ''}`}
+                                  width="16" 
+                                  height="16" 
+                                  viewBox="0 0 24 24" 
+                                  fill="none" 
+                                  stroke="currentColor" 
+                                  strokeWidth="2"
+                                >
+                                  <polyline points="6 9 12 15 18 9"></polyline>
+                                </svg>
+              </button>
+                            )}
                             <input
                               type="checkbox"
-                              checked={orgSelected}
-                              onChange={() => toggleOrgCategory(org.key)}
+                              checked={subSelected}
+                              onChange={() => toggleOrgCategory(sub.key)}
                               className="org-filter-checkbox"
                               onClick={(e) => e.stopPropagation()}
                             />
-                            <span className="org-filter-name">{org.label}</span>
+                            <span className="org-filter-name">{sub.label}</span>
                           </label>
-                          <span
-                            className={`org-filter-count ${orgSelected ? "selected" : ""}`}
-                            style={{
-                              backgroundColor: orgSelected ? typeColor : "transparent",
+                          <span 
+                            className={`org-filter-count ${subSelected ? 'selected' : ''}`}
+                            style={{ 
+                              backgroundColor: subSelected ? typeColor : 'transparent',
                               borderColor: typeColor,
-                              color: orgSelected ? "#000" : "#000",
+                              color: subSelected ? '#000' : '#000'
                             }}
                           >
-                            {org.count}
+                            {sub.count}
                           </span>
                         </div>
-                      );
-                    })}
+                        {/* Organizations - only show if subcategory is expanded */}
+                        {isSubExpanded && (() => {
+                          const orgs = Object.values(sub.organizations);
+                          return orgs.map((org) => {
+                            const orgSelected = pendingSelectedOrgCats.has(org.key);
+                            return (
+                              <div key={org.key} className="org-filter-item org-filter-item-double-indented">
+                                <label className="org-filter-label">
+                                  <input
+                                    type="checkbox"
+                                    checked={orgSelected}
+                                    onChange={() => toggleOrgCategory(org.key)}
+                                    className="org-filter-checkbox"
+                                  />
+                                  <span className="org-filter-name">{org.label}</span>
+                                </label>
+                                <span 
+                                  className={`org-filter-count ${orgSelected ? 'selected' : ''}`}
+                                  style={{ 
+                                    backgroundColor: orgSelected ? typeColor : 'transparent',
+                                    borderColor: typeColor,
+                                    color: orgSelected ? '#000' : '#000'
+                                  }}
+                                >
+                                  {org.count}
+                                </span>
+                              </div>
+                            );
+                          });
+                        })()}
+                      </div>
+                    );
+                  })}
                 </div>
               );
             })}
@@ -617,12 +706,7 @@ export const Filters = ({ onClose }) => {
           </label>
         </div>
 
-        <button
-          onClick={applyFilters}
-          className="filters-apply-btn"
-        >
-          Apply filters
-        </button>
+        <div />
       </div>
     </div>
   );

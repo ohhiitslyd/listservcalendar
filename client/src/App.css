@@ -16,15 +16,27 @@
   flex-direction: row;
 }
 
+.app-main-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
 /* Left Panel */
 .app-left-panel {
   flex-shrink: 0;
-  width: 250px;
-  border-right: 1px solid #ddd;
-  background-color: #f9f9f9;
-  padding: 20px;
+  width: 320px;
+  background-color: #f5f7f4;
+  padding: 16px 16px 16px 40px;
   overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  border-right: 1px solid #e5e7eb;
+  box-shadow: 3px 0 6px rgba(0, 0, 0, 0.08);
 }
+
 
 .app-left-panel h3 {
   margin-top: 0;
@@ -45,6 +57,194 @@
   display: flex;
   flex-direction: column;
   /* padding: 20px; */
+}
+
+.selected-filters-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  height: 100%;
+}
+
+.selected-filters-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding-top: 4px;
+}
+
+.selected-filters-title {
+  font-size: 14px;
+  font-weight: 500;
+  font-family: 'Poppins', sans-serif;
+  color: #000000;
+}
+
+.selected-filters-count {
+  background: #d4e9c4;
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 12px;
+  font-weight: 500;
+  font-family: 'Poppins', sans-serif;
+  color: #000000;
+}
+
+.selected-filters-clear {
+  margin-left: auto;
+  background: transparent;
+  border: none;
+  padding: 0;
+  font-size: 12px;
+  font-weight: 500;
+  font-family: 'Poppins', sans-serif;
+  color: #000000;
+  cursor: pointer;
+}
+
+.selected-filters-clear:hover {
+  text-decoration: underline;
+}
+
+.selected-filters-chips {
+  display: flex;
+  flex-direction: column;
+  flex-wrap: nowrap;
+  overflow-y: auto;
+  gap: 16px;
+  padding: 6px 0 4px 0;
+}
+
+.selected-filters-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.selected-filters-group-title {
+  font-size: 12px;
+  font-weight: 600;
+  font-family: 'Poppins', sans-serif;
+  color: #000000;
+}
+
+.selected-filters-group-chips {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.selected-filter-chip {
+  background: #f5f9f0;
+  border: 1px solid #d4e9c4;
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 400;
+  font-family: 'Poppins', sans-serif;
+  color: #000000;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  justify-content: space-between;
+}
+
+.selected-filter-chip-label {
+  line-height: 1.2;
+}
+
+.selected-filter-chip-remove {
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1;
+  color: #000000;
+  padding: 0;
+}
+
+.selected-filter-chip-remove:hover {
+  color: #6b7280;
+}
+
+.publish-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+}
+
+.publish-modal {
+  width: 360px;
+  min-height: 360px;
+  max-width: 90vw;
+  background: #ffffff;
+  border-radius: 12px;
+  padding: 24px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+  font-family: 'Poppins', sans-serif;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.publish-modal-content h4 {
+  margin: 0 0 12px 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: #000000;
+}
+
+.publish-modal-content p {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 400;
+  color: #000000;
+  line-height: 1.5;
+}
+
+.publish-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.publish-modal-secondary {
+  background: #ffffff;
+  border: 1px solid #d4e9c4;
+  border-radius: 8px;
+  padding: 8px 14px;
+  font-size: 14px;
+  font-weight: 400;
+  cursor: pointer;
+}
+
+.publish-modal-primary {
+  background: #d4e9c4;
+  border: 1px solid #d4e9c4;
+  border-radius: 8px;
+  padding: 8px 14px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.publish-modal-secondary:disabled,
+.publish-modal-primary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.selected-filters-empty {
+  font-size: 12px;
+  font-weight: 400;
+  font-family: 'Poppins', sans-serif;
+  color: #6b7280;
 }
 
 .app-calendar-wrapper {
