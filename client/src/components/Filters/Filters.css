@@ -293,22 +293,6 @@
   text-decoration: underline;
 }
 
-.filters-apply-btn {
-  background: #d4e9c4;
-  border: 1px solid #d4e9c4;
-  border-radius: 8px;
-  padding: 7px 10px;
-  font-size: 14px;
-  font-weight: 500;
-  font-family: 'Poppins', sans-serif;
-  color: #000000;
-  cursor: pointer;
-  transition: background-color 0.2s ease;
-}
-
-.filters-apply-btn:hover {
-  background: #c4d9b4;
-}
 
 /* Legacy styles for backward compatibility */
 .clear-filters-btn {

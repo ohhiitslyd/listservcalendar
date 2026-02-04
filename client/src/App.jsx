@@ -2,13 +2,15 @@
    src/App.jsx – entry point for the React app
    ------------------------------------------------- */
 
-import React, { useContext, useMemo } from "react";
+import React, { useContext, useMemo, useState } from "react";
 import { AppProvider, AppContext } from "./context/AppContext";
 
 import { Header } from "./components/Header/Header";
 import { Calendar } from "./components/Calendar/Calendar";
 import { EventDetails } from "./components/EventDetails/EventDetails";
 import { CreateEventModal } from "./components/CreateEventModal/CreateEventModal";
+import { Filters } from "./components/Filters/Filters";
+import { api } from "./api/calendarApi";
 
 import "./App.css";
 
@@ -36,9 +38,14 @@ const InnerApp = () => {
     setSelectedOrgCats,
     setSelectedCats,
     setExcludeMode,
+    excludeMode,
     // **NOTE:** we *do not* destructure `onSelect` or `onEventClick`
     // because we will define them locally (see below).
   } = useContext(AppContext);
+  const [filtersDrawerOpen, setFiltersDrawerOpen] = useState(false);
+  const [showPublishConfirm, setShowPublishConfirm] = useState(false);
+  const [publishResult, setPublishResult] = useState(null);
+  const [isPublishing, setIsPublishing] = useState(false);
 
   const selectedOrgChips = useMemo(() => {
     if (!availableOrgCats || !selectedOrgCats) return [];
@@ -93,6 +100,28 @@ const InnerApp = () => {
       next.delete(key);
       return next;
     });
+  };
+
+  const publishFilters = async () => {
+    try {
+      setIsPublishing(true);
+      const orgPrefsArray = Array.from(selectedOrgCats);
+      const eventTypePrefsArray = Array.from(selectedCats);
+
+      await api.updatePreferences({
+        organizationPreference: orgPrefsArray,
+        eventTypePreference: eventTypePrefsArray,
+        excludeMode,
+      });
+
+      const syncResult = await api.syncCalendarByPreferences();
+      setPublishResult(syncResult);
+    } catch (error) {
+      console.error("Failed to publish filters:", error);
+      alert(`Failed to publish filters: ${error.message || error.error || "Unknown error"}`);
+    } finally {
+      setIsPublishing(false);
+    }
   };
 
   /* -------------------------------------------------
@@ -191,7 +220,10 @@ const InnerApp = () => {
      ------------------------------------------------- */
   return (
     <div className="app-container">
-      <Header />
+      <Header
+        onOpenFilters={() => setFiltersDrawerOpen(true)}
+        onPublish={() => setShowPublishConfirm(true)}
+      />
 
       <div className="app-content">
         <div className="app-left-panel">
@@ -279,6 +311,87 @@ const InnerApp = () => {
 
       {/* MODAL – create event */}
       <CreateEventModal />
+
+      {filtersDrawerOpen && (
+        <div
+          className="filters-drawer-overlay"
+          onClick={() => setFiltersDrawerOpen(false)}
+        >
+          <div
+            className="filters-drawer"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="filters-drawer-header">
+              <h3>Filters</h3>
+              <button
+                type="button"
+                className="filters-drawer-close"
+                onClick={() => setFiltersDrawerOpen(false)}
+              >
+                ✕
+              </button>
+            </div>
+            <Filters onClose={() => setFiltersDrawerOpen(false)} showHeader={false} />
+          </div>
+        </div>
+      )}
+
+      {showPublishConfirm && (
+        <div className="publish-modal-overlay">
+          <div className="publish-modal">
+            <div className="publish-modal-content">
+              <h4>Publish to Google Calendar</h4>
+              <p>
+                Save your filter preferences and send the current dashboard events
+                to your ListServ calendar.
+              </p>
+            </div>
+            <div className="publish-modal-actions">
+              <button
+                type="button"
+                className="publish-modal-secondary"
+                onClick={() => setShowPublishConfirm(false)}
+                disabled={isPublishing}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="publish-modal-primary"
+                onClick={async () => {
+                  setShowPublishConfirm(false);
+                  await publishFilters();
+                }}
+                disabled={isPublishing}
+              >
+                {isPublishing ? "Publishing..." : "Publish"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {publishResult && (
+        <div className="publish-modal-overlay">
+          <div className="publish-modal">
+            <div className="publish-modal-content">
+              <h4>Published to ListServ</h4>
+              <p>
+                {publishResult.published ?? 0} events were added to your ListServ calendar.
+              </p>
+            </div>
+            <div className="publish-modal-actions">
+              <button
+                type="button"
+                className="publish-modal-primary"
+                onClick={() => setPublishResult(null)}
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

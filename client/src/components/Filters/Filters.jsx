@@ -100,56 +100,6 @@ export const Filters = ({ onClose, showHeader = true }) => {
   // Calculate total selected count from pending state
   const totalSelected = pendingSelectedCats.size + pendingSelectedOrgCats.size;
 
-  // Apply filters - save to user preferences and sync calendar
-  const applyFilters = async () => {
-    // Close dropdown immediately when "Apply Filters" is clicked
-    if (onClose) {
-      onClose();
-    }
-
-    try {
-      // Convert pending Sets to arrays
-      const orgPrefsArray = Array.from(pendingSelectedOrgCats);
-      const eventTypePrefsArray = Array.from(pendingSelectedCats);
-
-      // Clear events immediately to prevent flash of unfiltered events
-      // The useEffect in AppContext will automatically fetch filtered events
-      if (setEvents) {
-        setEvents([]);
-      }
-
-      // Commit pending state to context
-      setSelectedCats(pendingSelectedCats);
-      setSelectedOrgCats(pendingSelectedOrgCats);
-      setExcludeMode(pendingExcludeMode);
-
-      // Refetch events immediately with the params we just selected (avoids stale-state timing)
-      if (refetchEventsWithParams) {
-        await refetchEventsWithParams(
-          Array.from(pendingSelectedOrgCats),
-          Array.from(pendingSelectedCats),
-          pendingExcludeMode
-        );
-      }
-
-      // Save preferences
-      await api.updatePreferences({
-        organizationPreference: orgPrefsArray,
-        eventTypePreference: eventTypePrefsArray,
-        excludeMode: pendingExcludeMode,
-      });
-
-      // Sync calendar based on preferences (publishes to Google Calendar)
-      const syncResult = await api.syncCalendarByPreferences();
-      console.log("[Filters] Sync result:", syncResult);
-      
-      // The useEffect in AppContext will automatically fetch events with the new filters
-      // No need to manually call fetchEvents here - it would cause a race condition
-    } catch (error) {
-      console.error("Failed to apply filters:", error);
-      alert(`Failed to apply filters: ${error.message || error.error || "Unknown error"}`);
-    }
-  };
 
 
 
@@ -780,12 +730,7 @@ export const Filters = ({ onClose, showHeader = true }) => {
           </label>
         </div>
 
-        <button
-          onClick={applyFilters}
-          className="filters-apply-btn"
-        >
-          Apply filters
-        </button>
+        <div />
       </div>
     </div>
   );

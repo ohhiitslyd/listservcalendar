@@ -1,9 +1,8 @@
 import React, { useContext, useState, useRef, useEffect } from "react";
 import { AppContext } from "../../context/AppContext";
-import { Filters } from "../Filters/Filters";
 import "./Header.css";
 
-export const Header = () => {
+export const Header = ({ onOpenFilters, onPublish }) => {
   const { 
     user, 
     login, 
@@ -15,7 +14,6 @@ export const Header = () => {
     selectedOrgCats,
   } = useContext(AppContext);
 
-  const [filtersDropdownOpen, setFiltersDropdownOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [userCalendarsOpen, setUserCalendarsOpen] = useState(false);
   const userMenuRef = useRef(null);
@@ -93,11 +91,10 @@ export const Header = () => {
           <h2>ListServCalendar</h2>
         </div>
         
-        {/* Filters Button with Dropdown */}
         <div className="dropdown-container">
           <button 
             className="app-header-button filters-button"
-            onClick={() => setFiltersDropdownOpen(!filtersDropdownOpen)}
+            onClick={onOpenFilters}
           >
             <svg className="filter-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon>
@@ -108,32 +105,14 @@ export const Header = () => {
             )}
           </button>
         </div>
+        <button
+          className="app-header-button publish-button"
+          onClick={onPublish}
+        >
+          Publish to Google Calendar
+        </button>
 
       </div>
-
-      {filtersDropdownOpen && (
-        <div
-          className="filters-drawer-overlay"
-          onClick={() => setFiltersDropdownOpen(false)}
-        >
-          <div
-            className="filters-drawer"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div className="filters-drawer-header">
-              <h3>Filters</h3>
-              <button
-                type="button"
-                className="filters-drawer-close"
-                onClick={() => setFiltersDropdownOpen(false)}
-              >
-                ✕
-              </button>
-            </div>
-            <Filters onClose={() => setFiltersDropdownOpen(false)} showHeader={false} />
-          </div>
-        </div>
-      )}
 
       <div className="app-header-right">
         <button className="app-header-button refresh-button" onClick={handleRefresh}>
