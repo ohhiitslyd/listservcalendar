@@ -89,8 +89,10 @@ export const api = {
     orgCategoriesParam?: string; 
     excludeParam?: string;
   } = {}): Promise<EventsResponse> => {
+    // Build calendarIds query without over-encoding commas, so the server
+    // can safely split on ",". Individual IDs are safe as-is.
     const idsQuery = calendarIds.length
-      ? `?calendarIds=${encodeURIComponent(calendarIds.join(","))}`
+      ? `?calendarIds=${calendarIds.join(",")}`
       : "?";
 
     // IMPORTANT: append both params if present
@@ -143,13 +145,12 @@ export const api = {
   updatePreferences: async ({
     organizationPreference,
     eventTypePreference,
+    excludeMode,
   }: {
     organizationPreference?: string[];
     eventTypePreference?: string[];
-  }): Promise<{
-    organizationPreference: string[];
-    eventTypePreference: string[];
-  }> =>
+    excludeMode?: boolean;
+  }): Promise<any> =>
     fetch("/api/user/preferences", {
       method: "PUT",
       credentials: "include",
@@ -157,6 +158,8 @@ export const api = {
       body: JSON.stringify({
         organizationPreference,
         eventTypePreference,
+        // store excludeMode inside the "preferences" JSON blob
+        preferences: excludeMode !== undefined ? { excludeMode } : undefined,
       }),
     }).then((r) => r.json()),
 

@@ -1,12 +1,12 @@
 // src/components/Filters/Filters.jsx
-import React, { useContext, useState, useMemo, useEffect } from "react";
+import React, { useContext, useState, useMemo, useEffect, useRef } from "react";
 import { AppContext } from "../../context/AppContext";
 import { api } from "../../api/calendarApi";
 import "./Filters.css";
 
 export const Filters = ({ onClose }) => {
   const {
-    //tag level cats 
+    //tag level cats
     availableCats,
     selectedCats,
     setSelectedCats,
@@ -20,8 +20,8 @@ export const Filters = ({ onClose }) => {
 
     //negative filter mode
     excludeMode,
-    setExcludeMode, 
-    
+    setExcludeMode,
+
     negativeFilterEnabled,
     setNegativeFilterEnabled,
 
@@ -30,7 +30,7 @@ export const Filters = ({ onClose }) => {
     visibleCalendars,
     listservCalendarId,
     setEvents,
-
+    refetchEventsWithParams,
   } = useContext(AppContext);
 
   const [activeTab, setActiveTab] = useState("organizations");
@@ -41,12 +41,54 @@ export const Filters = ({ onClose }) => {
   const [pendingSelectedOrgCats, setPendingSelectedOrgCats] = useState(new Set(selectedOrgCats));
   const [pendingExcludeMode, setPendingExcludeMode] = useState(excludeMode);
 
+  // Skip the first effect run so we don't refetch when dropdown just opens
+  const skipFirstPreviewRef = useRef(true);
+
+  // Keep a ref of the latest pending state so we can commit it on unmount (when user closes dropdown)
+  const pendingStateRef = useRef({
+    pendingSelectedCats,
+    pendingSelectedOrgCats,
+    pendingExcludeMode,
+  });
+  useEffect(() => {
+    pendingStateRef.current = {
+      pendingSelectedCats,
+      pendingSelectedOrgCats,
+      pendingExcludeMode,
+    };
+  }, [pendingSelectedCats, pendingSelectedOrgCats, pendingExcludeMode]);
+
+  // When dropdown closes (component unmounts), commit pending state to context so reopen shows same selection
+  useEffect(() => {
+    return () => {
+      const { pendingSelectedCats: pCats, pendingSelectedOrgCats: pOrgCats, pendingExcludeMode: pExclude } = pendingStateRef.current;
+      setSelectedCats(pCats);
+      setSelectedOrgCats(pOrgCats);
+      setExcludeMode(pExclude);
+    };
+  }, [setSelectedCats, setSelectedOrgCats, setExcludeMode]);
+
   // Initialize pending state from context when component mounts or context changes externally
   useEffect(() => {
     setPendingSelectedCats(new Set(selectedCats));
     setPendingSelectedOrgCats(new Set(selectedOrgCats));
     setPendingExcludeMode(excludeMode);
   }, [selectedCats, selectedOrgCats, excludeMode]);
+
+  // When user toggles a checkbox, immediately refetch so the calendar reflects the change.
+  // "Apply filters" is still used to save preferences and sync to the personalized Google calendar.
+  useEffect(() => {
+    if (skipFirstPreviewRef.current) {
+      skipFirstPreviewRef.current = false;
+      return;
+    }
+    if (!refetchEventsWithParams) return;
+    refetchEventsWithParams(
+      Array.from(pendingSelectedOrgCats),
+      Array.from(pendingSelectedCats),
+      pendingExcludeMode
+    );
+  }, [pendingSelectedOrgCats, pendingSelectedCats, pendingExcludeMode, refetchEventsWithParams]);
 
   const clearAll = () => {
     setPendingSelectedCats(new Set());
@@ -75,15 +117,25 @@ export const Filters = ({ onClose }) => {
         setEvents([]);
       }
 
-      // Commit pending state to context (this will trigger useEffect to fetch filtered events)
+      // Commit pending state to context
       setSelectedCats(pendingSelectedCats);
       setSelectedOrgCats(pendingSelectedOrgCats);
       setExcludeMode(pendingExcludeMode);
+
+      // Refetch events immediately with the params we just selected (avoids stale-state timing)
+      if (refetchEventsWithParams) {
+        await refetchEventsWithParams(
+          Array.from(pendingSelectedOrgCats),
+          Array.from(pendingSelectedCats),
+          pendingExcludeMode
+        );
+      }
 
       // Save preferences
       await api.updatePreferences({
         organizationPreference: orgPrefsArray,
         eventTypePreference: eventTypePrefsArray,
+        excludeMode: pendingExcludeMode,
       });
 
       // Sync calendar based on preferences (publishes to Google Calendar)
@@ -247,8 +299,9 @@ export const Filters = ({ onClose }) => {
           hierarchy[typeKey].subcategories[subKeyFull].organizations[cat.key] = {
             key: cat.key,
             label: cat.label,
-            level: 'organization',
+            level: "organization",
             count: orgCategoryCounts[cat.key] || 0,
+            emails: Array.isArray(cat.emails) ? cat.emails : [], // ✅ ADD THIS
           };
           console.log(`Added organization: ${cat.label} (${cat.key}) to ${typeKey}:${subKey} (subKeyFull: ${subKeyFull})`);
         } else {

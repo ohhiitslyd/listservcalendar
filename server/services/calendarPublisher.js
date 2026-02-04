@@ -74,6 +74,7 @@ export async function publishEventToCalendar({
   description,
   location,
   organization,
+  organizationEmail = "", 
   eventTags = [],
   posterUrl = "",
   start,
@@ -88,19 +89,47 @@ export async function publishEventToCalendar({
     const calendar = google.calendar({ version: "v3", auth: oauth2Client });
 
     // Format event for Google Calendar API
+    // Ensure the end time is after the start time for non-all-day events.
+    // Some parsed events can have an end earlier than start (e.g. 11pm–12am
+    // on the same day). Google Calendar rejects those with `timeRangeEmpty`,
+    // so we defensively adjust here.
+    let startDateTime = start;
+    let endDateTime = end || start;
+    if (!allDay && startDateTime) {
+      try {
+        const startMs = Date.parse(startDateTime);
+        const endMs = endDateTime ? Date.parse(endDateTime) : NaN;
+        if (!Number.isNaN(startMs)) {
+          if (Number.isNaN(endMs) || endMs <= startMs) {
+            const fixedEnd = new Date(startMs + 60 * 60 * 1000); // +1 hour
+            endDateTime = fixedEnd.toISOString().split(".")[0];
+            console.warn(
+              `${logPrefix} Adjusted invalid end time for event ${eventId} (${title})`
+            );
+          }
+        }
+      } catch (e) {
+        console.warn(
+          `${logPrefix} Failed to validate/adjust time range for event ${eventId}:`,
+          e.message
+        );
+      }
+    }
+
     const eventData = {
       summary: title || "(No title)",
       description: description || "",
       location: location || "",
       start: allDay
-        ? { date: start.split("T")[0] } // All-day events use date only
-        : { dateTime: start, timeZone: "America/New_York" },
+        ? { date: startDateTime.split("T")[0] } // All-day events use date only
+        : { dateTime: startDateTime, timeZone: "America/New_York" },
       end: allDay
-        ? { date: end ? end.split("T")[0] : start.split("T")[0] }
-        : { dateTime: end || start, timeZone: "America/New_York" },
+        ? { date: endDateTime ? endDateTime.split("T")[0] : startDateTime.split("T")[0] }
+        : { dateTime: endDateTime || startDateTime, timeZone: "America/New_York" },
       extendedProperties: {
         shared: {
           organization: organization || "",
+          organization_email: organizationEmail || "",
           tags: JSON.stringify(eventTags || []),
           poster_url: posterUrl || "",
           source_event_id: eventId, // Track original database event ID for matching

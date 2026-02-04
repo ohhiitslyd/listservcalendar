@@ -184,38 +184,6 @@ function assignOrgCategories(ev) {
   return out;
 }
 
-/**
- * Check if an event's organization matches any of the given org preference keys.
- * Handles hierarchical keys like "music:a_cappella:dartmouth_cords".
- */
-function matchesOrgPreference(eventOrg, orgPrefs) {
-  if (!orgPrefs || orgPrefs.length === 0) return false;
-  const eventOrgLower = (eventOrg || "").toLowerCase();
-  if (!eventOrgLower) return false;
-
-  return orgPrefs.some((pref) => {
-    const prefLower = pref.toLowerCase();
-    if (pref.includes(":")) {
-      const lastPart = pref.split(":").pop().toLowerCase();
-      const orgNameFromKey = lastPart
-        .split("_")
-        .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-        .join(" ")
-        .toLowerCase();
-      return (
-        eventOrgLower.includes(orgNameFromKey) ||
-        orgNameFromKey.includes(eventOrgLower) ||
-        eventOrgLower === prefLower
-      );
-    }
-    return (
-      eventOrgLower === prefLower ||
-      eventOrgLower.includes(prefLower) ||
-      prefLower.includes(eventOrgLower)
-    );
-  });
-}
-
 function ensureAuthed(req, res, next) {
   if (!req.session.tokens || !req.session.user) {
     return res.status(401).json({ error: "Not authenticated" });
@@ -322,22 +290,22 @@ app.get("/auth/google/callback", async (req, res) => {
              is_scraper_account = EXCLUDED.is_scraper_account,
              updated_at = EXCLUDED.updated_at`,
           [
-            userinfo.id || userinfo.email,
-            userinfo.email,
-            tokens.refresh_token,
-            tokens.access_token || null,
-            tokens.expiry_date
-              ? new Date(tokens.expiry_date).toISOString()
-              : null,
+          userinfo.id || userinfo.email,
+          userinfo.email,
+          tokens.refresh_token,
+          tokens.access_token || null,
+          tokens.expiry_date
+            ? new Date(tokens.expiry_date).toISOString()
+            : null,
             isScraperAccount,
             new Date().toISOString(),
           ]
         );
 
         if (isScraperAccount) {
-          console.log(
+        console.log(
             `[auth] ✓ Stored SCRAPER ACCOUNT tokens: ${userinfo.email}`
-          );
+        );
         } else {
           console.log(
             `[auth] Stored user tokens (not scraper): ${userinfo.email}`
@@ -408,38 +376,37 @@ app.get("/api/user/preferences", ensureAuthed, async (req, res) => {
 app.put("/api/user/preferences", ensureAuthed, async (req, res) => {
   try {
     const { preferences, organizationPreference, eventTypePreference } = req.body;
-    
-    // Support both old format (preferences object) and new format (separate columns)
+
+    // Pull existing preferences once so we can merge if needed
+    const existingUser = await queryOne(
+      "SELECT preferences FROM users WHERE id = $1",
+      [req.session.user.id]
+    );
+
+    let mergedPreferences = existingUser?.preferences || {};
+
     if (preferences && typeof preferences === "object" && preferences !== null) {
-      // Legacy: Merge with existing preferences
-      const existingUser = await queryOne(
-        "SELECT preferences FROM users WHERE id = $1",
-        [req.session.user.id]
-      );
-      const mergedPreferences = {
+      mergedPreferences = {
         ...(existingUser?.preferences || {}),
         ...preferences,
       };
-
-      await execute(
-        `UPDATE users SET preferences = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`,
-        [JSON.stringify(mergedPreferences), req.session.user.id]
-      );
-
-      return res.json({ preferences: mergedPreferences });
     }
 
-    // New format: Update separate preference columns
     const updates = [];
     const values = [];
     let paramIndex = 1;
+
+    // If preferences provided, update preferences JSON blob too
+    if (preferences && typeof preferences === "object" && preferences !== null) {
+      updates.push(`preferences = $${paramIndex}`);
+      values.push(JSON.stringify(mergedPreferences));
+      paramIndex++;
+    }
 
     if (organizationPreference !== undefined) {
       if (!Array.isArray(organizationPreference)) {
         return res.status(400).json({ error: "organizationPreference must be an array" });
       }
-      // Replace with new array (or merge if you want to add to existing)
-      // For now, we'll replace - change to union if you want merging behavior
       updates.push(`organization_preference = $${paramIndex}`);
       values.push(organizationPreference);
       paramIndex++;
@@ -449,7 +416,6 @@ app.put("/api/user/preferences", ensureAuthed, async (req, res) => {
       if (!Array.isArray(eventTypePreference)) {
         return res.status(400).json({ error: "eventTypePreference must be an array" });
       }
-      // Replace with new array (or merge if you want to add to existing)
       updates.push(`event_type_preference = $${paramIndex}`);
       values.push(eventTypePreference);
       paramIndex++;
@@ -459,19 +425,22 @@ app.put("/api/user/preferences", ensureAuthed, async (req, res) => {
       return res.status(400).json({ error: "No preferences provided to update" });
     }
 
+    updates.push(`updated_at = CURRENT_TIMESTAMP`);
+
     values.push(req.session.user.id);
     await execute(
-      `UPDATE users SET ${updates.join(", ")}, updated_at = CURRENT_TIMESTAMP WHERE id = $${paramIndex}`,
+      `UPDATE users SET ${updates.join(", ")} WHERE id = $${paramIndex}`,
       values
     );
 
-    // Return updated preferences
+    // Return the full updated state (what your frontend expects)
     const updatedUser = await queryOne(
-      "SELECT organization_preference, event_type_preference FROM users WHERE id = $1",
+      "SELECT organization_preference, event_type_preference, preferences FROM users WHERE id = $1",
       [req.session.user.id]
     );
 
-    res.json({ 
+    res.json({
+      preferences: updatedUser?.preferences || {},
       organizationPreference: updatedUser?.organization_preference || [],
       eventTypePreference: updatedUser?.event_type_preference || [],
     });
@@ -494,43 +463,55 @@ app.post("/api/user/sync-calendar-by-preferences", ensureAuthed, async (req, res
 
     // Get user preferences
     const userRecord = await queryOne(
-      "SELECT organization_preference, event_type_preference FROM users WHERE id = $1",
+      "SELECT organization_preference, event_type_preference, preferences FROM users WHERE id = $1",
       [userId]
     );
 
     const orgPrefs = userRecord?.organization_preference || [];
     const eventTypePrefs = userRecord?.event_type_preference || [];
+    const excludeMode = !!(userRecord?.preferences && userRecord.preferences.excludeMode);
 
     // If no preferences, publish ALL events (show everything)
     // This means the user wants to see all events, so we sync all email-sourced events
     const showAllEvents = orgPrefs.length === 0 && eventTypePrefs.length === 0;
 
-    // Fetch ALL email-sourced events, then filter in memory with OR logic
-    // (matching the /api/events endpoint behavior)
-    let matchingEvents = await query(
-      `SELECT * FROM events WHERE source = 'email' ORDER BY start ASC`
+    // Pull all email events, then apply include/exclude logic in JS
+    let allEmailEvents = await query(
+      `SELECT * FROM events WHERE source = 'email' ORDER BY start ASC`,
+      []
     );
 
-    // Apply OR filtering: event matches if it matches ANY tag OR ANY org preference
-    if (!showAllEvents && matchingEvents.length > 0) {
-      matchingEvents = matchingEvents.filter((event) => {
-        // Tag matching
-        let matchesTags = false;
-        if (eventTypePrefs.length > 0) {
-          const eventTags = event.event_tags
-            ? JSON.parse(event.event_tags)
-            : [];
-          matchesTags = eventTags.some((tag) => eventTypePrefs.includes(tag));
-        }
+    // Build org allowed email set (from selected org leaf keys)
+    const allowedOrgEmails = buildAllowedOrgEmailSet(orgPrefs);
 
-        // Org matching
-        const matchesOrg = matchesOrgPreference(
-          event.organization,
-          orgPrefs
-        );
+    // Helper: does event match selected filters?
+    // Uses OR logic between tags and org (matching /api/events behavior, per #206)
+    const eventMatches = (event) => {
+      const evtEmail = String(event.organization_email || "").trim().toLowerCase();
+      const tags = event.event_tags ? JSON.parse(event.event_tags) : [];
 
-        // OR logic: match if EITHER filter type matches
-        return matchesTags || matchesOrg;
+      const matchesTags =
+        eventTypePrefs.length > 0 &&
+        tags.some((t) => eventTypePrefs.includes(t));
+
+      const matchesOrg =
+        allowedOrgEmails.size > 0 &&
+        evtEmail && allowedOrgEmails.has(evtEmail);
+
+      // OR logic: match if EITHER filter type matches
+      return matchesTags || matchesOrg;
+    };
+
+    // No filters selected => show all (even if excludeMode is true)
+    const anyFiltersSelected = orgPrefs.length > 0 || eventTypePrefs.length > 0;
+
+    let matchingEvents;
+    if (!anyFiltersSelected) {
+      matchingEvents = allEmailEvents;
+    } else {
+      matchingEvents = allEmailEvents.filter((event) => {
+        const matches = eventMatches(event);
+        return excludeMode ? !matches : matches;
       });
     }
 
@@ -592,8 +573,35 @@ app.post("/api/user/sync-calendar-by-preferences", ensureAuthed, async (req, res
         const tags = event.event_tags ? JSON.parse(event.event_tags) : [];
         const isAllDay = !!event.all_day;
 
-        const startDateTime = normalizeDateTime(event.start);
-        const endDateTime = normalizeDateTime(event.end || event.start);
+        let startDateTime = normalizeDateTime(event.start);
+        let endDateTime = normalizeDateTime(event.end || event.start);
+
+        // Ensure the end time is after the start time for non-all-day events.
+        // Some legacy/parsing bugs can produce an end that is before start
+        // (e.g. 11pm–12am represented on the same day). Google Calendar
+        // rejects those with `timeRangeEmpty`, so we defensively adjust here.
+        if (!isAllDay && startDateTime) {
+          try {
+            const startMs = Date.parse(startDateTime);
+            const endMs = endDateTime ? Date.parse(endDateTime) : NaN;
+
+            if (!Number.isNaN(startMs)) {
+              if (Number.isNaN(endMs) || endMs <= startMs) {
+                const fixedEnd = new Date(startMs + 60 * 60 * 1000); // +1 hour
+                // Keep a clean RFC3339-ish string without milliseconds
+                endDateTime = fixedEnd.toISOString().split(".")[0];
+                console.warn(
+                  `[sync-by-prefs] Adjusted invalid end time for event ${event.id} (${event.title})`
+                );
+              }
+            }
+          } catch (e) {
+            console.warn(
+              `[sync-by-prefs] Failed to validate/adjust time range for event ${event.id}:`,
+              e.message
+            );
+          }
+        }
 
         const eventData = {
           summary: event.title || "(No title)",
@@ -608,6 +616,7 @@ app.post("/api/user/sync-calendar-by-preferences", ensureAuthed, async (req, res
           extendedProperties: {
             shared: {
               organization: event.organization || "",
+              organization_email: event.organization_email || "",
               tags: JSON.stringify(tags),
               poster_url: event.poster_url || "",
               source_event_id: event.id, // Track original database event ID
@@ -696,6 +705,7 @@ app.post("/api/user/sync-calendar-by-preferences", ensureAuthed, async (req, res
 
     console.log(
       `[sync-by-prefs] User ${req.session.user.email}: showAllEvents=${showAllEvents}, Published ${publishedCount}, Deleted ${deletedCount}, Total matching: ${matchingEvents.length}`
+
     );
 
     const message = showAllEvents
@@ -871,6 +881,7 @@ app.post("/api/user/sync-to-calendar", ensureAuthed, async (req, res) => {
           extendedProperties: {
             shared: {
               organization: event.organization || "",
+              organization_email: event.organization_email || "",
               tags: JSON.stringify(tags),
               poster_url: event.poster_url || "",
               source_event_id: event.id, // Track original event ID
@@ -964,15 +975,85 @@ app.get("/api/events", ensureAuthed, async (req, res) => {
   try {
     const oauth2Client = getOAuthClient(req);
     const calendar = google.calendar({ version: "v3", auth: oauth2Client });
+    const { id: listservCalendarId } = await getOrCreateListServCalendar(
+      req,
+      oauth2Client
+    );
 
     // Parse calendarIds from query parameter
     const calendarIdsParam = req.query.calendarIds;
     const calendarIds = calendarIdsParam
-      ? calendarIdsParam.split(",").map((id) => id.trim()).filter(Boolean)
+      ? String(calendarIdsParam)
+          .split(",")
+          .map((id) => id.trim())
+          .filter(Boolean)
       : [];
 
-    // Get ALL events from PostgreSQL/Neon database
-    // Email-sourced events are campus-wide, visible to all users
+    // Use the parsed calendarIds if provided; otherwise default to "primary"
+    const requestedIds = calendarIds.length > 0 ? calendarIds : ["primary"];
+
+    console.log("[api/events] Requested calendarIds:", requestedIds);
+
+    const now = new Date();
+    // Limit window to a much tighter range by default:
+    // - timeMin: ~2 months ago
+    // - timeMax: 1 year from now
+    const defaultMin = new Date(now);
+    defaultMin.setMonth(defaultMin.getMonth() - 2);
+    const defaultMax = new Date(now);
+    defaultMax.setFullYear(defaultMax.getFullYear() + 1);
+
+    const timeMin = req.query.timeMin || defaultMin.toISOString();
+    const timeMax = req.query.timeMax || defaultMax.toISOString();
+
+    const allEvents = [];
+    for (const calId of requestedIds) {
+      try {
+      const googleResp = await calendar.events.list({
+        calendarId: calId,
+        timeMin,
+        timeMax,
+        singleEvents: true,
+        orderBy: "startTime",
+      });
+        const rawItems = googleResp.data.items || [];
+        console.log(
+          `[api/events] Fetched ${rawItems.length} Google events from calendar ${calId}`
+        );
+
+        const googleEvents = rawItems.map((ev) => {
+        const isAllDay = !!ev.start?.date;
+        const props = ev.extendedProperties?.shared || {};
+        return {
+          id: `google:${ev.id}`,
+          calendarId: calId,
+          source: "google",
+          title: ev.summary || "(No title)",
+          description: ev.description || "",
+          location: ev.location || "",
+          start: isAllDay ? ev.start.date : ev.start?.dateTime,
+          end: isAllDay ? ev.end.date : ev.end?.dateTime,
+          allDay: isAllDay,
+          organization: props.organization || "",
+            organization_email: props.organization_email || "",
+            orgCategories: getOrgCategoriesFromEmail(
+              props.organization_email || ""
+            ),
+          tags: JSON.parse(props.tags || "[]"),
+          poster_url: props.poster_url || "",
+        };
+      });
+      allEvents.push(...googleEvents);
+      } catch (err) {
+        console.error(
+          `[api/events] Failed to fetch events for calendar ${calId}:`,
+          err.message
+        );
+      }
+    }
+
+    // Get local events from PostgreSQL
+    // Email-sourced events are campus-wide, visible to all users (regardless of status)
     // Manual/draft events remain user-specific (only unpublished ones)
     const localEventsRaw = await query(
       `SELECT * FROM events WHERE
@@ -991,103 +1072,71 @@ app.get("/api/events", ensureAuthed, async (req, res) => {
       end: e.end,
       allDay: !!e.all_day,
       organization: e.organization || "",
+      organization_email: e.organization_email || "",
+      orgCategories: getOrgCategoriesFromEmail(e.organization_email || ""),
       tags: e.event_tags ? JSON.parse(e.event_tags) : [],
       poster_url: e.poster_url || "",
       status: e.status || "pending",
       google_event_id: e.google_event_id || null,
     }));
 
-    // Fetch events from Google Calendar for the specified calendar IDs
-    const allEvents = [...localEvents];
-    const now = new Date();
-    const timeMin = new Date(now.getFullYear() - 1, 0, 1).toISOString();
-    const timeMax = new Date(now.getFullYear() + 1, 11, 31).toISOString();
+    // Combine local + Google events, then apply org + event-type filters (branch logic)
+    const combined = [...localEvents, ...allEvents];
 
-    for (const calendarId of calendarIds) {
-      try {
-        // Handle "primary" calendar ID - Google Calendar API uses "primary" as a special value
-        const actualCalendarId = calendarId === "primary" ? "primary" : calendarId;
-        
-        const response = await calendar.events.list({
-          calendarId: actualCalendarId,
-          timeMin,
-          timeMax,
-          maxResults: 2500,
-          singleEvents: true,
-          orderBy: "startTime",
-        });
+    // Basic debug counts to help verify primary vs ListServ / email events
+    const debugCounts = {
+      totalCombined: combined.length,
+      google: combined.filter((ev) => ev.source === "google").length,
+      email: combined.filter((ev) => ev.source === "email").length,
+      draft: combined.filter((ev) => ev.source === "draft").length,
+    };
+    console.log("[api/events] Debug counts:", debugCounts);
 
-        const gcalEvents = (response.data.items || []).map((item) => {
-          const start = item.start?.dateTime || item.start?.date;
-          const end = item.end?.dateTime || item.end?.date;
-          const isAllDay = !!item.start?.date;
+    const isListServ = (ev) => {
+      const isDraft = ev.source === "draft" || ev.source === "email";
+      const isGoogleListServ =
+        ev.source === "google" && ev.calendarId === listservCalendarId;
+      return isDraft || isGoogleListServ;
+    };
 
-          // Extract metadata from extendedProperties
-          const sharedProps = item.extendedProperties?.shared || {};
-          const tags = sharedProps.tags ? JSON.parse(sharedProps.tags) : [];
-
-          return {
-            id: `gcal:${item.id}`,
-            source: "google",
-            title: item.summary || "(No title)",
-            description: item.description || "",
-            location: item.location || "",
-            start: start,
-            end: end,
-            allDay: isAllDay,
-            organization: sharedProps.organization || "",
-            tags: tags,
-            poster_url: sharedProps.poster_url || "",
-            status: "published",
-            google_event_id: item.id,
-            calendarId: calendarId,
-          };
-        });
-
-        allEvents.push(...gcalEvents);
-      } catch (error) {
-        console.error(`[api/events] Failed to fetch events from calendar ${calendarId}:`, error.message);
-        // Continue with other calendars even if one fails
-      }
-    }
-
-    // Add organization categories to each event
-    const eventsWithOrgCats = allEvents.map((ev) => {
-      const orgKeys = assignOrgCategories(ev).map(slug);
-      return { ...ev, orgCategories: orgKeys };
-    });
-
-    // Parse filter parameters
     const categoriesParam = req.query.categories || req.query.eventTypes;
-    const orgCategoriesParam = req.query.orgCategories;
+    const orgCatsParam = req.query.orgCategories;
+    const exclude = String(req.query.exclude || "") === "1";
 
     const reqCategories = categoriesParam
       ? categoriesParam.split(",").map((s) => s.trim()).filter(Boolean)
-      : null;
+      : [];
 
-    const reqOrgCategories = orgCategoriesParam
-      ? orgCategoriesParam.split(",").map((s) => slug(s.trim())).filter(Boolean)
-      : null;
+    const reqOrgKeys = orgCatsParam
+      ? orgCatsParam.split(",").map((s) => s.trim()).filter(Boolean)
+      : [];
 
-    let filtered = eventsWithOrgCats;
+    const allowedOrgEmails = buildAllowedOrgEmailSet(reqOrgKeys);
 
-    // Apply filters if any are specified
-    if (reqCategories || reqOrgCategories) {
-      filtered = eventsWithOrgCats.filter((ev) => {
-        const matchesTags = reqCategories
-          ? (ev.tags || []).some((tag) => reqCategories.includes(tag))
-          : false;
+    let filtered = combined;
+    if (reqCategories.length > 0 || allowedOrgEmails.size > 0) {
+      filtered = combined.filter((ev) => {
+        if (!isListServ(ev)) return true;
 
-        const matchesOrg = reqOrgCategories
-          ? (ev.orgCategories || []).some((c) => reqOrgCategories.includes(c))
-          : false;
+        const tags = ev.tags || [];
+        const evtEmail = String(ev.organization_email || "").trim().toLowerCase();
 
-        // OR logic: match if either filter type matches
-        return matchesTags || matchesOrg;
+        const matchesTags =
+          reqCategories.length === 0
+            ? true
+            : tags.some((t) => reqCategories.includes(t));
+
+        const matchesOrg =
+          allowedOrgEmails.size === 0
+            ? true
+            : (evtEmail && allowedOrgEmails.has(evtEmail));
+
+        const matches = matchesTags && matchesOrg;
+        return exclude ? !matches : matches;
       });
     }
 
-    res.json({ events: filtered });
+    res.json({ events: filtered, debug: debugCounts });
   } catch (e) {
     console.error("[api/events] Error:", e);
     res.status(500).json({ error: "Failed to fetch events" });
@@ -1116,44 +1165,214 @@ app.get("/api/event-categories", ensureAuthed, (req, res) => {
   res.json({ categories });
 });
 
-// Organization categories for filtering (keyword-based classification)
-app.get("/api/org-categories", ensureAuthed, (req, res) => {
-  const cats = ORGANIZATION_RULES?.categories || {};
-  const list = [];
+// =======================
+// Org Categories (for Organization filter tab)
+// =======================
+// Branch: file-based (org_categories.json + org_filters.json). Main: in-memory ORGANIZATION_RULES.
+// We keep the branch so buildAllowedOrgEmailSet and /api/events filtering by organization_email work.
 
-  for (const [typeKeyRaw, typeDef] of Object.entries(cats)) {
-    const typeKey = slug(typeKeyRaw);
-    const typeLabel = typeDef.label || typeKeyRaw;
-    list.push({ key: typeKey, label: typeLabel, level: "type" });
+// Path to org category JSON (your file is in get_orgs/)
+const ORG_CATEGORIES_PATH = path.join(__dirname, "..", "get_orgs", "org_categories.json");
+// Path to org filters JSON (org -> emails + categories)
+const ORG_FILTERS_PATH = path.join(__dirname, "..", "get_orgs", "org_filters.json");
 
-    const subcats = typeDef.subcategories || {};
-    for (const [subKeyRaw, subDef] of Object.entries(subcats)) {
-      const subKey = slug(subKeyRaw);
-      const subLabel = subDef.label || subKeyRaw;
-      const subFlatKey = `${typeKey}:${subKey}`;
-      list.push({
-        key: subFlatKey,
-        label: `${typeLabel} • ${subLabel}`,
-        level: "subcategory",
-      });
+// Load org categories once at server start
+let ORG_CATEGORIES = [];
+try {
+  const raw = fs.readFileSync(ORG_CATEGORIES_PATH, "utf8");
+  const parsed = JSON.parse(raw);
 
-      const orgs = subDef.organizations || {};
-      for (const [orgKeyRaw, orgDef] of Object.entries(orgs)) {
-        const orgKey = slug(orgKeyRaw);
-        const orgLabel = orgDef.label || orgKeyRaw;
-        const orgFlatKey = `${typeKey}:${subKey}:${orgKey}`;
-        list.push({
-          key: orgFlatKey,
-          label: orgLabel,
-          level: "organization",
-        });
-      }
+  // Accept either: ["Academic", ...] OR { categories: ["Academic", ...] }
+  if (Array.isArray(parsed)) {
+    ORG_CATEGORIES = parsed;
+  } else if (parsed && Array.isArray(parsed.categories)) {
+    ORG_CATEGORIES = parsed.categories;
+  } else {
+    ORG_CATEGORIES = [];
+  }
+
+  console.log(
+    "[org-categories] loaded",
+    ORG_CATEGORIES.length,
+    "top-level categories from",
+    ORG_CATEGORIES_PATH
+  );
+} catch (e) {
+  ORG_CATEGORIES = [];
+  console.warn(
+    "[org-categories] Could not read org_categories.json. Organization categories will be empty.",
+    e
+  );
+}
+
+// Load org filters once at server start
+let ORG_FILTERS = [];
+try {
+  const raw = fs.readFileSync(ORG_FILTERS_PATH, "utf8");
+  const parsed = JSON.parse(raw);
+
+  if (Array.isArray(parsed)) {
+    ORG_FILTERS = parsed;
+  } else {
+    ORG_FILTERS = [];
+  }
+
+  console.log(
+    "[org-filters] loaded",
+    ORG_FILTERS.length,
+    "organizations from",
+    ORG_FILTERS_PATH
+  );
+} catch (e) {
+  ORG_FILTERS = [];
+  console.warn(
+    "[org-filters] Could not read org_filters.json. Org dropdowns will be empty.",
+    e
+  );
+}
+
+// ---------- Org preference -> allowed email helper ----------
+const toKey = (s) => String(s || "").trim().toLowerCase().replace(/\s+/g, "_");
+
+// pref key format (leaf): "<typeKey>:all:<orgKey>"
+function buildAllowedOrgEmailSet(orgPrefs) {
+  const allowed = new Set();
+
+  for (const pref of orgPrefs || []) {
+    if (!pref) continue;
+
+    const parts = String(pref).split(":");
+
+    // Only accept leaf org nodes, e.g. "music:all:dartmouth_cords"
+    // Ignore type keys like "music" and subcategory keys like "music:all"
+    if (parts.length < 3) continue;
+
+    const orgKey = parts[parts.length - 1];
+
+    const match = (ORG_FILTERS || []).find((row) => {
+      const rowKey = toKey(row?.organization);
+      return rowKey === toKey(orgKey);
+    });
+
+    const emails = Array.isArray(match?.emails) ? match.emails : [];
+    for (const em of emails) {
+      const normalized = String(em).trim().toLowerCase();
+      if (normalized) allowed.add(normalized);
     }
   }
 
-  res.json({ orgCategories: list });
-});
+  return allowed;
+}
 
+// Given an event's organization_email, return the list of org category keys
+// (same format as /api/org-categories: "typeKey:all:orgKey") for counts/display.
+function getOrgCategoriesFromEmail(organizationEmail) {
+  const email = String(organizationEmail || "").trim().toLowerCase();
+  if (!email) return [];
+
+  const validTypeKeySet = new Set(
+    (ORG_CATEGORIES || [])
+      .filter((x) => typeof x === "string" && x.trim().length > 0)
+      .map((name) => toKey(name.trim()))
+  );
+
+  const row = (ORG_FILTERS || []).find((r) =>
+    (Array.isArray(r.emails) ? r.emails : []).some(
+      (em) => String(em).trim().toLowerCase() === email
+    )
+  );
+  if (!row || !row.organization) return [];
+
+  const orgKey = toKey(row.organization);
+  const categories = Array.isArray(row.categories) ? row.categories : [];
+  const keys = [];
+  for (const catName of categories) {
+    const typeKey = toKey(catName);
+    if (validTypeKeySet.has(typeKey)) keys.push(`${typeKey}:all:${orgKey}`);
+  }
+  return keys;
+}
+
+// Endpoint to populate the Organization filter tab
+app.get("/api/org-categories", ensureAuthed, (req, res) => {
+  try {
+    // helper: match how you already key categories
+    // const toKey = (s) => String(s || "").trim().toLowerCase().replace(/\s+/g, "_");
+
+    // 1) Type nodes (top-level categories)
+    const typeNodes = (ORG_CATEGORIES || [])
+      .filter((x) => typeof x === "string" && x.trim().length > 0)
+      .map((name) => {
+        const label = name.trim();
+        const key = toKey(label);
+        return { key, label, level: "type" };
+      });
+
+    // for quick "does this category exist?"
+    const validTypeKeySet = new Set(typeNodes.map((n) => n.key));
+    const typeLabelByKey = new Map(typeNodes.map((n) => [n.key, n.label]));
+
+    // 2) Subcategory nodes: one per category to hold orgs (keeps your existing UI working)
+    // key format: "<typeKey>:all"
+    const subcategoryNodes = typeNodes.map((t) => ({
+      key: `${t.key}:all`,
+      // Your Filters.jsx strips "<Type Label> • " off subcategory labels
+      // so this shows as "Organizations"
+      label: `${t.label} • Organizations`,
+        level: "subcategory",
+    }));
+
+    // 3) Organization nodes under each category’s :all bucket
+    // key format: "<typeKey>:all:<orgKey>"
+    const orgNodes = [];
+
+    for (const row of ORG_FILTERS || []) {
+      const orgName = row?.organization;
+      if (!orgName || typeof orgName !== "string") continue;
+
+      const orgLabel = orgName.trim();
+      const orgKey = toKey(orgLabel);
+
+      const categories = Array.isArray(row.categories) ? row.categories : [];
+      for (const catName of categories) {
+        const typeKey = toKey(catName);
+
+        // only attach if that category exists in org_categories.json
+        if (!validTypeKeySet.has(typeKey)) continue;
+
+        orgNodes.push({
+          key: `${typeKey}:all:${orgKey}`,
+          label: orgLabel,
+          level: "organization",
+          emails: Array.isArray(row.emails) ? row.emails : [], // optional
+        });
+      }
+    }
+
+    // Optional: sort orgs alphabetically within each category
+    orgNodes.sort((a, b) => {
+      const [aType] = a.key.split(":");
+      const [bType] = b.key.split(":");
+      if (aType !== bType) {
+        const aLabel = typeLabelByKey.get(aType) || aType;
+        const bLabel = typeLabelByKey.get(bType) || bType;
+        return aLabel.localeCompare(bLabel);
+      }
+      return String(a.label || "").localeCompare(String(b.label || ""));
+    });
+
+    res.json({
+      categories: [...typeNodes, ...subcategoryNodes, ...orgNodes],
+    });
+  } catch (e) {
+    console.error("[org-categories] endpoint error:", e);
+    res.status(500).json({
+      error: "Failed to load org categories",
+      details: e.message,
+      categories: [],
+    });
+  }
+});
 // --- Drafts (now using unified events table) ---
 app.post("/api/drafts", ensureAuthed, async (req, res) => {
   try {
@@ -1188,7 +1407,7 @@ app.post("/api/drafts", ensureAuthed, async (req, res) => {
         organization || "",
         tagsJson,
         poster_url || "",
-        start,
+      start,
         end || null,
         allDay ? 1 : 0,
         null,
@@ -1350,8 +1569,8 @@ app.post("/api/events/:compoundId/publish", ensureAuthed, async (req, res) => {
     if (!row) return res.status(404).json({ error: "Event not found" });
 
     if (!row.start) {
-      return res.status(400).json({ error: "Invalid event date" });
-    }
+        return res.status(400).json({ error: "Invalid event date" });
+      }
 
     if (!row.all_day) {
       if (!row.start.includes("T") || isNaN(new Date(row.start).getTime())) {
@@ -1373,7 +1592,8 @@ app.post("/api/events/:compoundId/publish", ensureAuthed, async (req, res) => {
       title: row.title || "",
       description: row.description || "",
       location: row.location || "",
-      organization: row.organization || "",
+          organization: row.organization || "",
+      organizationEmail: row.organization_email || "",
       eventTags,
       posterUrl: row.poster_url || "",
       start: row.start,
@@ -1587,11 +1807,15 @@ app.post("/api/scrape/process", ensureAuthed, async (req, res) => {
           const duplicateSameOrg = await queryOne(
             "SELECT id FROM events WHERE user_id = $1 AND title = $2 AND organization = $3 AND start LIKE $4",
             [userId, event.title, event.organization || "", `${startDateOnly}%`]
-          );
+            );
 
           if (duplicateSameOrg) {
             continue;
           }
+
+          const senderEmail =
+            (email.from_email || email.fromEmail || "").trim().toLowerCase();
+
 
           await execute(
             `INSERT INTO events (id, user_id, source, email_id, title, description, location, organization, organization_email, event_tags, poster_url, start, "end", all_day, confidence_score, status)
@@ -1605,10 +1829,10 @@ app.post("/api/scrape/process", ensureAuthed, async (req, res) => {
               event.description || "",
               event.location || "",
               event.organization || "",
-              event.organizationEmail || "",
+              senderEmail,
               tagsJson,
               event.posterUrl || "",
-              start,
+            start,
               end || null,
               event.allDay ? 1 : 0,
               event.confidenceScore || null,
@@ -1617,16 +1841,17 @@ app.post("/api/scrape/process", ensureAuthed, async (req, res) => {
           );
 
           // Auto-publish email-sourced events to Google Calendar
-          const oauth2Client = getOAuthClient(req);
+            const oauth2Client = getOAuthClient(req);
           await publishEventToCalendar({
             oauth2Client,
             pool,
             eventId,
             userId,
             title: event.title || "",
-            description: event.description || "",
-            location: event.location || "",
-            organization: event.organization || "",
+                description: event.description || "",
+                location: event.location || "",
+                    organization: event.organization || "",
+            organizationEmail: senderEmail,
             eventTags: event.tags || [],
             posterUrl: event.posterUrl || "",
             start,
@@ -1697,7 +1922,7 @@ app.get("/api/scraped-emails", ensureAuthed, async (req, res) => {
         }
       }
       return {
-        ...email,
+      ...email,
         attachments: attachmentsMeta,
       };
     });

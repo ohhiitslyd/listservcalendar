@@ -1,4 +1,4 @@
-import { useContext, useEffect } from "react";
+import { useContext } from "react";
 import { AppContext } from "../context/AppContext";
 import { isGoogle, isCampus, getTag } from "../utils/helpers";
 
@@ -7,14 +7,7 @@ export const useEvents = () => {
     events,
     activeFilters,
     setActiveFilters,
-    fetchEvents,
-    visibleCalendars,
   } = useContext(AppContext);
-
-  // Re‑fetch events when the category query string changes
-  useEffect(() => {
-    fetchEvents(Array.from(visibleCalendars));
-  }, [fetchEvents, visibleCalendars]);
 
   // ---------------- Filtering helpers ----------------
   const toggleFilter = name => {
