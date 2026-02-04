@@ -488,7 +488,7 @@ export const Filters = ({ onClose }) => {
       <div className="filters-header">
         <h4 className="filters-title">Filters</h4>
         <span className="filters-selected-count">
-          {totalSelected > 0 ? `${totalSelected} selected` : ''}
+          {totalSelected > 0 ? `${totalSelected} filters selected` : ''}
         </span>
       </div>
 
