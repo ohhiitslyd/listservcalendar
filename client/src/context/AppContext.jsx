@@ -295,6 +295,7 @@ export const AppProvider = ({ children }) => {
     await fetch("/auth/logout", { method: "POST", credentials: "include" });
     setUser(null);
     setEvents([]);
+    setSelectedEvent(null); // Clear selected event when logging out
     // Preferences will be cleared in the useEffect when user becomes null
   };
 
@@ -637,6 +638,7 @@ export const AppProvider = ({ children }) => {
       setEvents([]);
       setListservCalendarId(null);
       setAllEventsForCounts([]);
+      setSelectedEvent(null); // Clear selected event when user logs out
       // Clear preferences when logging out
       setSelectedOrgCats(new Set());
       setSelectedCats(new Set());
