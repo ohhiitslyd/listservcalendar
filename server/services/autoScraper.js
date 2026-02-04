@@ -120,6 +120,15 @@ function createOAuthClientFromTokens(tokenData) {
 }
 
 /**
+ * Format a Date object as YYYY-MM-DDTHH:MM:SS using local time components
+ * (avoids .toISOString() which shifts to UTC).
+ */
+export function formatLocalDateTime(d) {
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
+/**
  * Helper function to combine date and time into ISO string
  * @param {string} date - Date in YYYY-MM-DD format
  * @param {string} time - Time in HH:MM:SS or HH:MM format (may contain spaces)
@@ -149,23 +158,16 @@ export function combineDateTime(date, time, allDay) {
   
   // Combine date and time with 'T' separator
   const combined = `${date}T${timeWithSeconds}`;
-  
-  // Validate and normalize using Date object to ensure proper ISO format
-  try {
-    const dateObj = new Date(combined);
-    if (isNaN(dateObj.getTime())) {
-      console.warn(`[combineDateTime] Invalid datetime: ${combined}, returning date only`);
-      return date;
-    }
-    // Return ISO string format (YYYY-MM-DDTHH:MM:SS)
-    // Remove milliseconds and timezone (Z) for database storage
-    // toISOString() returns "2026-01-27T19:30:00.000Z", we want "2026-01-27T19:30:00"
-    const isoString = dateObj.toISOString();
-    return isoString.split('.')[0].replace('Z', '');
-  } catch (error) {
-    console.warn(`[combineDateTime] Error parsing datetime: ${combined}, returning date only`, error);
+
+  // Validate the combined string is a real datetime, but return the
+  // original string — NOT a Date-roundtripped one — to avoid UTC conversion.
+  // new Date("2026-01-27T19:30:00").toISOString() would shift to UTC,
+  // turning 7:30 PM EST into 12:30 AM the next day.
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/.test(combined)) {
+    console.warn(`[combineDateTime] Unexpected format: ${combined}, returning date only`);
     return date;
   }
+  return combined;
 }
 
 /**
@@ -236,8 +238,8 @@ async function processUnprocessedEmails(userId, pool, oauth2Client) {
               );
               const cappedEnd = new Date(startMs + 14 * 24 * 60 * 60 * 1000);
               end = event.allDay
-                ? cappedEnd.toISOString().split("T")[0]
-                : cappedEnd.toISOString().split('.')[0].replace('Z', '');
+                ? `${cappedEnd.getFullYear()}-${String(cappedEnd.getMonth() + 1).padStart(2, "0")}-${String(cappedEnd.getDate()).padStart(2, "0")}`
+                : formatLocalDateTime(cappedEnd);
             }
           }
 
@@ -246,8 +248,7 @@ async function processUnprocessedEmails(userId, pool, oauth2Client) {
             const startDate = new Date(start);
             const endDate = new Date(startDate);
             endDate.setHours(endDate.getHours() + 1);
-            // Normalize to match combineDateTime format (YYYY-MM-DDTHH:MM:SS, no milliseconds or Z)
-            end = endDate.toISOString().split('.')[0].replace('Z', '');
+            end = formatLocalDateTime(endDate);
           }
 
           // Check for duplicate from same email (prevent LLM parsing same event twice)
