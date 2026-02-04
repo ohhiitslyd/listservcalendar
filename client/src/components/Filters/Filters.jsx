@@ -324,49 +324,36 @@ export const Filters = ({ onClose, showHeader = true, onPendingKeyChange }) => {
     return colors[typeKey] || '#d4e9c4'; // default green
   };
 
-  // Helper function to check if all children of a type are selected
+  // All organizations under a type (flattened from all subcategories); no "Organizations" subcategory row in UI
+  const getTypeOrganizations = (type) => {
+    const orgs = [];
+    Object.values(type.subcategories || {}).forEach((sub) => {
+      Object.values(sub.organizations || {}).forEach((org) => orgs.push(org));
+    });
+    return orgs;
+  };
+
+  // Type is "all selected" when every organization under it is selected
   const areAllTypeChildrenSelected = (type, selectedSet) => {
-    return Object.values(type.subcategories).every(sub => selectedSet.has(sub.key));
-  };
-
-  // Helper function to check if all children of a subcategory are selected
-  const areAllSubcategoryChildrenSelected = (sub, selectedSet) => {
-    return Object.values(sub.organizations).every(org => selectedSet.has(org.key));
-  };
-
-  const hasSelectedInSubcategory = (sub) => {
-    if (pendingSelectedOrgCats.has(sub.key)) return true;
-    return Object.values(sub.organizations).some(org => pendingSelectedOrgCats.has(org.key));
+    const orgs = getTypeOrganizations(type);
+    return orgs.length > 0 && orgs.every((org) => selectedSet.has(org.key));
   };
 
   const hasSelectedInType = (type) => {
     if (pendingSelectedOrgCats.has(type.key)) return true;
-    return Object.values(type.subcategories).some(sub => hasSelectedInSubcategory(sub));
+    return getTypeOrganizations(type).some((org) => pendingSelectedOrgCats.has(org.key));
   };
 
-  // Helper function to update parent selection based on children
+  // Update parent selection: type (and sub keys for backend) based on whether all orgs are selected
   const updateParentSelection = (next, orgHierarchy) => {
-    // First, check all subcategories - if all organizations are selected, select the subcategory
-    Object.values(orgHierarchy).forEach(type => {
-      Object.values(type.subcategories).forEach(sub => {
-        const allOrgsSelected = areAllSubcategoryChildrenSelected(sub, next);
-        if (allOrgsSelected && Object.keys(sub.organizations).length > 0) {
-          next.add(sub.key);
-        } else {
-          // If not all organizations are selected, deselect the subcategory
-          next.delete(sub.key);
-        }
-      });
-    });
-    
-    // Then, check all types - if all subcategories are selected, select the type
-    Object.values(orgHierarchy).forEach(type => {
-      const allSubsSelected = areAllTypeChildrenSelected(type, next);
-      if (allSubsSelected && Object.keys(type.subcategories).length > 0) {
+    Object.values(orgHierarchy).forEach((type) => {
+      const allOrgsSelected = areAllTypeChildrenSelected(type, next);
+      if (allOrgsSelected) {
         next.add(type.key);
+        Object.values(type.subcategories || {}).forEach((sub) => next.add(sub.key));
       } else {
-        // If not all subcategories are selected, deselect the type
         next.delete(type.key);
+        Object.values(type.subcategories || {}).forEach((sub) => next.delete(sub.key));
       }
     });
   };
@@ -514,14 +501,15 @@ export const Filters = ({ onClose, showHeader = true, onPendingKeyChange }) => {
               const typeColor = getCategoryColor(type.key);
               const typeSelected = pendingSelectedOrgCats.has(type.key);
               const isExpanded = expandedCategories.has(type.key) || hasSelectedInType(type) || !!orgSearch.trim();
-              const hasSubcategories = Object.keys(type.subcategories).length > 0;
-              
+              const typeOrgs = getTypeOrganizations(type);
+              const hasOrganizations = typeOrgs.length > 0;
+
               return (
                 <div key={type.key} className="org-filter-group">
                   {/* Type level */}
                   <div className="org-filter-item">
                     <label className="org-filter-label">
-                      {hasSubcategories && (
+                      {hasOrganizations && (
                         <button
                           type="button"
                           className="org-filter-expand-btn"
@@ -530,13 +518,13 @@ export const Filters = ({ onClose, showHeader = true, onPendingKeyChange }) => {
                             toggleCategoryExpansion(type.key);
                           }}
                         >
-                          <svg 
-                            className={`org-filter-expand-icon ${isExpanded ? 'expanded' : ''}`}
-                            width="16" 
-                            height="16" 
-                            viewBox="0 0 24 24" 
-                            fill="none" 
-                            stroke="currentColor" 
+                          <svg
+                            className={`org-filter-expand-icon ${isExpanded ? "expanded" : ""}`}
+                            width="16"
+                            height="16"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
                             strokeWidth="2"
                           >
                             <polyline points="6 9 12 15 18 9"></polyline>
@@ -552,103 +540,47 @@ export const Filters = ({ onClose, showHeader = true, onPendingKeyChange }) => {
                       />
                       <span className="org-filter-name">{type.label}</span>
                     </label>
-                    <span 
-                      className={`org-filter-count ${typeSelected ? 'selected' : ''}`}
-                      style={{ 
-                        backgroundColor: typeSelected ? typeColor : 'transparent',
+                    <span
+                      className={`org-filter-count ${typeSelected ? "selected" : ""}`}
+                      style={{
+                        backgroundColor: typeSelected ? typeColor : "transparent",
                         borderColor: typeColor,
-                        color: typeSelected ? '#000' : '#000'
+                        color: typeSelected ? "#000" : "#000",
                       }}
                     >
                       {type.count}
                     </span>
                   </div>
 
-                  {/* Subcategories - only show if expanded */}
-                  {isExpanded && Object.values(type.subcategories).map((sub) => {
-                    const subSelected = pendingSelectedOrgCats.has(sub.key);
-                    const hasOrganizations = Object.keys(sub.organizations).length > 0;
-                    const isSubExpanded = expandedCategories.has(sub.key) || hasSelectedInSubcategory(sub) || !!orgSearch.trim();
-
-            return (
-                      <div key={sub.key}>
-                        <div className="org-filter-item org-filter-item-indented">
+                  {/* Organizations directly under type (no "Organizations" subcategory row) */}
+                  {isExpanded &&
+                    typeOrgs.map((org) => {
+                      const orgSelected = pendingSelectedOrgCats.has(org.key);
+                      return (
+                        <div key={org.key} className="org-filter-item org-filter-item-indented">
                           <label className="org-filter-label">
-                            {hasOrganizations && (
-              <button
-                type="button"
-                                className="org-filter-expand-btn"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  toggleCategoryExpansion(sub.key);
-                                }}
-                              >
-                                <svg 
-                                  className={`org-filter-expand-icon ${isSubExpanded ? 'expanded' : ''}`}
-                                  width="16" 
-                                  height="16" 
-                                  viewBox="0 0 24 24" 
-                                  fill="none" 
-                                  stroke="currentColor" 
-                                  strokeWidth="2"
-                                >
-                                  <polyline points="6 9 12 15 18 9"></polyline>
-                                </svg>
-              </button>
-                            )}
                             <input
                               type="checkbox"
-                              checked={subSelected}
-                              onChange={() => toggleOrgCategory(sub.key)}
+                              checked={orgSelected}
+                              onChange={() => toggleOrgCategory(org.key)}
                               className="org-filter-checkbox"
                               onClick={(e) => e.stopPropagation()}
                             />
-                            <span className="org-filter-name">{sub.label}</span>
+                            <span className="org-filter-name">{org.label}</span>
                           </label>
-                          <span 
-                            className={`org-filter-count ${subSelected ? 'selected' : ''}`}
-                            style={{ 
-                              backgroundColor: subSelected ? typeColor : 'transparent',
+                          <span
+                            className={`org-filter-count ${orgSelected ? "selected" : ""}`}
+                            style={{
+                              backgroundColor: orgSelected ? typeColor : "transparent",
                               borderColor: typeColor,
-                              color: subSelected ? '#000' : '#000'
+                              color: orgSelected ? "#000" : "#000",
                             }}
                           >
-                            {sub.count}
+                            {org.count}
                           </span>
                         </div>
-                        {/* Organizations - only show if subcategory is expanded */}
-                        {isSubExpanded && (() => {
-                          const orgs = Object.values(sub.organizations);
-                          return orgs.map((org) => {
-                            const orgSelected = pendingSelectedOrgCats.has(org.key);
-                            return (
-                              <div key={org.key} className="org-filter-item org-filter-item-double-indented">
-                                <label className="org-filter-label">
-                                  <input
-                                    type="checkbox"
-                                    checked={orgSelected}
-                                    onChange={() => toggleOrgCategory(org.key)}
-                                    className="org-filter-checkbox"
-                                  />
-                                  <span className="org-filter-name">{org.label}</span>
-                                </label>
-                                <span 
-                                  className={`org-filter-count ${orgSelected ? 'selected' : ''}`}
-                                  style={{ 
-                                    backgroundColor: orgSelected ? typeColor : 'transparent',
-                                    borderColor: typeColor,
-                                    color: orgSelected ? '#000' : '#000'
-                                  }}
-                                >
-                                  {org.count}
-                                </span>
-                              </div>
-                            );
-                          });
-                        })()}
-                      </div>
-                    );
-                  })}
+                      );
+                    })}
                 </div>
               );
             })}
