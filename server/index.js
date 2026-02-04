@@ -1122,16 +1122,15 @@ app.get("/api/events", ensureAuthed, async (req, res) => {
         const evtEmail = String(ev.organization_email || "").trim().toLowerCase();
 
         const matchesTags =
-          reqCategories.length === 0
-            ? true
-            : tags.some((t) => reqCategories.includes(t));
+          reqCategories.length > 0 &&
+          tags.some((t) => reqCategories.includes(t));
 
         const matchesOrg =
-          allowedOrgEmails.size === 0
-            ? true
-            : (evtEmail && allowedOrgEmails.has(evtEmail));
+          allowedOrgEmails.size > 0 &&
+          evtEmail && allowedOrgEmails.has(evtEmail);
 
-        const matches = matchesTags && matchesOrg;
+        // OR logic: match if EITHER filter type matches
+        const matches = matchesTags || matchesOrg;
         return exclude ? !matches : matches;
       });
     }
