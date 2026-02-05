@@ -308,12 +308,18 @@ const InnerApp = () => {
                     aria-expanded={eventTypesOpen}
                   >
                     <span className="selected-filters-group-title">Event types</span>
-                    <span
+                    <svg
                       className={`selected-filters-group-caret ${eventTypesOpen ? "open" : ""}`}
+                      width="16"
+                      height="16"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
                       aria-hidden="true"
                     >
-                      v
-                    </span>
+                      <polyline points="6 9 12 15 18 9"></polyline>
+                    </svg>
                   </button>
                   {eventTypesOpen && (
                     <div className="selected-filters-group-chips">
@@ -343,12 +349,18 @@ const InnerApp = () => {
                     aria-expanded={orgsOpen}
                   >
                     <span className="selected-filters-group-title">Organizations</span>
-                    <span
+                    <svg
                       className={`selected-filters-group-caret ${orgsOpen ? "open" : ""}`}
+                      width="16"
+                      height="16"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
                       aria-hidden="true"
                     >
-                      v
-                    </span>
+                      <polyline points="6 9 12 15 18 9"></polyline>
+                    </svg>
                   </button>
                   {orgsOpen && (
                     <div className="selected-filters-group-chips">

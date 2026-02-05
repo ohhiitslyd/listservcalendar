@@ -132,14 +132,16 @@
   padding: 0;
   cursor: pointer;
   text-align: left;
+  color: #666;
+}
+
+.selected-filters-group-toggle:hover {
+  color: #000;
 }
 
 .selected-filters-group-caret {
-  font-size: 12px;
-  font-weight: 600;
-  font-family: 'Poppins', sans-serif;
-  color: #000000;
   display: inline-block;
+  color: inherit;
   transform: rotate(-90deg);
   transition: transform 0.2s ease;
 }
