@@ -16,7 +16,7 @@ import { fileURLToPath } from "url";
 // Configuration
 const LLM_CONFIG = {
   model: "gpt-5-mini",
-  temperature: 0.3,
+  temperature: 1,
   maxTokens: 600,
   maxRetries: 3,
   retryDelayMs: 1000,
