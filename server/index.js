@@ -1008,6 +1008,12 @@ app.get("/api/events", ensureAuthed, async (req, res) => {
 
     const allEvents = [];
     for (const calId of requestedIds) {
+      // Skip listserv calendar — DB events are the source of truth for listserv
+      // This prevents duplicates (DB event + GCal copy of same event)
+      if (calId === listservCalendarId) {
+        console.log(`[api/events] Skipping listserv calendar ${calId} (using DB as source)`);
+        continue;
+      }
       try {
       const googleResp = await calendar.events.list({
         calendarId: calId,
