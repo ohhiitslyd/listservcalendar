@@ -500,7 +500,10 @@ export const Filters = ({ onClose, showHeader = true, onPendingKeyChange }) => {
             {filteredOrgHierarchy && Object.values(filteredOrgHierarchy).map((type) => {
               const typeColor = getCategoryColor(type.key);
               const typeSelected = pendingSelectedOrgCats.has(type.key);
-              const isExpanded = expandedCategories.has(type.key) || hasSelectedInType(type) || !!orgSearch.trim();
+              const typePartiallySelected =
+                !typeSelected && getTypeOrganizations(type).some((org) => pendingSelectedOrgCats.has(org.key));
+              const typeHighlighted = typeSelected || typePartiallySelected;
+              const isExpanded = expandedCategories.has(type.key) || !!orgSearch.trim();
               const typeOrgs = getTypeOrganizations(type);
               const hasOrganizations = typeOrgs.length > 0;
 
@@ -535,17 +538,18 @@ export const Filters = ({ onClose, showHeader = true, onPendingKeyChange }) => {
                         type="checkbox"
                         checked={typeSelected}
                         onChange={() => toggleOrgCategory(type.key)}
-                        className="org-filter-checkbox"
+                        className={`org-filter-checkbox ${typePartiallySelected ? "partial" : ""}`}
+                        aria-checked={typePartiallySelected ? "mixed" : typeSelected}
                         onClick={(e) => e.stopPropagation()}
                       />
                       <span className="org-filter-name">{type.label}</span>
                     </label>
                     <span
-                      className={`org-filter-count ${typeSelected ? "selected" : ""}`}
+                      className={`org-filter-count ${typeHighlighted ? "selected" : ""}`}
                       style={{
-                        backgroundColor: typeSelected ? typeColor : "transparent",
+                        backgroundColor: typeHighlighted ? typeColor : "transparent",
                         borderColor: typeColor,
-                        color: typeSelected ? "#000" : "#000",
+                        color: typeHighlighted ? "#000" : "#000",
                       }}
                     >
                       {type.count}
