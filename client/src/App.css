@@ -122,6 +122,32 @@
   gap: 8px;
 }
 
+.selected-filters-group-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  background: transparent;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  text-align: left;
+}
+
+.selected-filters-group-caret {
+  font-size: 12px;
+  font-weight: 600;
+  font-family: 'Poppins', sans-serif;
+  color: #000000;
+  display: inline-block;
+  transform: rotate(-90deg);
+  transition: transform 0.2s ease;
+}
+
+.selected-filters-group-caret.open {
+  transform: rotate(0deg);
+}
+
 .selected-filters-group-title {
   font-size: 12px;
   font-weight: 600;

@@ -50,6 +50,8 @@ const InnerApp = () => {
   const [isPublishing, setIsPublishing] = useState(false);
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
   const [lastPublishedKey, setLastPublishedKey] = useState(null);
+  const [eventTypesOpen, setEventTypesOpen] = useState(true);
+  const [orgsOpen, setOrgsOpen] = useState(true);
 
   const selectedOrgChips = useMemo(() => {
     if (!availableOrgCats || !selectedOrgCats) return [];
@@ -299,42 +301,72 @@ const InnerApp = () => {
             <div className="selected-filters-chips">
               {selectedEventTypeChips.length > 0 && (
                 <div className="selected-filters-group">
-                  <span className="selected-filters-group-title">Event types</span>
-                  <div className="selected-filters-group-chips">
-                    {selectedEventTypeChips.map((chip) => (
-                      <span key={chip.key} className="selected-filter-chip">
-                        <span className="selected-filter-chip-label">{chip.label}</span>
-                        <button
-                          type="button"
-                          className="selected-filter-chip-remove"
-                          onClick={() => handleRemoveEventTypeChip(chip.key)}
-                          aria-label={`Remove ${chip.label}`}
-                        >
-                          ×
-                        </button>
-                      </span>
-                    ))}
-                  </div>
+                  <button
+                    type="button"
+                    className="selected-filters-group-toggle"
+                    onClick={() => setEventTypesOpen((prev) => !prev)}
+                    aria-expanded={eventTypesOpen}
+                  >
+                    <span className="selected-filters-group-title">Event types</span>
+                    <span
+                      className={`selected-filters-group-caret ${eventTypesOpen ? "open" : ""}`}
+                      aria-hidden="true"
+                    >
+                      v
+                    </span>
+                  </button>
+                  {eventTypesOpen && (
+                    <div className="selected-filters-group-chips">
+                      {selectedEventTypeChips.map((chip) => (
+                        <span key={chip.key} className="selected-filter-chip">
+                          <span className="selected-filter-chip-label">{chip.label}</span>
+                          <button
+                            type="button"
+                            className="selected-filter-chip-remove"
+                            onClick={() => handleRemoveEventTypeChip(chip.key)}
+                            aria-label={`Remove ${chip.label}`}
+                          >
+                            ×
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
               {selectedOrgChips.length > 0 && (
                 <div className="selected-filters-group">
-                  <span className="selected-filters-group-title">Organizations</span>
-                  <div className="selected-filters-group-chips">
-                    {selectedOrgChips.map((chip) => (
-                      <span key={chip.key} className="selected-filter-chip">
-                        <span className="selected-filter-chip-label">{chip.label}</span>
-                        <button
-                          type="button"
-                          className="selected-filter-chip-remove"
-                          onClick={() => handleRemoveOrgChip(chip.key)}
-                          aria-label={`Remove ${chip.label}`}
-                        >
-                          ×
-                        </button>
-                      </span>
-                    ))}
-                  </div>
+                  <button
+                    type="button"
+                    className="selected-filters-group-toggle"
+                    onClick={() => setOrgsOpen((prev) => !prev)}
+                    aria-expanded={orgsOpen}
+                  >
+                    <span className="selected-filters-group-title">Organizations</span>
+                    <span
+                      className={`selected-filters-group-caret ${orgsOpen ? "open" : ""}`}
+                      aria-hidden="true"
+                    >
+                      v
+                    </span>
+                  </button>
+                  {orgsOpen && (
+                    <div className="selected-filters-group-chips">
+                      {selectedOrgChips.map((chip) => (
+                        <span key={chip.key} className="selected-filter-chip">
+                          <span className="selected-filter-chip-label">{chip.label}</span>
+                          <button
+                            type="button"
+                            className="selected-filter-chip-remove"
+                            onClick={() => handleRemoveOrgChip(chip.key)}
+                            aria-label={`Remove ${chip.label}`}
+                          >
+                            ×
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
               {selectedOrgChips.length === 0 && selectedEventTypeChips.length === 0 && (
