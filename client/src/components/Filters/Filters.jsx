@@ -354,6 +354,24 @@ export const Filters = ({ onClose, showHeader = true, onPendingKeyChange, autoFo
     return getTypeOrganizations(type).some((org) => pendingSelectedOrgCats.has(org.key));
   };
 
+  // Clear ALL filters in a given top-level type (its type key, subcategories, and orgs)
+  const clearAllForType = (type) => {
+    setPendingSelectedOrgCats((prev) => {
+      const next = new Set(prev);
+      // Remove the type key itself
+      next.delete(type.key);
+      // Remove all orgs under this type
+      getTypeOrganizations(type).forEach((org) => {
+        next.delete(org.key);
+      });
+      // Remove any subcategory keys under this type
+      Object.values(type.subcategories || {}).forEach((sub) => {
+        next.delete(sub.key);
+      });
+      return next;
+    });
+  };
+
   // Update parent selection: type (and sub keys for backend) based on whether all orgs are selected
   const updateParentSelection = (next, orgHierarchy) => {
     Object.values(orgHierarchy).forEach((type) => {
@@ -554,7 +572,16 @@ export const Filters = ({ onClose, showHeader = true, onPendingKeyChange, autoFo
                       <input
                         type="checkbox"
                         checked={typeSelected}
-                        onChange={() => toggleOrgCategory(type.key)}
+                        onChange={() => {
+                          if (typeHighlighted) {
+                            // If any filters in this category are active, clicking the type checkbox
+                            // should clear ALL filters in this category (type + all orgs).
+                            clearAllForType(type);
+                          } else {
+                            // No filters currently selected in this category → behave as normal toggle (select all)
+                            toggleOrgCategory(type.key);
+                          }
+                        }}
                         className={`org-filter-checkbox ${typePartiallySelected ? "partial" : ""}`}
                         aria-checked={typePartiallySelected ? "mixed" : typeSelected}
                         onClick={(e) => e.stopPropagation()}
@@ -567,6 +594,14 @@ export const Filters = ({ onClose, showHeader = true, onPendingKeyChange, autoFo
                         backgroundColor: typeHighlighted ? typeColor : "transparent",
                         borderColor: typeColor,
                         color: typeHighlighted ? "#000" : "#000",
+                      }}
+                      title={typeHighlighted ? "Remove all filters in this category" : ""}
+                      data-tooltip={typeHighlighted ? "Remove all filters in this category" : undefined}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (typeHighlighted) {
+                          clearAllForType(type);
+                        }
                       }}
                     >
                       {type.count}

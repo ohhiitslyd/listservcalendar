@@ -262,6 +262,25 @@
 
 .org-filter-count.selected {
   box-shadow: none;
+  position: relative;
+  cursor: pointer;
+}
+
+.org-filter-count[data-tooltip]:hover::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  left: 50%;
+  top: -26px;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  background: #111827;
+  color: #ffffff;
+  font-size: 11px;
+  font-family: 'Poppins', sans-serif;
+  padding: 4px 8px;
+  border-radius: 6px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+  z-index: 10;
 }
 
 /* Footer */
