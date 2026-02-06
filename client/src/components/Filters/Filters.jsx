@@ -4,7 +4,7 @@ import { AppContext } from "../../context/AppContext";
 import { api } from "../../api/calendarApi";
 import "./Filters.css";
 
-export const Filters = ({ onClose, showHeader = true, onPendingKeyChange }) => {
+export const Filters = ({ onClose, showHeader = true, onPendingKeyChange, autoFocusOrgSearch = false }) => {
   const {
     //tag level cats
     availableCats,
@@ -36,6 +36,7 @@ export const Filters = ({ onClose, showHeader = true, onPendingKeyChange }) => {
   const [activeTab, setActiveTab] = useState("organizations");
   const [expandedCategories, setExpandedCategories] = useState(new Set());
   const [orgSearch, setOrgSearch] = useState("");
+  const orgSearchInputRef = useRef(null);
 
   // Local/pending state - only committed to context when "Apply Filters" is clicked
   const [pendingSelectedCats, setPendingSelectedCats] = useState(new Set(selectedCats));
@@ -44,6 +45,15 @@ export const Filters = ({ onClose, showHeader = true, onPendingKeyChange }) => {
 
   // Skip the first effect run so we don't refetch when dropdown just opens
   const skipFirstPreviewRef = useRef(true);
+
+  // When `autoFocusOrgSearch` is true (e.g. user clicked the left‑panel search bar),
+  // focus and select the organization search input as soon as the drawer opens.
+  useEffect(() => {
+    if (autoFocusOrgSearch && orgSearchInputRef.current) {
+      orgSearchInputRef.current.focus();
+      orgSearchInputRef.current.select();
+    }
+  }, [autoFocusOrgSearch]);
 
   // Keep a ref of the latest pending state so we can commit it on unmount (when user closes dropdown)
   const pendingStateRef = useRef({
@@ -495,6 +505,7 @@ export const Filters = ({ onClose, showHeader = true, onPendingKeyChange }) => {
                 value={orgSearch}
                 onChange={(event) => setOrgSearch(event.target.value)}
                 className="org-filters-search-input"
+                ref={orgSearchInputRef}
               />
             </div>
             {filteredOrgHierarchy && Object.values(filteredOrgHierarchy).map((type) => {

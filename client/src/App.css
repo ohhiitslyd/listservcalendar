@@ -37,6 +37,32 @@
   box-shadow: 3px 0 6px rgba(0, 0, 0, 0.08);
 }
 
+.left-panel-search-bar {
+  margin-bottom: 8px;
+}
+
+.left-panel-search-input {
+  width: 100%;
+  border: 1px solid #d4e9c4;
+  border-radius: 999px;
+  padding: 8px 12px;
+  font-size: 14px;
+  font-family: 'Poppins', sans-serif;
+  color: #000000;
+  background-color: #ffffff;
+  outline: none;
+  cursor: text;
+}
+
+.left-panel-search-input::placeholder {
+  color: #9ca3af;
+}
+
+.left-panel-search-input:focus {
+  border-color: #9fbe8b;
+  box-shadow: 0 0 0 2px rgba(212, 233, 196, 0.4);
+}
+
 
 .app-left-panel h3 {
   margin-top: 0;

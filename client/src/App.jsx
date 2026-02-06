@@ -44,6 +44,7 @@ const InnerApp = () => {
     // because we will define them locally (see below).
   } = useContext(AppContext);
   const [filtersDrawerOpen, setFiltersDrawerOpen] = useState(false);
+  const [filtersShouldFocusSearch, setFiltersShouldFocusSearch] = useState(false);
   const [pendingPublishKey, setPendingPublishKey] = useState(null);
   const [showPublishConfirm, setShowPublishConfirm] = useState(false);
   const [publishResult, setPublishResult] = useState(null);
@@ -276,7 +277,10 @@ const InnerApp = () => {
   return (
     <div className="app-container">
       <Header
-        onOpenFilters={() => setFiltersDrawerOpen(true)}
+        onOpenFilters={() => {
+          setFiltersShouldFocusSearch(false);
+          setFiltersDrawerOpen(true);
+        }}
         onPublish={() => {
           if (isPublishing || publishResult) return;
           setShowPublishConfirm(true);
@@ -286,6 +290,22 @@ const InnerApp = () => {
 
       <div className="app-content">
         <div className="app-left-panel">
+          <div className="left-panel-search-bar">
+            <input
+              type="text"
+              className="left-panel-search-input"
+              placeholder="Search organizations..."
+              readOnly
+              onClick={() => {
+                setFiltersShouldFocusSearch(true);
+                setFiltersDrawerOpen(true);
+              }}
+              onFocus={() => {
+                setFiltersShouldFocusSearch(true);
+                setFiltersDrawerOpen(true);
+              }}
+            />
+          </div>
           <div className="selected-filters-panel">
             <div className="selected-filters-header">
               <span className="selected-filters-title">Selected filters</span>
@@ -418,6 +438,7 @@ const InnerApp = () => {
           onClick={() => {
             setFiltersDrawerOpen(false);
             setPendingPublishKey(null);
+            setFiltersShouldFocusSearch(false);
           }}
         >
           <div
@@ -432,6 +453,7 @@ const InnerApp = () => {
                 onClick={() => {
                   setFiltersDrawerOpen(false);
                   setPendingPublishKey(null);
+                  setFiltersShouldFocusSearch(false);
                 }}
               >
                 ✕
@@ -441,9 +463,11 @@ const InnerApp = () => {
               onClose={() => {
                 setFiltersDrawerOpen(false);
                 setPendingPublishKey(null);
+                setFiltersShouldFocusSearch(false);
               }}
               showHeader={false}
               onPendingKeyChange={setPendingPublishKey}
+              autoFocusOrgSearch={filtersShouldFocusSearch}
             />
           </div>
         </div>
