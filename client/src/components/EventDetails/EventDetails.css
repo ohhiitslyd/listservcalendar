@@ -1,53 +1,19 @@
 /* src/components/EventDetails/EventDetails.css */
 
-/* Right‑hand panel */
-.app-right-panel {
-  flex-shrink: 0;
-  width: 262px;
-  overflow-y: auto;
-  background: white;
-  border-left: 0.5px solid #e5e7eb;
-}
-
-.app-right-panel h3 {
-  margin-top: 0;
-  font-size: 14px;
-  font-weight: 600;
-}
-
-.app-right-panel p {
-  font-size: 12px;
-  color: #666;
-  margin: 0;
-}
-
-/* Placeholder when no event is selected */
-.event-details-placeholder {
-  padding: 20px;
-  font-family: 'Poppins', sans-serif;
-}
-
-.event-details-placeholder h3 {
-  font-family: 'Poppins', sans-serif;
-  margin: 0 0 8px 0;
-}
-
-.event-details-placeholder p {
-  font-family: 'Poppins', sans-serif;
-  margin: 0;
-}
-
 /* Card that appears when an event is selected */
 .event-details-card {
   position: relative;
   background: #fff;
-  height: 100%;
   box-sizing: border-box;
   font-family: 'Poppins', sans-serif;
-  border: none;
-  border-radius: 0 !important;
+  border-radius: 12px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
   display: flex;
   flex-direction: column;
+  min-width: 260px;
+  max-width: 320px;
+  max-height: 420px; /* keep card within viewport; content scrolls if taller */
+  overflow: hidden;
 }
 
 /* Header with colored background */

@@ -1,16 +1,10 @@
 // src/components/DateBar/DateBar.jsx
-import React, { useContext, useState, useEffect, useMemo } from "react";
+import React, { useContext, useState, useEffect } from "react";
 import { AppContext } from "../../context/AppContext";
 import "./DateBar.css";
 
 export const DateBar = () => {
-  const {
-    calendarRef,
-    currentViewRange,
-    events,
-    listservCalendarId,
-    tagColorMap,
-  } = useContext(AppContext);
+  const { calendarRef, currentViewRange } = useContext(AppContext);
   const [currentView, setCurrentView] = useState("timeGridWeek");
   const [dateRange, setDateRange] = useState("");
 
@@ -102,39 +96,6 @@ export const DateBar = () => {
     }
   };
 
-  // Build a legend of EVENT TYPE TAGS (from ev.tags) and their colors
-  const typeLegend = useMemo(() => {
-    if (!events || !Array.isArray(events) || !tagColorMap) return [];
-    const seen = new Set();
-    const legend = [];
-
-    events.forEach((ev) => {
-      // Only consider ListServ events for the legend
-      const isListServ =
-        ev.calendarId === listservCalendarId ||
-        ev.source === "draft" ||
-        ev.source === "email";
-      if (!isListServ) return;
-
-      const tags = ev.tags || ev?.extendedProps?.tags || [];
-      tags.forEach((tag) => {
-        const key = String(tag || "");
-        if (!key || seen.has(key)) return;
-        const color = tagColorMap[key];
-        if (!color) return;
-        seen.add(key);
-        legend.push({
-          key,
-          color,
-          label: key,
-        });
-      });
-    });
-
-    // Sort alphabetically by label for stable display
-    return legend.sort((a, b) => a.label.localeCompare(b.label));
-  }, [events, listservCalendarId, tagColorMap]);
-
   return (
     <div className="date-bar">
       <div className="date-bar-left">
@@ -166,19 +127,6 @@ export const DateBar = () => {
         </button>
       </div>
       <div className="date-bar-right">
-        {typeLegend.length > 0 && (
-          <div className="date-bar-legend">
-            {typeLegend.map((item) => (
-              <div key={item.key} className="date-bar-legend-item">
-                <span
-                  className="date-bar-legend-swatch"
-                  style={{ backgroundColor: item.color }}
-                />
-                <span className="date-bar-legend-label">{item.label}</span>
-              </div>
-            ))}
-          </div>
-        )}
         <div className="date-bar-view-toggle">
           <button 
             className={`date-bar-view-btn ${currentView === "timeGridWeek" ? "active" : ""}`}

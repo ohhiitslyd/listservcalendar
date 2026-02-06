@@ -89,34 +89,6 @@
   gap: 12px;
 }
 
-.date-bar-legend {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  max-width: 480px;
-  flex-wrap: wrap;
-}
-
-.date-bar-legend-item {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-family: 'Poppins', sans-serif;
-  font-size: 11px;
-  color: #4b5563;
-}
-
-.date-bar-legend-swatch {
-  width: 10px;
-  height: 10px;
-  border-radius: 3px;
-  border: 1px solid rgba(0, 0, 0, 0.1);
-}
-
-.date-bar-legend-label {
-  white-space: nowrap;
-}
-
 .date-bar-view-toggle {
   display: flex;
   align-items: center;

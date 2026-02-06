@@ -17,6 +17,11 @@
   padding: 0px 40px 0px 40px;
 }
 
+/* Floating event details overlay (shown next to clicked event) */
+.event-details-overlay {
+  z-index: 1500;
+}
+
 /* Make FullCalendar fill the whole wrapper */
 .fc {
   height: 100% !important;
@@ -112,6 +117,17 @@
   font-family: 'Poppins', sans-serif;
   font-size: 12px;
   font-weight: 400;
+}
+
+/* Ensure ListServ events visually sit on top of primary calendar events */
+.fc-event-listserv {
+  position: relative;
+  z-index: 20;
+}
+
+.fc-event-other {
+  position: relative;
+  z-index: 10;
 }
 
 .fc-event-title {

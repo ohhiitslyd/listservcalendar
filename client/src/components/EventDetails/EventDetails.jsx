@@ -13,12 +13,7 @@ export const EventDetails = () => {
   } = useContext(AppContext);
 
   if (!selectedEvent) {
-    return (
-      <div className="event-details-placeholder">
-        <h3>Event Details</h3>
-        <p>Click an event to see its details here.</p>
-      </div>
-    );
+    return null;
   }
 
   const isDraft = selectedEvent.id.startsWith("draft:");

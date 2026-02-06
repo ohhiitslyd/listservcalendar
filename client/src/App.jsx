@@ -23,7 +23,6 @@ const InnerApp = () => {
   const {
     user,
     visibleCalendars,
-    listservCalendarId,
     fetchEvents,
     setSelectionInfo,
     setEventForm,
@@ -39,6 +38,9 @@ const InnerApp = () => {
     setSelectedCats,
     setExcludeMode,
     excludeMode,
+    events,
+    tagColorMap,
+    listservCalendarId,
     logout,
     // **NOTE:** we *do not* destructure `onSelect` or `onEventClick`
     // because we will define them locally (see below).
@@ -273,6 +275,50 @@ const InnerApp = () => {
     await fetchEvents(Array.from(visibleCalendars));
   };
 
+  // Legend of event-type tags → colors (for right-hand panel)
+  const typeLegend = useMemo(() => {
+    if (!events || !Array.isArray(events) || !tagColorMap) return [];
+    const seen = new Set();
+    const legend = [];
+    let hasUntagged = false;
+
+    events.forEach((ev) => {
+      const isListServ =
+        ev.calendarId === listservCalendarId ||
+        ev.source === "draft" ||
+        ev.source === "email";
+      if (!isListServ) return;
+
+      const tags = ev.tags || ev?.extendedProps?.tags || [];
+      if (!tags || tags.length === 0) {
+        hasUntagged = true;
+      }
+
+      tags.forEach((tag) => {
+        const key = String(tag || "");
+        if (!key || seen.has(key)) return;
+        const color = tagColorMap[key];
+        if (!color) return;
+        seen.add(key);
+        legend.push({
+          key,
+          color,
+          label: key,
+        });
+      });
+    });
+
+    if (hasUntagged) {
+      legend.push({
+        key: "__untagged__",
+        color: "#e5e7eb",
+        label: "No event type tag",
+      });
+    }
+
+    return legend.sort((a, b) => a.label.localeCompare(b.label));
+  }, [events, listservCalendarId, tagColorMap]);
+
   /* -------------------------------------------------
      Render the UI layout
      ------------------------------------------------- */
@@ -425,21 +471,33 @@ const InnerApp = () => {
         <div className="app-main-panel">
           {/* MAIN CALENDAR – we forward the handlers with the names FullCalendar expects */}
         <Calendar
-          onEventClick={handleEventClick}
           onDatesSet={handleDatesSet}
           scrollTime="09:00"
         />
-        </div>
+      </div>
 
-        {/* RIGHT PANEL – event details */}
-        <div className="app-right-panel">
-          <EventDetails
-            selectedEvent={selectedEvent}
-            setSelectedEvent={setSelectedEvent}
-            handlePublishEvent={handlePublishEvent}
-            handleDeleteEvent={handleDeleteEvent}
-            listservCalendarId={listservCalendarId}
-          />
+        {/* RIGHT PANEL – event-type color legend */}
+        <div className="app-right-panel legend-right-panel">
+          <div className="legend-panel">
+            <h4 className="legend-title">Event type colors</h4>
+            {typeLegend.length === 0 ? (
+              <p className="legend-empty">
+                Event colors will appear here once events are loaded.
+              </p>
+            ) : (
+              <div className="legend-items">
+                {typeLegend.map((item) => (
+                  <div key={item.key} className="legend-item">
+                    <span
+                      className="legend-swatch"
+                      style={{ backgroundColor: item.color }}
+                    />
+                    <span className="legend-label">{item.label}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 

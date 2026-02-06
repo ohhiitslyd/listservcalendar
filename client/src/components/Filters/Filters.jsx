@@ -504,16 +504,19 @@ export const Filters = ({ onClose, showHeader = true, onPendingKeyChange, autoFo
             Event Types
           </button>
         </div>
-        <button
-          onClick={clearAll}
-          className="filters-clear-all-tab"
-        >
-          Clear All
-        </button>
       </div>
 
       {/* Content */}
       <div className="filters-content">
+        <div className="filters-clear-all-row">
+          <button
+            onClick={clearAll}
+            className="filters-clear-all-tab"
+            type="button"
+          >
+            Clear all filters
+          </button>
+        </div>
         {activeTab === 'organizations' ? (
           <div className="org-filters-list">
             <div className="org-filters-search">

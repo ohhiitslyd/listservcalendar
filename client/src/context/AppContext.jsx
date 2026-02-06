@@ -403,34 +403,18 @@ export const AppProvider = ({ children }) => {
         excludeParam,
       });
 
-      // Color mapping for EVENT TYPE TAGS (ev.tags)
-      const getTagColor = (tags) => {
-        if (!tags || tags.length === 0) return null;
-        for (const tag of tags) {
-          const key = String(tag || "");
-          if (tagColorMap[key]) return tagColorMap[key];
-        }
-        return null; // Default to CSS fallback when no matching tag color
-      };
-
       const transformed = (data.events || []).map((ev) => {
         // Listserv events: drafts, email-sourced, or Google Calendar listserv events
         const isListServ =
           ev.calendarId === listservCalendarId ||
           ev.source === "draft" ||
           ev.source === "email";
-        const categoryColor = isListServ
-          ? getTagColor(ev.tags)
-          : null;
-
         let className = isListServ ? "fc-event-listserv" : "fc-event-other";
 
         return {
           ...ev,
           className,
-          // Apply category color directly - this overrides the default green
-          backgroundColor: categoryColor || undefined,
-          borderColor: categoryColor || undefined,
+          // We handle visual coloring in Calendar.jsx based on tags + tagColorMap
           textColor: "#000000", // Always use black text for better readability
           extendedProps: {
             organization: ev.organization ?? "",
@@ -638,24 +622,24 @@ export const AppProvider = ({ children }) => {
         setPreferencesLoaded(true);
 
         // b) Now load calendars, categories, and org categories
-        fetchCalendars();
-        fetchWorkingCalendar();
-        fetchCategories(user);
+    fetchCalendars();
+    fetchWorkingCalendar();
+    fetchCategories(user);
 
-        try {
-          const res = await fetch("/api/org-categories", {
-            credentials: "include",
-          });
-          if (res.ok) {
-            const data = await res.json();
+      try {
+        const res = await fetch("/api/org-categories", {
+          credentials: "include",
+        });
+        if (res.ok) {
+          const data = await res.json();
             setAvailableOrgCats(data.categories || data.orgCategories || []);
-          } else {
-            setAvailableOrgCats([]);
-          }
-        } catch {
+        } else {
           setAvailableOrgCats([]);
         }
-      })();
+      } catch {
+        setAvailableOrgCats([]);
+      }
+    })();
     } else {
       // user logged out → clear all data
       setCalendars([]);

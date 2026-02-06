@@ -1,11 +1,12 @@
 // src/components/Calendar/Calendar.jsx
-import React, { useContext, useEffect } from "react";
+import React, { useContext, useEffect, useState } from "react";
 import FullCalendar from "@fullcalendar/react";
 import dayGridPlugin from "@fullcalendar/daygrid";
 import timeGridPlugin from "@fullcalendar/timegrid";
 import interactionPlugin from "@fullcalendar/interaction";
 
 import { AppContext } from "../../context/AppContext";
+import { EventDetails } from "../EventDetails/EventDetails";
 import { useEvents } from "../../hooks/useEvents";
 import { DateBar } from "../DateBar/DateBar";
 import "./Calendar.css";
@@ -35,15 +36,24 @@ const isLightColor = (hexColor) => {
 // 1. ACCEPT the props from App.jsx here
 export const Calendar = ({
   onSelect,
-  onEventClick,
   onDatesSet,
   scrollTime,
 }) => {
-  // 2. CLEAN UP: We only need `events` and `calendarRef` from context now.
-  //    The other variables were only for the handlers you're deleting.
-  const { filteredEvents, events, calendarRef } = useContext(AppContext);
+  // We need events, calendarRef, and selectedEvent to drive the overlay details card.
+  const {
+    filteredEvents,
+    events,
+    calendarRef,
+    selectedEvent,
+    setSelectedEvent,
+    listservCalendarId,
+    tagColorMap,
+  } = useContext(AppContext);
 
   const { applyFiltersToCalendar } = useEvents();
+
+  // Position of the floating EventDetails overlay (in viewport coordinates)
+  const [detailsOverlayPosition, setDetailsOverlayPosition] = useState(null);
 
   // 3. DELETE the local `handleSelect` and `handleEventClick` functions.
   //    They are now correctly passed in as props from InnerApp.
@@ -53,6 +63,113 @@ export const Calendar = ({
     const api = calendarRef.current?.getApi?.();
     if (api) applyFiltersToCalendar(api);
   }, [applyFiltersToCalendar, calendarRef]); // Added calendarRef to dependency array
+
+  // Clear overlay when selected event is cleared
+  useEffect(() => {
+    if (!selectedEvent) {
+      setDetailsOverlayPosition(null);
+    }
+  }, [selectedEvent]);
+
+  // Local handler: position overlay next to the clicked event
+  const handleEventClickLocal = (clickInfo) => {
+    const ev = clickInfo.event;
+    const source =
+      ev.extendedProps?.source ||
+      (ev.id?.startsWith("draft:") ? "draft" : "google");
+
+    // Disallow editing non‑ListServ Google events (same logic as before)
+    if (source === "google") {
+      const calendarId = ev.extendedProps?.calendarId;
+      const isListServ =
+        listservCalendarId && calendarId === listservCalendarId;
+      if (!isListServ) {
+        window.alert(
+          "This event is not part of the ListServ Events calendar. Edits are only allowed for ListServ Events."
+        );
+        return;
+      }
+    }
+
+    const elRect = clickInfo.el.getBoundingClientRect();
+    const cardWidth = 320;
+    const cardHeight = 420; // keep in sync with CSS max-height
+    const margin = 8;
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+
+    // Prefer to show on the right; fall back to left when there is not enough space
+    let left = elRect.right + margin;
+    if (left + cardWidth > viewportWidth - 16) {
+      left = elRect.left - cardWidth - margin;
+      if (left < 16) left = 16;
+    }
+
+    // Position vertically near the event, but clamp so the card stays on screen
+    let top = elRect.top + 4;
+    const maxTop = viewportHeight - cardHeight - 16;
+    if (top > maxTop) top = maxTop;
+    if (top < 16) top = 16;
+
+    setDetailsOverlayPosition({ top, left });
+    setSelectedEvent(ev);
+  };
+
+  // Apply full-block background "splotch" based on event-type tags
+  const handleEventDidMount = (info) => {
+    const ev = info.event;
+    const isListServ = ev.classNames.includes("fc-event-listserv");
+    if (!isListServ) {
+      // Make sure primary/other events sit visually underneath ListServ events
+      info.el.style.zIndex = "5";
+      return;
+    }
+
+    const tags = ev.extendedProps?.tags || [];
+    const colors = (tags || [])
+      .map((t) => tagColorMap?.[String(t || "")])
+      .filter(Boolean);
+
+    const uniqColors = Array.from(new Set(colors));
+
+    if (uniqColors.length === 0) {
+      // No event-type tags: use light gray block
+      info.el.style.backgroundImage = "none";
+      info.el.style.backgroundColor = "#e5e7eb";
+      info.el.style.color = "#111827";
+    } else if (uniqColors.length === 1) {
+      const c = uniqColors[0];
+      info.el.style.backgroundImage = "none";
+      info.el.style.backgroundColor = c;
+      info.el.style.color = "#000000";
+    } else {
+      // Even distribution across the whole block:
+      // Base linear gradient ensures no white; radial gradients add organic edges.
+      const baseStep = 100 / uniqColors.length;
+      const baseStops = uniqColors
+        .map((c, i) => {
+          const start = Math.round(i * baseStep);
+          const end = Math.round((i + 1) * baseStep);
+          return `${c} ${start}% ${end}%`;
+        })
+        .join(", ");
+      const base = `linear-gradient(90deg, ${baseStops})`;
+
+      const spots = uniqColors.slice(0, 3);
+      const positions = ["15% 25%", "85% 30%", "50% 80%"];
+      const radials = spots.map((c, i) => {
+        const pos = positions[i] || "50% 50%";
+        return `radial-gradient(circle at ${pos}, ${c} 0 55%, rgba(255,255,255,0) 70%)`;
+      });
+
+      info.el.style.backgroundImage = [base, ...radials].join(", ");
+      info.el.style.backgroundColor = "transparent";
+      info.el.style.color = "#000000";
+    }
+
+    info.el.style.borderRadius = "5px";
+    info.el.style.zIndex = "30"; // ensure ListServ events are on top of other calendar events
+  };
 
   return (
     <div className="app-calendar-container">
@@ -66,6 +183,13 @@ export const Calendar = ({
           selectable={false}
           selectMirror={false}
           events={events}
+          eventOrder={(a, b) => {
+            const aIsListServ = Array.isArray(a.classNames) && a.classNames.includes("fc-event-listserv");
+            const bIsListServ = Array.isArray(b.classNames) && b.classNames.includes("fc-event-listserv");
+            if (aIsListServ === bIsListServ) return 0;
+            // Render primary/other events first, then ListServ, so ListServ segments appear on top
+            return aIsListServ ? 1 : -1;
+          }}
           height="100%"
           dayHeaderFormat={{ weekday: "short" }}
           dayHeaderContent={(arg) => {
@@ -140,12 +264,11 @@ export const Calendar = ({
             const isListServ =
               arg.event.classNames.includes("fc-event-listserv");
             if (isListServ) {
-              // Always use black text for better readability on all our pastel colors
               const textColor = "#000";
               const timeColor = "#6b7280"; // Slightly lighter gray for time
 
               return {
-                html: `<div style="display: flex; flex-direction: column; gap: 2px; padding: 0; overflow: hidden;">
+                html: `<div style="display: flex; flex-direction: column; gap: 2px; padding: 2px 4px; overflow: hidden;">
                   <div style="font-size: 10px; font-weight: 500; color: ${textColor}; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${title}</div>
                   <div style="font-size: 9px; font-weight: 400; color: ${timeColor}; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${timeRange}</div>
                 </div>`,
@@ -156,10 +279,26 @@ export const Calendar = ({
           }}
           // 4. USE the props from App.jsx
           select={onSelect}
-          eventClick={onEventClick}
+          eventClick={handleEventClickLocal}
           datesSet={onDatesSet}
           scrollTime={scrollTime}
+          eventDidMount={handleEventDidMount}
         />
+        {selectedEvent && detailsOverlayPosition && (
+          <div
+            className="event-details-overlay"
+            style={{
+              position: "fixed",
+              top: detailsOverlayPosition.top,
+              left: detailsOverlayPosition.left,
+            }}
+          >
+            {/* Reuse the existing EventDetails card UI */}
+            {/* We import lazily here to avoid circular deps in comments; actual import is at top of file */}
+            {/* eslint-disable-next-line react/jsx-pascal-case */}
+            <EventDetails />
+          </div>
+        )}
       </div>
     </div>
   );
