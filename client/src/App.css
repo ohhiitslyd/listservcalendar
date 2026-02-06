@@ -37,6 +37,36 @@
   box-shadow: 3px 0 6px rgba(0, 0, 0, 0.08);
 }
 
+.left-panel-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-family: 'Poppins', sans-serif;
+  color: #4b5563; /* gray-700 */
+}
+
+.left-panel-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background-color: #10b981; /* default to green */
+}
+
+.left-panel-status-dot.synced {
+  background-color: #10b981; /* emerald-500 */
+}
+
+.left-panel-status-dot.unsynced {
+  background-color: #f97316; /* orange-500 */
+}
+
+.left-panel-status-text {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .left-panel-search-bar {
   margin-bottom: 8px;
 }

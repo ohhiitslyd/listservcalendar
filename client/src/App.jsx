@@ -290,6 +290,18 @@ const InnerApp = () => {
 
       <div className="app-content">
         <div className="app-left-panel">
+          <div className="left-panel-status">
+            <span
+              className={`left-panel-status-dot ${
+                hasUnpublishedChanges ? "unsynced" : "synced"
+              }`}
+            />
+            <span className="left-panel-status-text">
+              {hasUnpublishedChanges
+                ? "Changes not yet published to Google"
+                : "Dashboard matches Google Calendar"}
+            </span>
+          </div>
           <div className="left-panel-search-bar">
             <input
               type="text"
