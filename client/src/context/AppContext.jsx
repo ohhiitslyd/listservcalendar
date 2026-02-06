@@ -357,9 +357,6 @@ export const AppProvider = ({ children }) => {
     const defaults = Array.from(defaultsSet);
     console.log("[AppContext] Default visible calendars:", defaults);
     setVisibleCalendars(defaultsSet);
-
-    // Load events for the defaults
-    await fetchEvents(defaults);
   };
 
   const fetchWorkingCalendar = async () => {
