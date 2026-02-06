@@ -79,6 +79,8 @@
 /* Filter Button */
 .filters-button {
   position: relative;
+  min-width: 180px; /* Keep overall width stable so Publish button doesn't shift */
+  justify-content: space-between;
 }
 
 .filter-icon {
@@ -95,7 +97,7 @@
   font-weight: 500;
   color: #000000;
   box-shadow: inset 2px 2px 4px 0px rgba(0, 0, 0, 0.15);
-  min-width: 20px;
+  min-width: 24px;
   text-align: center;
 }
 
