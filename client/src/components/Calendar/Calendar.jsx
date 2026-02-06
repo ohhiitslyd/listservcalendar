@@ -119,11 +119,18 @@ export const Calendar = ({
   const handleEventDidMount = (info) => {
     const ev = info.event;
     const isListServ = ev.classNames.includes("fc-event-listserv");
+    const harness = info.el.parentElement; // FullCalendar wraps events in a harness div
+
     if (!isListServ) {
-      // Make sure primary/other events sit visually underneath ListServ events
+      // Primary / other calendars → intentionally under ListServ events
+      if (harness) harness.style.zIndex = "5";
       info.el.style.zIndex = "5";
       return;
     }
+
+    // ListServ events should always visually sit above the primary calendar
+    if (harness) harness.style.zIndex = "30";
+    info.el.style.zIndex = "30";
 
     const tags = ev.extendedProps?.tags || [];
     const colors = (tags || [])
@@ -168,7 +175,6 @@ export const Calendar = ({
     }
 
     info.el.style.borderRadius = "5px";
-    info.el.style.zIndex = "30"; // ensure ListServ events are on top of other calendar events
   };
 
   return (
