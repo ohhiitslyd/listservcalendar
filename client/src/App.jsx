@@ -52,6 +52,7 @@ const InnerApp = () => {
   const [isPublishing, setIsPublishing] = useState(false);
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
   const [lastPublishedKey, setLastPublishedKey] = useState(null);
+  const [hasEverPublished, setHasEverPublished] = useState(false);
   const [eventTypesOpen, setEventTypesOpen] = useState(true);
   const [orgsOpen, setOrgsOpen] = useState(true);
 
@@ -148,6 +149,7 @@ const InnerApp = () => {
       const syncResult = await api.syncCalendarByPreferences();
       setPublishResult(syncResult);
       setLastPublishedKey(currentPublishKey);
+      setHasEverPublished(true);
     } catch (error) {
       console.error("Failed to publish filters:", error);
       alert(`Failed to publish filters: ${error.message || error.error || "Unknown error"}`);
@@ -319,6 +321,16 @@ const InnerApp = () => {
     return legend.sort((a, b) => a.label.localeCompare(b.label));
   }, [events, listservCalendarId, tagColorMap]);
 
+  const statusText = useMemo(() => {
+    if (!hasEverPublished) {
+      return "No events published to ListServ calendar";
+    }
+    if (hasUnpublishedChanges) {
+      return "Changes not yet published to GCal";
+    }
+    return "Dashboard matches GCal";
+  }, [hasEverPublished, hasUnpublishedChanges]);
+
   /* -------------------------------------------------
      Render the UI layout
      ------------------------------------------------- */
@@ -345,9 +357,7 @@ const InnerApp = () => {
               }`}
             />
             <span className="left-panel-status-text">
-              {hasUnpublishedChanges
-                ? "Changes not yet published to Google"
-                : "Dashboard matches Google Calendar"}
+              {statusText}
             </span>
           </div>
           <div className="left-panel-search-bar">

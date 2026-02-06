@@ -113,11 +113,11 @@
   width: 8px;
   height: 8px;
   border-radius: 999px;
-  background-color: #10b981; /* default to green */
+  background-color: #ef4444; /* default to red */
 }
 
 .left-panel-status-dot.synced {
-  background-color: #10b981; /* emerald-500 */
+  background-color: #ef4444; /* red-500 */
 }
 
 .left-panel-status-dot.unsynced {
