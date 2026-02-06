@@ -14,7 +14,7 @@
 .app-header-left {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 12px; /* bring Filters and Publish a bit closer together */
 }
 
 .app-header-right {
@@ -79,8 +79,9 @@
 /* Filter Button */
 .filters-button {
   position: relative;
-  min-width: 180px; /* Keep overall width stable so Publish button doesn't shift */
-  justify-content: space-between;
+  min-width: 170px; /* Slightly smaller but still fixed so Publish button stays put */
+  justify-content: center; /* center icon, label, and count as a unit */
+  padding: 6px 10px; /* make the button a bit more compact vertically */
 }
 
 .filter-icon {
@@ -97,8 +98,9 @@
   font-weight: 500;
   color: #000000;
   box-shadow: inset 2px 2px 4px 0px rgba(0, 0, 0, 0.15);
-  min-width: 24px;
+  min-width: 40px; /* Reserve space for up to 4 digits so layout stays stable */
   text-align: center;
+  margin-left: 8px; /* keep badge close to "Filters" */
 }
 
 .dropdown-arrow {
