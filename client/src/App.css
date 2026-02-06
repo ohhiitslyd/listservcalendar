@@ -253,75 +253,66 @@
   color: #6b7280;
 }
 
-.publish-modal-overlay {
+.publish-toast {
   position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.35);
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  right: 40px;
+  bottom: 24px;
   z-index: 2000;
+  pointer-events: none; /* allow interacting with calendar underneath */
 }
 
-.publish-modal {
-  width: 360px;
-  min-height: 360px;
-  max-width: 90vw;
+.publish-toast-content {
+  pointer-events: auto;
+  min-width: 280px;
+  max-width: 360px;
   background: #ffffff;
   border-radius: 12px;
-  padding: 24px;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+  padding: 14px 16px 12px 16px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.18);
   font-family: 'Poppins', sans-serif;
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
+  gap: 8px;
 }
 
-.publish-modal-content h4 {
-  margin: 0 0 12px 0;
-  font-size: 18px;
+.publish-toast-title {
+  font-size: 14px;
   font-weight: 600;
   color: #000000;
 }
 
-.publish-modal-content p {
-  margin: 0;
-  font-size: 14px;
+.publish-toast-text {
+  font-size: 13px;
   font-weight: 400;
-  color: #000000;
-  line-height: 1.5;
+  color: #4b5563;
 }
 
-.publish-modal-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
+.publish-toast-progress {
+  width: 100%;
+  height: 4px;
+  border-radius: 999px;
+  background: #e5e7eb;
+  overflow: hidden;
 }
 
-.publish-modal-secondary {
-  background: #ffffff;
-  border: 1px solid #d4e9c4;
-  border-radius: 8px;
-  padding: 8px 14px;
-  font-size: 14px;
-  font-weight: 400;
-  cursor: pointer;
-}
-
-.publish-modal-primary {
+.publish-toast-progress-bar {
+  width: 40%;
+  height: 100%;
   background: #d4e9c4;
-  border: 1px solid #d4e9c4;
-  border-radius: 8px;
-  padding: 8px 14px;
-  font-size: 14px;
-  font-weight: 500;
-  cursor: pointer;
+  border-radius: 999px;
+  animation: publish-progress-indeterminate 1.2s infinite ease-in-out;
 }
 
-.publish-modal-secondary:disabled,
-.publish-modal-primary:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
+@keyframes publish-progress-indeterminate {
+  0% {
+    transform: translateX(-100%);
+  }
+  50% {
+    transform: translateX(0%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
 }
 
 .selected-filters-empty {

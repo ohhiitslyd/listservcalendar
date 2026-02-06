@@ -46,7 +46,6 @@ const InnerApp = () => {
   const [filtersDrawerOpen, setFiltersDrawerOpen] = useState(false);
   const [filtersShouldFocusSearch, setFiltersShouldFocusSearch] = useState(false);
   const [pendingPublishKey, setPendingPublishKey] = useState(null);
-  const [showPublishConfirm, setShowPublishConfirm] = useState(false);
   const [publishResult, setPublishResult] = useState(null);
   const [isPublishing, setIsPublishing] = useState(false);
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
@@ -166,10 +165,13 @@ const InnerApp = () => {
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
   }, [user, hasUnpublishedChanges]);
 
+  // Auto‑dismiss publish success toast a few seconds after completion
   useEffect(() => {
-    if (publishResult) {
-      setShowPublishConfirm(false);
-    }
+    if (!publishResult) return;
+    const timer = setTimeout(() => {
+      setPublishResult(null);
+    }, 5000);
+    return () => clearTimeout(timer);
   }, [publishResult]);
 
   const handleLogout = () => {
@@ -282,8 +284,8 @@ const InnerApp = () => {
           setFiltersDrawerOpen(true);
         }}
         onPublish={() => {
-          if (isPublishing || publishResult) return;
-          setShowPublishConfirm(true);
+          if (isPublishing) return;
+          publishFilters();
         }}
         onLogout={handleLogout}
       />
@@ -422,11 +424,11 @@ const InnerApp = () => {
 
         <div className="app-main-panel">
           {/* MAIN CALENDAR – we forward the handlers with the names FullCalendar expects */}
-          <Calendar
-            onEventClick={handleEventClick}
-            onDatesSet={handleDatesSet}
-            scrollTime="09:00"
-          />
+        <Calendar
+          onEventClick={handleEventClick}
+          onDatesSet={handleDatesSet}
+          scrollTime="09:00"
+        />
         </div>
 
         {/* RIGHT PANEL – event details */}
@@ -485,69 +487,33 @@ const InnerApp = () => {
         </div>
       )}
 
-      {(showPublishConfirm || isPublishing || publishResult) && (
-        <div className="publish-modal-overlay">
-          <div className="publish-modal">
-            <div className="publish-modal-content">
-              {publishResult ? (
-                <>
-                  <h4>Published to ListServ</h4>
-                  <p>
-                    {publishResult.published ?? 0} new events were added to your ListServ calendar.
-                    {(publishResult.deleted ?? 0) > 0 && (
-                      <> {publishResult.deleted} events were removed from your ListServ calendar.</>
-                    )}
-                  </p>
-                  <p style={{ marginTop: "12px", fontSize: "14px", color: "#666" }}>
-                    Wait a minute and then refresh your Google Calendar.
-                  </p>
-                </>
-              ) : isPublishing ? (
-                <>
-                  <h4>Publishing...</h4>
-                  <p>Sending events to your ListServ calendar.</p>
-                </>
-              ) : (
-                <>
-                  <h4>Publish to Google Calendar</h4>
-                  <p>
-                    Save your filter preferences and send the current dashboard events
-                    to your ListServ calendar.
-                  </p>
-                </>
-              )}
-            </div>
-            <div className="publish-modal-actions">
-              {publishResult ? (
-                <button
-                  type="button"
-                  className="publish-modal-primary"
-                  onClick={() => {
-                    setPublishResult(null);
-                    setShowPublishConfirm(false);
-                  }}
-                >
-                  Done
-                </button>
-              ) : isPublishing ? null : (
-                <>
-                  <button
-                    type="button"
-                    className="publish-modal-secondary"
-                    onClick={() => setShowPublishConfirm(false)}
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    className="publish-modal-primary"
-                    onClick={publishFilters}
-                  >
-                    Publish
-                  </button>
-                </>
-              )}
-            </div>
+      {(isPublishing || publishResult) && (
+        <div className="publish-toast">
+          <div className="publish-toast-content">
+            {isPublishing && (
+              <>
+                <div className="publish-toast-title">Publishing to Google Calendar…</div>
+                <div className="publish-toast-progress">
+                  <div className="publish-toast-progress-bar" />
+                </div>
+                <div className="publish-toast-text">
+                  You can keep using the dashboard while events are publishing.
+                </div>
+              </>
+            )}
+            {!isPublishing && publishResult && (
+              <>
+                <div className="publish-toast-title">
+                  All {(publishResult.published ?? 0) + (publishResult.deleted ?? 0)} events processed
+                </div>
+                <div className="publish-toast-text">
+                  {publishResult.published ?? 0} events published to Google Calendar
+                  {(publishResult.deleted ?? 0) > 0 && (
+                    <> · {publishResult.deleted} removed</>
+                  )}
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}
