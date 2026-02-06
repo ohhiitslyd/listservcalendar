@@ -48,6 +48,7 @@ const InnerApp = () => {
   const [filtersDrawerOpen, setFiltersDrawerOpen] = useState(false);
   const [filtersShouldFocusSearch, setFiltersShouldFocusSearch] = useState(false);
   const [pendingPublishKey, setPendingPublishKey] = useState(null);
+  const [pendingFiltersCount, setPendingFiltersCount] = useState(null);
   const [publishResult, setPublishResult] = useState(null);
   const [isPublishing, setIsPublishing] = useState(false);
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
@@ -341,6 +342,9 @@ const InnerApp = () => {
           setFiltersShouldFocusSearch(false);
           setFiltersDrawerOpen(true);
         }}
+        filtersCount={filtersDrawerOpen && typeof pendingFiltersCount === "number"
+          ? pendingFiltersCount
+          : undefined}
         onPublish={() => {
           if (isPublishing) return;
           publishFilters();
@@ -546,9 +550,11 @@ const InnerApp = () => {
                 setFiltersDrawerOpen(false);
                 setPendingPublishKey(null);
                 setFiltersShouldFocusSearch(false);
+                setPendingFiltersCount(null);
               }}
               showHeader={false}
               onPendingKeyChange={setPendingPublishKey}
+              onPendingCountChange={setPendingFiltersCount}
               autoFocusOrgSearch={filtersShouldFocusSearch}
             />
           </div>

@@ -2,7 +2,7 @@ import React, { useContext, useState, useRef, useEffect } from "react";
 import { AppContext } from "../../context/AppContext";
 import "./Header.css";
 
-export const Header = ({ onOpenFilters, onPublish, onLogout }) => {
+export const Header = ({ onOpenFilters, onPublish, onLogout, filtersCount }) => {
   const { 
     user, 
     login, 
@@ -32,7 +32,10 @@ export const Header = ({ onOpenFilters, onPublish, onLogout }) => {
   }, []);
 
   // Calculate total selected filters count
-  const totalFiltersCount = selectedCats.size + selectedOrgCats.size;
+  const totalFiltersCount =
+    typeof filtersCount === "number"
+      ? filtersCount
+      : selectedCats.size + selectedOrgCats.size;
 
   // Get user initials for avatar
   const getUserInitials = () => {

@@ -4,7 +4,13 @@ import { AppContext } from "../../context/AppContext";
 import { api } from "../../api/calendarApi";
 import "./Filters.css";
 
-export const Filters = ({ onClose, showHeader = true, onPendingKeyChange, autoFocusOrgSearch = false }) => {
+export const Filters = ({
+  onClose,
+  showHeader = true,
+  onPendingKeyChange,
+  onPendingCountChange,
+  autoFocusOrgSearch = false,
+}) => {
   const {
     //tag level cats
     availableCats,
@@ -124,6 +130,12 @@ export const Filters = ({ onClose, showHeader = true, onPendingKeyChange, autoFo
       onPendingKeyChange(pendingKey);
     }
   }, [pendingKey, onPendingKeyChange]);
+
+  useEffect(() => {
+    if (onPendingCountChange) {
+      onPendingCountChange(pendingSelectedCats.size + pendingSelectedOrgCats.size);
+    }
+  }, [pendingSelectedCats, pendingSelectedOrgCats, onPendingCountChange]);
 
 
 
