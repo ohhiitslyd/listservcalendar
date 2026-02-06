@@ -117,7 +117,7 @@
 }
 
 .left-panel-status-dot.synced {
-  background-color: #ef4444; /* red-500 */
+  background-color: #22c55e; /* green-500 */
 }
 
 .left-panel-status-dot.unsynced {

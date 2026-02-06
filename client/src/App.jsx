@@ -311,6 +311,10 @@ const InnerApp = () => {
       });
     });
 
+    // Sort regular tags alphabetically
+    legend.sort((a, b) => a.label.localeCompare(b.label));
+
+    // Add "No event type tag" at the bottom if needed
     if (hasUntagged) {
       legend.push({
         key: "__untagged__",
@@ -319,7 +323,7 @@ const InnerApp = () => {
       });
     }
 
-    return legend.sort((a, b) => a.label.localeCompare(b.label));
+    return legend;
   }, [events, listservCalendarId, tagColorMap]);
 
   const statusText = useMemo(() => {
@@ -357,7 +361,7 @@ const InnerApp = () => {
           <div className="left-panel-status">
             <span
               className={`left-panel-status-dot ${
-                hasUnpublishedChanges ? "unsynced" : "synced"
+                !hasEverPublished || hasUnpublishedChanges ? "unsynced" : "synced"
               }`}
             />
             <span className="left-panel-status-text">
@@ -571,7 +575,7 @@ const InnerApp = () => {
                   <div className="publish-toast-progress-bar" />
                 </div>
                 <div className="publish-toast-text">
-                  You can keep using the dashboard while events are publishing.
+                  Publishing and deleting events. You can keep using the dashboard while events are processing.
                 </div>
               </>
             )}
@@ -585,6 +589,10 @@ const InnerApp = () => {
                   {(publishResult.deleted ?? 0) > 0 && (
                     <> · {publishResult.deleted} removed</>
                   )}
+                  <br />
+                  <span style={{ fontSize: "12px", color: "#6b7280" }}>
+                    Please wait a few minutes for changes to appear in Google Calendar.
+                  </span>
                 </div>
               </>
             )}

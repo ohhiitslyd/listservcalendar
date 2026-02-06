@@ -103,7 +103,7 @@ export const Header = ({ onOpenFilters, onPublish, onLogout, filtersCount }) => 
               <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon>
             </svg>
             <span>Filters</span>
-            <span className="filter-count-badge">{totalFiltersCount}</span>
+              <span className="filter-count-badge">{totalFiltersCount}</span>
           </button>
         </div>
         <button

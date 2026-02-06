@@ -128,18 +128,18 @@ export const DateBar = () => {
       </div>
       <div className="date-bar-right">
         <div className="date-bar-view-toggle">
-          <button 
-            className={`date-bar-view-btn ${currentView === "timeGridWeek" ? "active" : ""}`}
-            onClick={handleWeekView}
-          >
-            Week
-          </button>
-          <button 
-            className={`date-bar-view-btn ${currentView === "timeGridDay" ? "active" : ""}`}
-            onClick={handleDayView}
-          >
-            Day
-          </button>
+        <button 
+          className={`date-bar-view-btn ${currentView === "timeGridWeek" ? "active" : ""}`}
+          onClick={handleWeekView}
+        >
+          Week
+        </button>
+        <button 
+          className={`date-bar-view-btn ${currentView === "timeGridDay" ? "active" : ""}`}
+          onClick={handleDayView}
+        >
+          Day
+        </button>
         </div>
       </div>
     </div>
