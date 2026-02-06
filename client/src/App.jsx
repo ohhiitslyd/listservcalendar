@@ -50,6 +50,8 @@ const InnerApp = () => {
   const [isPublishing, setIsPublishing] = useState(false);
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
   const [lastPublishedKey, setLastPublishedKey] = useState(null);
+  const [eventTypesOpen, setEventTypesOpen] = useState(true);
+  const [orgsOpen, setOrgsOpen] = useState(true);
 
   const selectedOrgChips = useMemo(() => {
     if (!availableOrgCats || !selectedOrgCats) return [];
@@ -299,42 +301,84 @@ const InnerApp = () => {
             <div className="selected-filters-chips">
               {selectedEventTypeChips.length > 0 && (
                 <div className="selected-filters-group">
-                  <span className="selected-filters-group-title">Event types</span>
-                  <div className="selected-filters-group-chips">
-                    {selectedEventTypeChips.map((chip) => (
-                      <span key={chip.key} className="selected-filter-chip">
-                        <span className="selected-filter-chip-label">{chip.label}</span>
-                        <button
-                          type="button"
-                          className="selected-filter-chip-remove"
-                          onClick={() => handleRemoveEventTypeChip(chip.key)}
-                          aria-label={`Remove ${chip.label}`}
-                        >
-                          ×
-                        </button>
-                      </span>
-                    ))}
-                  </div>
+                  <button
+                    type="button"
+                    className="selected-filters-group-toggle"
+                    onClick={() => setEventTypesOpen((prev) => !prev)}
+                    aria-expanded={eventTypesOpen}
+                  >
+                    <span className="selected-filters-group-title">Event types</span>
+                    <svg
+                      className={`selected-filters-group-caret ${eventTypesOpen ? "open" : ""}`}
+                      width="16"
+                      height="16"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      aria-hidden="true"
+                    >
+                      <polyline points="6 9 12 15 18 9"></polyline>
+                    </svg>
+                  </button>
+                  {eventTypesOpen && (
+                    <div className="selected-filters-group-chips">
+                      {selectedEventTypeChips.map((chip) => (
+                        <span key={chip.key} className="selected-filter-chip">
+                          <span className="selected-filter-chip-label">{chip.label}</span>
+                          <button
+                            type="button"
+                            className="selected-filter-chip-remove"
+                            onClick={() => handleRemoveEventTypeChip(chip.key)}
+                            aria-label={`Remove ${chip.label}`}
+                          >
+                            ×
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
               {selectedOrgChips.length > 0 && (
                 <div className="selected-filters-group">
-                  <span className="selected-filters-group-title">Organizations</span>
-                  <div className="selected-filters-group-chips">
-                    {selectedOrgChips.map((chip) => (
-                      <span key={chip.key} className="selected-filter-chip">
-                        <span className="selected-filter-chip-label">{chip.label}</span>
-                        <button
-                          type="button"
-                          className="selected-filter-chip-remove"
-                          onClick={() => handleRemoveOrgChip(chip.key)}
-                          aria-label={`Remove ${chip.label}`}
-                        >
-                          ×
-                        </button>
-                      </span>
-                    ))}
-                  </div>
+                  <button
+                    type="button"
+                    className="selected-filters-group-toggle"
+                    onClick={() => setOrgsOpen((prev) => !prev)}
+                    aria-expanded={orgsOpen}
+                  >
+                    <span className="selected-filters-group-title">Organizations</span>
+                    <svg
+                      className={`selected-filters-group-caret ${orgsOpen ? "open" : ""}`}
+                      width="16"
+                      height="16"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      aria-hidden="true"
+                    >
+                      <polyline points="6 9 12 15 18 9"></polyline>
+                    </svg>
+                  </button>
+                  {orgsOpen && (
+                    <div className="selected-filters-group-chips">
+                      {selectedOrgChips.map((chip) => (
+                        <span key={chip.key} className="selected-filter-chip">
+                          <span className="selected-filter-chip-label">{chip.label}</span>
+                          <button
+                            type="button"
+                            className="selected-filter-chip-remove"
+                            onClick={() => handleRemoveOrgChip(chip.key)}
+                            aria-label={`Remove ${chip.label}`}
+                          >
+                            ×
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
               {selectedOrgChips.length === 0 && selectedEventTypeChips.length === 0 && (
@@ -414,6 +458,12 @@ const InnerApp = () => {
                   <h4>Published to ListServ</h4>
                   <p>
                     {publishResult.published ?? 0} new events were added to your ListServ calendar.
+                    {(publishResult.deleted ?? 0) > 0 && (
+                      <> {publishResult.deleted} events were removed from your ListServ calendar.</>
+                    )}
+                  </p>
+                  <p style={{ marginTop: "12px", fontSize: "14px", color: "#666" }}>
+                    Wait a minute and then refresh your Google Calendar.
                   </p>
                 </>
               ) : isPublishing ? (

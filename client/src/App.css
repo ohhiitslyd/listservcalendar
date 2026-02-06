@@ -122,6 +122,34 @@
   gap: 8px;
 }
 
+.selected-filters-group-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  background: transparent;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  text-align: left;
+  color: #666;
+}
+
+.selected-filters-group-toggle:hover {
+  color: #000;
+}
+
+.selected-filters-group-caret {
+  display: inline-block;
+  color: inherit;
+  transform: rotate(-90deg);
+  transition: transform 0.2s ease;
+}
+
+.selected-filters-group-caret.open {
+  transform: rotate(0deg);
+}
+
 .selected-filters-group-title {
   font-size: 12px;
   font-weight: 600;

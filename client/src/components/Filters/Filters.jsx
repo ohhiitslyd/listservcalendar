@@ -500,8 +500,17 @@ export const Filters = ({ onClose, showHeader = true, onPendingKeyChange }) => {
             {filteredOrgHierarchy && Object.values(filteredOrgHierarchy).map((type) => {
               const typeColor = getCategoryColor(type.key);
               const typeSelected = pendingSelectedOrgCats.has(type.key);
-              const isExpanded = expandedCategories.has(type.key) || hasSelectedInType(type) || !!orgSearch.trim();
+              const typePartiallySelected =
+                !typeSelected && getTypeOrganizations(type).some((org) => pendingSelectedOrgCats.has(org.key));
+              const typeHighlighted = typeSelected || typePartiallySelected;
+              const isExpanded = expandedCategories.has(type.key) || !!orgSearch.trim();
               const typeOrgs = getTypeOrganizations(type);
+              const typeOrgsSorted = [...typeOrgs].sort((a, b) => {
+                const aSelected = pendingSelectedOrgCats.has(a.key);
+                const bSelected = pendingSelectedOrgCats.has(b.key);
+                if (aSelected !== bSelected) return aSelected ? -1 : 1;
+                return String(a.label || "").localeCompare(String(b.label || ""), undefined, { sensitivity: "base" });
+              });
               const hasOrganizations = typeOrgs.length > 0;
 
               return (
@@ -535,17 +544,18 @@ export const Filters = ({ onClose, showHeader = true, onPendingKeyChange }) => {
                         type="checkbox"
                         checked={typeSelected}
                         onChange={() => toggleOrgCategory(type.key)}
-                        className="org-filter-checkbox"
+                        className={`org-filter-checkbox ${typePartiallySelected ? "partial" : ""}`}
+                        aria-checked={typePartiallySelected ? "mixed" : typeSelected}
                         onClick={(e) => e.stopPropagation()}
                       />
                       <span className="org-filter-name">{type.label}</span>
                     </label>
                     <span
-                      className={`org-filter-count ${typeSelected ? "selected" : ""}`}
+                      className={`org-filter-count ${typeHighlighted ? "selected" : ""}`}
                       style={{
-                        backgroundColor: typeSelected ? typeColor : "transparent",
+                        backgroundColor: typeHighlighted ? typeColor : "transparent",
                         borderColor: typeColor,
-                        color: typeSelected ? "#000" : "#000",
+                        color: typeHighlighted ? "#000" : "#000",
                       }}
                     >
                       {type.count}
@@ -554,7 +564,7 @@ export const Filters = ({ onClose, showHeader = true, onPendingKeyChange }) => {
 
                   {/* Organizations directly under type (no "Organizations" subcategory row) */}
                   {isExpanded &&
-                    typeOrgs.map((org) => {
+                    typeOrgsSorted.map((org) => {
                       const orgSelected = pendingSelectedOrgCats.has(org.key);
                       return (
                         <div key={org.key} className="org-filter-item org-filter-item-indented">
