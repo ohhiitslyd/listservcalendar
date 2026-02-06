@@ -12,6 +12,25 @@ import {
  */
 
 /**
+ * Normalize a string for fuzzy comparison
+ * - Lowercase
+ * - Strip punctuation (apostrophes, commas, periods, dashes)
+ * - Collapse multiple spaces to single space
+ * - Trim whitespace
+ * @param {string} str - String to normalize
+ * @returns {string} - Normalized string
+ */
+function normalizeForComparison(str) {
+  if (!str) return "";
+  return str
+    .toLowerCase()
+    .replace(/[''`]/g, "")        // Remove apostrophes
+    .replace(/[,.\-:;!?()]/g, "") // Remove punctuation
+    .replace(/\s+/g, " ")         // Collapse whitespace
+    .trim();
+}
+
+/**
  * Format date for Gmail's "after:" query syntax
  * @param {Date} date - Date to format
  * @returns {string} - Date in YYYY/MM/DD format
@@ -290,6 +309,32 @@ async function processUnprocessedEmails(userId, pool, oauth2Client) {
           if (duplicateAcrossEmails.rows.length > 0) {
             console.log(
               `[autoScraper] Skipping duplicate event (same title/time/location/org): ${event.title}`
+            );
+            continue;
+          }
+
+          // Layer 3: Fuzzy deduplication
+          // Catches duplicates with minor formatting differences (e.g., location punctuation)
+          // Matches on: normalized title + exact start time + same organization
+          const normalizedTitle = normalizeForComparison(event.title);
+          const normalizedOrg = normalizeForComparison(event.organization);
+
+          const fuzzyDuplicateCheck = await pool.query(
+            `SELECT id, title, organization FROM events
+             WHERE user_id = $1
+               AND start = $2`,
+            [userId, start]
+          );
+
+          const fuzzyDuplicate = fuzzyDuplicateCheck.rows.find((row) => {
+            const existingNormalizedTitle = normalizeForComparison(row.title);
+            const existingNormalizedOrg = normalizeForComparison(row.organization);
+            return existingNormalizedTitle === normalizedTitle && existingNormalizedOrg === normalizedOrg;
+          });
+
+          if (fuzzyDuplicate) {
+            console.log(
+              `[autoScraper] Skipping fuzzy duplicate: "${event.title}" matches existing "${fuzzyDuplicate.title}" (same normalized title + start time)`
             );
             continue;
           }
