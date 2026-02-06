@@ -458,6 +458,12 @@ const InnerApp = () => {
                   <h4>Published to ListServ</h4>
                   <p>
                     {publishResult.published ?? 0} new events were added to your ListServ calendar.
+                    {(publishResult.deleted ?? 0) > 0 && (
+                      <> {publishResult.deleted} events were removed from your ListServ calendar.</>
+                    )}
+                  </p>
+                  <p style={{ marginTop: "12px", fontSize: "14px", color: "#666" }}>
+                    Wait a minute and then refresh your Google Calendar.
                   </p>
                 </>
               ) : isPublishing ? (
