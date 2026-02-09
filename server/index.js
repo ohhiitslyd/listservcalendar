@@ -1,5 +1,6 @@
 import express from "express";
 import session from "express-session";
+import connectPgSimple from "connect-pg-simple";
 import cookieParser from "cookie-parser";
 import { google } from "googleapis";
 import dotenv from "dotenv";
@@ -51,25 +52,6 @@ try {
 // Export EVENT_TYPE_RULES for use in other modules
 export { EVENT_TYPE_RULES };
 
-// Load organization-based filters (organization_events.json)
-const ORG_DESCRIPTOR_PATH = path.join(__dirname, "organization_events.json");
-
-let ORGANIZATION_RULES = { categories: {} };
-try {
-  const rawOrg = fs.readFileSync(ORG_DESCRIPTOR_PATH, "utf8");
-  ORGANIZATION_RULES = JSON.parse(rawOrg);
-  console.log(
-    "[org-categories] loaded",
-    Object.keys(ORGANIZATION_RULES.categories || {}).length,
-    "top-level org categories from",
-    ORG_DESCRIPTOR_PATH
-  );
-} catch (e) {
-  console.warn(
-    "Could not read organization_events.json. Org category filtering will be empty.",
-    e
-  );
-}
 
 const {
   PORT = 3000,
@@ -97,92 +79,29 @@ if (isProduction) {
 app.use(express.json());
 app.use(cookieParser());
 
+const PgStore = connectPgSimple(session);
+
 app.use(
   session({
+    store: new PgStore({
+      pool,
+      tableName: "user_sessions",
+      createTableIfMissing: true,
+    }),
     secret: SESSION_SECRET,
     resave: false,
     saveUninitialized: false,
     cookie: {
       httpOnly: true,
       sameSite: "lax",
-      secure: isProduction, // Enable secure cookies in production (HTTPS)
+      secure: isProduction,
+      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
     },
   })
 );
 
 // Initialize PostgreSQL schema
 await initializeSchema();
-
-// --- Helper functions for organization filtering ---
-const slug = (s = "") =>
-  String(s)
-    .normalize("NFKD")
-    .toLowerCase()
-    .replace(/\s+/g, "_")
-    .replace(/[^a-z0-9_:]/g, "");
-
-const lowerArray = (arr = []) => arr.map((x) => String(x).toLowerCase());
-
-function toTextBlob(ev) {
-  const {
-    title = "",
-    description = "",
-    location = "",
-    organization = "",
-  } = ev || {};
-  return `${title} ${description} ${location} ${organization}`.toLowerCase();
-}
-
-function matchesAnyKeyword(blob, keywords = []) {
-  return keywords.some((kw) => blob.includes(String(kw).toLowerCase()));
-}
-
-/**
- * assignOrgCategories(ev) -> array of organization category keys
- * Uses ORGANIZATION_RULES.categories hierarchy
- */
-function assignOrgCategories(ev) {
-  const blob = toTextBlob(ev);
-  const out = [];
-
-  const cats = ORGANIZATION_RULES?.categories || {};
-  for (const [typeKeyRaw, typeDef] of Object.entries(cats)) {
-    const typeKey = slug(typeKeyRaw);
-    const subcats = typeDef?.subcategories || {};
-
-    // Type-level matching
-    const typeHit =
-      Array.isArray(typeDef?.must_include_any) &&
-      matchesAnyKeyword(blob, lowerArray(typeDef.must_include_any));
-    if (typeHit) out.push(typeKey);
-
-    for (const [subKeyRaw, subDef] of Object.entries(subcats)) {
-      const subKey = slug(subKeyRaw);
-
-      // Subcategory-level matching
-      const subHit =
-        Array.isArray(subDef?.must_include_any) &&
-        matchesAnyKeyword(blob, lowerArray(subDef.must_include_any));
-      if (subHit) {
-        out.push(`${typeKey}:${subKey}`);
-      }
-
-      // Organization-level matching
-      const orgs = subDef?.organizations || {};
-      for (const [orgKeyRaw, orgDef] of Object.entries(orgs)) {
-        const orgKey = slug(orgKeyRaw);
-        const orgHit =
-          Array.isArray(orgDef?.must_include_any) &&
-          matchesAnyKeyword(blob, lowerArray(orgDef.must_include_any));
-        if (orgHit) {
-          out.push(`${typeKey}:${subKey}:${orgKey}`);
-        }
-      }
-    }
-  }
-
-  return out;
-}
 
 function ensureAuthed(req, res, next) {
   if (!req.session.tokens || !req.session.user) {
@@ -1173,8 +1092,7 @@ app.get("/api/event-categories", ensureAuthed, (req, res) => {
 // =======================
 // Org Categories (for Organization filter tab)
 // =======================
-// Branch: file-based (org_categories.json + org_filters.json). Main: in-memory ORGANIZATION_RULES.
-// We keep the branch so buildAllowedOrgEmailSet and /api/events filtering by organization_email work.
+// File-based org filtering (org_categories.json + org_filters.json).
 
 // Path to org category JSON (your file is in get_orgs/)
 const ORG_CATEGORIES_PATH = path.join(__dirname, "..", "get_orgs", "org_categories.json");
