@@ -2,7 +2,7 @@ import React, { useContext, useState, useRef, useEffect } from "react";
 import { AppContext } from "../../context/AppContext";
 import "./Header.css";
 
-export const Header = ({ onOpenFilters, onPublish, onLogout }) => {
+export const Header = ({ onPublish, onLogout }) => {
   const { 
     user, 
     login, 
@@ -17,12 +17,15 @@ export const Header = ({ onOpenFilters, onPublish, onLogout }) => {
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [userCalendarsOpen, setUserCalendarsOpen] = useState(false);
   const userMenuRef = useRef(null);
+  const calendarsMenuRef = useRef(null);
 
   // Close dropdowns when clicking outside
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (userMenuRef.current && !userMenuRef.current.contains(event.target)) {
         setUserMenuOpen(false);
+      }
+      if (calendarsMenuRef.current && !calendarsMenuRef.current.contains(event.target)) {
         setUserCalendarsOpen(false);
       }
     };
@@ -31,8 +34,6 @@ export const Header = ({ onOpenFilters, onPublish, onLogout }) => {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // Calculate total selected filters count
-  const totalFiltersCount = selectedCats.size + selectedOrgCats.size;
 
   // Get user initials for avatar
   const getUserInitials = () => {
@@ -91,26 +92,85 @@ export const Header = ({ onOpenFilters, onPublish, onLogout }) => {
           <h2>ListServCalendar</h2>
         </div>
         
-        <div className="dropdown-container">
-          <button 
-            className="app-header-button filters-button"
-            onClick={onOpenFilters}
-          >
-            <svg className="filter-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon>
-            </svg>
-            <span>Filters</span>
-            {totalFiltersCount > 0 && (
-              <span className="filter-count-badge">{totalFiltersCount}</span>
-            )}
-          </button>
-        </div>
         <button
           className="app-header-button publish-button"
           onClick={onPublish}
         >
           Publish to Google Calendar
         </button>
+
+        <div className="dropdown-container" ref={calendarsMenuRef}>
+          <button
+            className="app-header-button calendars-button"
+            onClick={() => setUserCalendarsOpen(!userCalendarsOpen)}
+            type="button"
+          >
+            My Calendars
+            <svg 
+              className={`dropdown-arrow ${userCalendarsOpen ? 'open' : ''}`} 
+              width="16" 
+              height="16" 
+              viewBox="0 0 24 24" 
+              fill="none" 
+              stroke="currentColor" 
+              strokeWidth="2"
+              style={{ marginLeft: '6px' }}
+            >
+              <polyline points="6 9 12 15 18 9"></polyline>
+            </svg>
+          </button>
+          {userCalendarsOpen && (
+            <div className="dropdown-content calendars-dropdown">
+              <div className="calendars-dropdown-header">
+                <h4>My Calendars</h4>
+              </div>
+              <div className="calendars-list">
+                {calendars.length > 0 ? (
+                  calendars
+                    .sort((a, b) => {
+                      const aName = a.summary?.toLowerCase() || "";
+                      const bName = b.summary?.toLowerCase() || "";
+                      const aIsListServ = aName === "listserv events";
+                      const bIsListServ = bName === "listserv events";
+                      if (aIsListServ && !bIsListServ) return -1;
+                      if (!aIsListServ && bIsListServ) return 1;
+
+                      const aIsPrimary = !!a.primary;
+                      const bIsPrimary = !!b.primary;
+                      if (aIsPrimary && !bIsPrimary) return -1;
+                      if (!aIsPrimary && bIsPrimary) return 1;
+
+                      return aName.localeCompare(bName);
+                    })
+                    .map(c => {
+                      const isListServ = c.summary?.toLowerCase() === "listserv events";
+                      const isVisible = visibleCalendars.has(c.id);
+                      return (
+                        <label 
+                          key={c.id} 
+                          className={`calendar-item ${!isListServ ? 'calendar-item-other' : ''}`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={isVisible}
+                            onChange={() => toggleCalendar(c.id)}
+                            disabled={isListServ}
+                          />
+                          <span className="calendar-name">
+                            {c.summary}
+                            {c.primary && <span className="calendar-badge">primary</span>}
+                            {isListServ && <span className="calendar-badge">ListServ</span>}
+                          </span>
+                        </label>
+                      );
+                    })
+                ) : (
+                  <div className="user-menu-empty">No calendars available.</div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
 
       </div>
 
@@ -134,71 +194,6 @@ export const Header = ({ onOpenFilters, onPublish, onLogout }) => {
           </button>
           {userMenuOpen && (
             <div className="dropdown-content user-menu-dropdown">
-              <button
-                className="user-menu-accordion"
-                onClick={() => setUserCalendarsOpen(!userCalendarsOpen)}
-                type="button"
-              >
-                <span>My Calendar</span>
-                <svg 
-                  className={`dropdown-arrow ${userCalendarsOpen ? 'open' : ''}`} 
-                  width="18" 
-                  height="18" 
-                  viewBox="0 0 24 24" 
-                  fill="none" 
-                  stroke="currentColor" 
-                  strokeWidth="2"
-                >
-                  <polyline points="6 9 12 15 18 9"></polyline>
-                </svg>
-              </button>
-              {userCalendarsOpen && (
-                <div className="calendars-list user-calendars-list">
-                  {calendars.length > 0 ? (
-                    calendars
-                      .sort((a, b) => {
-                        const aName = a.summary?.toLowerCase() || "";
-                        const bName = b.summary?.toLowerCase() || "";
-                        const aIsListServ = aName === "listserv events";
-                        const bIsListServ = bName === "listserv events";
-                        if (aIsListServ && !bIsListServ) return -1;
-                        if (!aIsListServ && bIsListServ) return 1;
-
-                        const aIsPrimary = !!a.primary;
-                        const bIsPrimary = !!b.primary;
-                        if (aIsPrimary && !bIsPrimary) return -1;
-                        if (!aIsPrimary && bIsPrimary) return 1;
-
-                        return aName.localeCompare(bName);
-                      })
-                      .map(c => {
-                        const isListServ = c.summary?.toLowerCase() === "listserv events";
-                        const isVisible = visibleCalendars.has(c.id);
-                        return (
-                          <label 
-                            key={c.id} 
-                            className={`calendar-item ${!isListServ ? 'calendar-item-other' : ''}`}
-                          >
-                            <input
-                              type="checkbox"
-                              checked={isVisible}
-                              onChange={() => toggleCalendar(c.id)}
-                              disabled={isListServ}
-                            />
-                            <span className="calendar-name">
-                              {c.summary}
-                              {c.primary && <span className="calendar-badge">primary</span>}
-                              {isListServ && <span className="calendar-badge">ListServ</span>}
-                            </span>
-                          </label>
-                        );
-                      })
-                  ) : (
-                    <div className="user-menu-empty">No calendars available.</div>
-                  )}
-                </div>
-              )}
-              <div className="user-menu-divider" />
               <button className="user-menu-item" onClick={onLogout} type="button">
                 <span>Log Out</span>
                 <svg className="logout-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">

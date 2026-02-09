@@ -127,6 +127,7 @@ export const DateBar = () => {
         </button>
       </div>
       <div className="date-bar-right">
+        <div className="date-bar-view-toggle">
         <button 
           className={`date-bar-view-btn ${currentView === "timeGridWeek" ? "active" : ""}`}
           onClick={handleWeekView}
@@ -139,6 +140,7 @@ export const DateBar = () => {
         >
           Day
         </button>
+        </div>
       </div>
     </div>
   );

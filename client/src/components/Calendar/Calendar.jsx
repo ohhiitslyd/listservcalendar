@@ -1,11 +1,12 @@
 // src/components/Calendar/Calendar.jsx
-import React, { useContext, useEffect } from "react";
+import React, { useContext, useEffect, useState, useRef } from "react";
 import FullCalendar from "@fullcalendar/react";
 import dayGridPlugin from "@fullcalendar/daygrid";
 import timeGridPlugin from "@fullcalendar/timegrid";
 import interactionPlugin from "@fullcalendar/interaction";
 
 import { AppContext } from "../../context/AppContext";
+import { EventDetails } from "../EventDetails/EventDetails";
 import { useEvents } from "../../hooks/useEvents";
 import { DateBar } from "../DateBar/DateBar";
 import "./Calendar.css";
@@ -35,15 +36,28 @@ const isLightColor = (hexColor) => {
 // 1. ACCEPT the props from App.jsx here
 export const Calendar = ({
   onSelect,
-  onEventClick,
   onDatesSet,
   scrollTime,
 }) => {
-  // 2. CLEAN UP: We only need `events` and `calendarRef` from context now.
-  //    The other variables were only for the handlers you're deleting.
-  const { filteredEvents, events, calendarRef } = useContext(AppContext);
+  // We need events, calendarRef, and selectedEvent to drive the overlay details card.
+  const {
+    filteredEvents,
+    events,
+    calendarRef,
+    selectedEvent,
+    setSelectedEvent,
+    listservCalendarId,
+    tagColorMap,
+    calendars,
+  } = useContext(AppContext);
 
   const { applyFiltersToCalendar } = useEvents();
+
+  // Position of the floating EventDetails overlay (in viewport coordinates)
+  const [detailsOverlayPosition, setDetailsOverlayPosition] = useState(null);
+  // State for personal calendar event popup
+  const [personalEventInfo, setPersonalEventInfo] = useState(null);
+  const personalEventCardRef = useRef(null);
 
   // 3. DELETE the local `handleSelect` and `handleEventClick` functions.
   //    They are now correctly passed in as props from InnerApp.
@@ -53,6 +67,209 @@ export const Calendar = ({
     const api = calendarRef.current?.getApi?.();
     if (api) applyFiltersToCalendar(api);
   }, [applyFiltersToCalendar, calendarRef]); // Added calendarRef to dependency array
+
+  // Clear overlay when selected event is cleared
+  useEffect(() => {
+    if (!selectedEvent) {
+      setDetailsOverlayPosition(null);
+    }
+  }, [selectedEvent]);
+
+  // Adjust personal event popup position after render to ensure it fits on screen
+  useEffect(() => {
+    if (personalEventInfo && personalEventCardRef.current) {
+      const card = personalEventCardRef.current;
+      const cardRect = card.getBoundingClientRect();
+      const viewportHeight = window.innerHeight;
+      const minMargin = 16;
+      
+      // If card bottom exceeds viewport, adjust position upward
+      if (cardRect.bottom > viewportHeight - minMargin) {
+        const actualHeight = cardRect.height;
+        const newTop = Math.max(minMargin, viewportHeight - actualHeight - minMargin);
+        
+        // Only update if position needs to change
+        if (Math.abs(newTop - personalEventInfo.position.top) > 1) {
+          setPersonalEventInfo(prev => ({
+            ...prev,
+            position: {
+              ...prev.position,
+              top: newTop,
+            },
+          }));
+        }
+      }
+    }
+  }, [personalEventInfo]);
+
+  // Local handler: position overlay next to the clicked event
+  const handleEventClickLocal = (clickInfo) => {
+    const ev = clickInfo.event;
+    const source =
+      ev.extendedProps?.source ||
+      (ev.id?.startsWith("draft:") ? "draft" : "google");
+
+    // Clear any existing personal event popup when clicking any event
+    setPersonalEventInfo(null);
+
+    // Handle non‑ListServ Google events with custom popup
+    if (source === "google") {
+      const calendarId = ev.extendedProps?.calendarId;
+      const isListServ =
+        listservCalendarId && calendarId === listservCalendarId;
+      if (!isListServ) {
+        // Find calendar name
+        const calendar = calendars?.find(c => c.id === calendarId);
+        const calendarName = calendar?.summary || "Personal Calendar";
+        
+        const elRect = clickInfo.el.getBoundingClientRect();
+        const cardWidth = 320;
+        const cardMaxHeight = 200;
+        const margin = 8;
+        const viewportWidth = window.innerWidth;
+        const viewportHeight = window.innerHeight;
+
+        // Position popup next to event
+        let left = elRect.right + margin;
+        if (left + cardWidth > viewportWidth - 16) {
+          left = elRect.left - cardWidth - margin;
+          if (left < 16) left = 16;
+        }
+
+        // Position vertically near the event, but ensure it stays within viewport
+        const minMargin = 16;
+        // Use a conservative estimate - actual card is around 200-220px
+        const estimatedCardHeight = 250; // Overestimate to be safe
+        const maxCardHeight = viewportHeight - (minMargin * 2);
+        const cardHeight = Math.min(estimatedCardHeight, maxCardHeight);
+        
+        // Start with position near the event
+        let top = elRect.top + 4;
+        
+        // CRITICAL: Calculate maximum allowed top position
+        // This ensures the bottom of the card is always within viewport
+        const maxAllowedTop = viewportHeight - cardHeight - minMargin;
+        
+        // If popup would go off bottom, position it at maxAllowedTop
+        if (top + cardHeight > viewportHeight - minMargin) {
+          top = maxAllowedTop;
+        }
+        
+        // Ensure it doesn't go off the top
+        if (top < minMargin) {
+          top = minMargin;
+        }
+        
+        // ABSOLUTE GUARANTEE: bottom must be within viewport
+        // Recalculate to ensure this is always true
+        const finalBottom = top + cardHeight;
+        if (finalBottom > viewportHeight - minMargin) {
+          // Force position so bottom is exactly at viewport - margin
+          top = viewportHeight - cardHeight - minMargin;
+          // But don't go above top margin
+          if (top < minMargin) {
+            top = minMargin;
+          }
+        }
+
+        setPersonalEventInfo({
+          event: ev,
+          calendarName,
+          position: { top, left },
+        });
+        return;
+      }
+    }
+
+    const elRect = clickInfo.el.getBoundingClientRect();
+    const cardWidth = 320;
+    const cardMaxHeight = 520; // keep in sync with CSS max-height
+    const margin = 8;
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+
+    // Prefer to show on the right; fall back to left when there is not enough space
+    let left = elRect.right + margin;
+    if (left + cardWidth > viewportWidth - 16) {
+      left = elRect.left - cardWidth - margin;
+      if (left < 16) left = 16;
+    }
+
+    // Position vertically near the event, but clamp so the card stays on screen
+    let top = elRect.top + 4;
+    const maxTop = viewportHeight - cardMaxHeight - 16;
+    if (top > maxTop) top = Math.max(16, maxTop);
+    if (top < 16) top = 16;
+    
+    // Ensure the bottom of the card doesn't go below viewport
+    const minTop = viewportHeight - cardMaxHeight - 16;
+    if (top < minTop) top = Math.max(16, minTop);
+
+    setDetailsOverlayPosition({ top, left });
+    setSelectedEvent(ev);
+  };
+
+  // Apply full-block background "splotch" based on event-type tags
+  const handleEventDidMount = (info) => {
+    const ev = info.event;
+    const isListServ = ev.classNames.includes("fc-event-listserv");
+    const harness = info.el.parentElement; // FullCalendar wraps events in a harness div
+
+    if (!isListServ) {
+      // Primary / other calendars → intentionally under ListServ events
+      if (harness) harness.style.zIndex = "5";
+      info.el.style.zIndex = "5";
+      return;
+    }
+
+    // ListServ events should always visually sit above the primary calendar
+    if (harness) harness.style.zIndex = "30";
+    info.el.style.zIndex = "30";
+
+    const tags = ev.extendedProps?.tags || [];
+    const colors = (tags || [])
+      .map((t) => tagColorMap?.[String(t || "")])
+      .filter(Boolean);
+
+    const uniqColors = Array.from(new Set(colors));
+
+    if (uniqColors.length === 0) {
+      // No event-type tags: use light gray block
+      info.el.style.backgroundImage = "none";
+      info.el.style.backgroundColor = "#e5e7eb";
+      info.el.style.color = "#111827";
+    } else if (uniqColors.length === 1) {
+      const c = uniqColors[0];
+      info.el.style.backgroundImage = "none";
+      info.el.style.backgroundColor = c;
+      info.el.style.color = "#000000";
+    } else {
+      // Even distribution across the whole block:
+      // Base linear gradient ensures no white; radial gradients add organic edges.
+      const baseStep = 100 / uniqColors.length;
+      const baseStops = uniqColors
+        .map((c, i) => {
+          const start = Math.round(i * baseStep);
+          const end = Math.round((i + 1) * baseStep);
+          return `${c} ${start}% ${end}%`;
+        })
+        .join(", ");
+      const base = `linear-gradient(90deg, ${baseStops})`;
+
+      const spots = uniqColors.slice(0, 3);
+      const positions = ["15% 25%", "85% 30%", "50% 80%"];
+      const radials = spots.map((c, i) => {
+        const pos = positions[i] || "50% 50%";
+        return `radial-gradient(circle at ${pos}, ${c} 0 55%, rgba(255,255,255,0) 70%)`;
+      });
+
+      info.el.style.backgroundImage = [base, ...radials].join(", ");
+      info.el.style.backgroundColor = "transparent";
+      info.el.style.color = "#000000";
+    }
+
+    info.el.style.borderRadius = "5px";
+  };
 
   return (
     <div className="app-calendar-container">
@@ -66,6 +283,13 @@ export const Calendar = ({
           selectable={false}
           selectMirror={false}
           events={events}
+          eventOrder={(a, b) => {
+            const aIsListServ = Array.isArray(a.classNames) && a.classNames.includes("fc-event-listserv");
+            const bIsListServ = Array.isArray(b.classNames) && b.classNames.includes("fc-event-listserv");
+            if (aIsListServ === bIsListServ) return 0;
+            // Render primary/other events first, then ListServ, so ListServ segments appear on top
+            return aIsListServ ? 1 : -1;
+          }}
           height="100%"
           dayHeaderFormat={{ weekday: "short" }}
           dayHeaderContent={(arg) => {
@@ -120,14 +344,22 @@ export const Calendar = ({
               return `${displayHours}:${displayMinutes} ${ampm}`;
             };
 
-            const startTime = formatTime(arg.event.start);
-            const endTime = formatTime(arg.event.end);
+            const isAllDay = arg.event.allDay || arg.event.extendedProps?.allDay;
+            const startTime = isAllDay ? null : formatTime(arg.event.start);
+            const endTime = isAllDay ? null : formatTime(arg.event.end);
             const timeRange = endTime ? `${startTime} - ${endTime}` : startTime;
             const title = arg.event.title || "";
 
             // Custom rendering for non-listserv events
             const isOther = arg.event.classNames.includes("fc-event-other");
             if (isOther) {
+              if (isAllDay) {
+                return {
+                  html: `<div style="display: flex; flex-direction: column; gap: 2px; padding: 0; overflow: hidden;">
+                    <div style="font-size: 10px; font-weight: 500; color: #000; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${title}</div>
+                  </div>`,
+                };
+              }
               return {
                 html: `<div style="display: flex; flex-direction: column; gap: 2px; padding: 0; overflow: hidden;">
                   <div style="font-size: 10px; font-weight: 500; color: #000; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${title}</div>
@@ -140,12 +372,19 @@ export const Calendar = ({
             const isListServ =
               arg.event.classNames.includes("fc-event-listserv");
             if (isListServ) {
-              // Always use black text for better readability on all our pastel colors
               const textColor = "#000";
               const timeColor = "#6b7280"; // Slightly lighter gray for time
 
+              if (isAllDay) {
+                return {
+                  html: `<div style="display: flex; flex-direction: column; gap: 2px; padding: 2px 4px; overflow: hidden;">
+                    <div style="font-size: 10px; font-weight: 500; color: ${textColor}; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${title}</div>
+                  </div>`,
+                };
+              }
+
               return {
-                html: `<div style="display: flex; flex-direction: column; gap: 2px; padding: 0; overflow: hidden;">
+                html: `<div style="display: flex; flex-direction: column; gap: 2px; padding: 2px 4px; overflow: hidden;">
                   <div style="font-size: 10px; font-weight: 500; color: ${textColor}; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${title}</div>
                   <div style="font-size: 9px; font-weight: 400; color: ${timeColor}; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${timeRange}</div>
                 </div>`,
@@ -156,10 +395,75 @@ export const Calendar = ({
           }}
           // 4. USE the props from App.jsx
           select={onSelect}
-          eventClick={onEventClick}
+          eventClick={handleEventClickLocal}
           datesSet={onDatesSet}
           scrollTime={scrollTime}
+          eventDidMount={handleEventDidMount}
         />
+        {selectedEvent && detailsOverlayPosition && (
+          <div
+            className="event-details-overlay"
+            style={{
+              position: "fixed",
+              top: detailsOverlayPosition.top,
+              left: detailsOverlayPosition.left,
+            }}
+          >
+            {/* Reuse the existing EventDetails card UI */}
+            {/* We import lazily here to avoid circular deps in comments; actual import is at top of file */}
+            {/* eslint-disable-next-line react/jsx-pascal-case */}
+            <EventDetails />
+          </div>
+        )}
+
+        {personalEventInfo && (
+          <div
+            className="personal-event-overlay"
+            style={{
+              position: "fixed",
+              top: personalEventInfo.position.top,
+              left: personalEventInfo.position.left,
+              maxHeight: `${window.innerHeight - personalEventInfo.position.top - 16}px`,
+            }}
+          >
+            <div className="personal-event-card" ref={personalEventCardRef}>
+              <div className="personal-event-header">
+                <h3 className="personal-event-title">
+                  {personalEventInfo.event.title || "(No title)"}
+                </h3>
+                <button
+                  className="close-panel-button"
+                  onClick={() => setPersonalEventInfo(null)}
+                  aria-label="Close"
+                >
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#4b5563" strokeWidth="2">
+                    <line x1="18" y1="6" x2="6" y2="18"></line>
+                    <line x1="6" y1="6" x2="18" y2="18"></line>
+                  </svg>
+                </button>
+              </div>
+              <div className="personal-event-separator"></div>
+              <div className="personal-event-content">
+                <div className="personal-event-message">
+                  <svg className="personal-event-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#4b5563" strokeWidth="2">
+                    <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+                    <line x1="16" y1="2" x2="16" y2="6"></line>
+                    <line x1="8" y1="2" x2="8" y2="6"></line>
+                    <line x1="3" y1="10" x2="21" y2="10"></line>
+                  </svg>
+                  <div className="personal-event-text">
+                    <p className="personal-event-calendar-name">
+                      This event is part of your <strong>{personalEventInfo.calendarName}</strong> calendar.
+                    </p>
+                    <p className="personal-event-instruction">
+                      You can toggle personal calendars on/off using the "My Calendars" button in the header, but individual events cannot be filtered.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

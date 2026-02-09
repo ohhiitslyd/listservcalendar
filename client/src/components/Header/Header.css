@@ -14,7 +14,7 @@
 .app-header-left {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 12px; /* bring Filters and Publish a bit closer together */
 }
 
 .app-header-right {
@@ -79,6 +79,9 @@
 /* Filter Button */
 .filters-button {
   position: relative;
+  min-width: 170px; /* Slightly smaller but still fixed so Publish button stays put */
+  justify-content: center; /* center icon, label, and count as a unit */
+  padding: 6px 10px; /* make the button a bit more compact vertically */
 }
 
 .filter-icon {
@@ -95,8 +98,16 @@
   font-weight: 500;
   color: #000000;
   box-shadow: inset 2px 2px 4px 0px rgba(0, 0, 0, 0.15);
-  min-width: 20px;
+  min-width: 40px; /* Reserve space for up to 4 digits so layout stays stable */
   text-align: center;
+  margin-left: 8px; /* keep badge close to "Filters" */
+}
+
+.calendars-button {
+  background: #ffffff;
+  color: #000000;
+  border: 1px solid #d4e9c4;
+  font-weight: 400;
 }
 
 .dropdown-arrow {
@@ -210,16 +221,19 @@
 
 .filters-drawer-overlay {
   position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.25);
+  top: 83px; /* below header */
+  bottom: 0;
+  left: 0;
+  width: 360px; /* keep drawer within the left side, not over the calendar */
+  background: transparent;
   z-index: 1200;
   display: flex;
   justify-content: flex-start;
 }
 
 .filters-drawer {
-  width: 520px;
-  max-width: 95vw;
+  width: 320px;
+  max-width: 360px;
   height: 100%;
   background: #ffffff;
   box-shadow: 8px 0 24px rgba(0, 0, 0, 0.15);

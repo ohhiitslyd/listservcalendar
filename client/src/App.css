@@ -23,19 +23,80 @@
   min-width: 0;
 }
 
+/* Right Panel – reused for the Event Type Colors legend */
+.app-right-panel {
+  flex-shrink: 0;
+  width: 260px;
+  background: #ffffff;
+  border-left: 1px solid #e5e7eb;
+  display: flex;
+  flex-direction: column;
+  padding: 16px 16px 16px 16px;
+  box-sizing: border-box;
+}
+
+.legend-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  height: 100%;
+  font-family: 'Poppins', sans-serif;
+}
+
+.legend-title {
+  margin: 0 0 4px 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: #000000;
+}
+
+.legend-empty {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 400;
+  color: #6b7280;
+}
+
+.legend-items {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  overflow-y: auto;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #111827;
+}
+
+.legend-swatch {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  flex-shrink: 0;
+}
+
+.legend-label {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* Left Panel */
 .app-left-panel {
   flex-shrink: 0;
-  width: 320px;
-  background-color: #f5f7f4;
-  padding: 16px 16px 16px 40px;
-  overflow: auto;
+  width: 340px;
+  background-color: #ffffff;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
-  gap: 12px;
   border-right: 1px solid #e5e7eb;
-  box-shadow: 3px 0 6px rgba(0, 0, 0, 0.08);
 }
+
 
 
 .app-left-panel h3 {
@@ -59,221 +120,69 @@
   /* padding: 20px; */
 }
 
-.selected-filters-panel {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  height: 100%;
-}
 
-.selected-filters-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-  padding-top: 4px;
-}
-
-.selected-filters-title {
-  font-size: 14px;
-  font-weight: 500;
-  font-family: 'Poppins', sans-serif;
-  color: #000000;
-}
-
-.selected-filters-count {
-  background: #d4e9c4;
-  border-radius: 999px;
-  padding: 2px 8px;
-  font-size: 12px;
-  font-weight: 500;
-  font-family: 'Poppins', sans-serif;
-  color: #000000;
-}
-
-.selected-filters-clear {
-  margin-left: auto;
-  background: transparent;
-  border: none;
-  padding: 0;
-  font-size: 12px;
-  font-weight: 500;
-  font-family: 'Poppins', sans-serif;
-  color: #000000;
-  cursor: pointer;
-}
-
-.selected-filters-clear:hover {
-  text-decoration: underline;
-}
-
-.selected-filters-chips {
-  display: flex;
-  flex-direction: column;
-  flex-wrap: nowrap;
-  overflow-y: auto;
-  gap: 16px;
-  padding: 6px 0 4px 0;
-}
-
-.selected-filters-group {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.selected-filters-group-toggle {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  background: transparent;
-  border: none;
-  padding: 0;
-  cursor: pointer;
-  text-align: left;
-  color: #666;
-}
-
-.selected-filters-group-toggle:hover {
-  color: #000;
-}
-
-.selected-filters-group-caret {
-  display: inline-block;
-  color: inherit;
-  transform: rotate(-90deg);
-  transition: transform 0.2s ease;
-}
-
-.selected-filters-group-caret.open {
-  transform: rotate(0deg);
-}
-
-.selected-filters-group-title {
-  font-size: 12px;
-  font-weight: 600;
-  font-family: 'Poppins', sans-serif;
-  color: #000000;
-}
-
-.selected-filters-group-chips {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.selected-filter-chip {
-  background: #f5f9f0;
-  border: 1px solid #d4e9c4;
-  border-radius: 999px;
-  padding: 6px 12px;
-  font-size: 12px;
-  font-weight: 400;
-  font-family: 'Poppins', sans-serif;
-  color: #000000;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  width: 100%;
-  justify-content: space-between;
-}
-
-.selected-filter-chip-label {
-  line-height: 1.2;
-}
-
-.selected-filter-chip-remove {
-  border: none;
-  background: transparent;
-  cursor: pointer;
-  font-size: 12px;
-  line-height: 1;
-  color: #000000;
-  padding: 0;
-}
-
-.selected-filter-chip-remove:hover {
-  color: #6b7280;
-}
-
-.publish-modal-overlay {
+.publish-toast {
   position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.35);
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  right: 40px;
+  bottom: 24px;
   z-index: 2000;
+  pointer-events: none; /* allow interacting with calendar underneath */
 }
 
-.publish-modal {
-  width: 360px;
-  min-height: 360px;
-  max-width: 90vw;
+.publish-toast-content {
+  pointer-events: auto;
+  min-width: 280px;
+  max-width: 360px;
   background: #ffffff;
   border-radius: 12px;
-  padding: 24px;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+  padding: 14px 16px 12px 16px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.18);
   font-family: 'Poppins', sans-serif;
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
+  gap: 8px;
 }
 
-.publish-modal-content h4 {
-  margin: 0 0 12px 0;
-  font-size: 18px;
+.publish-toast-title {
+  font-size: 14px;
   font-weight: 600;
   color: #000000;
 }
 
-.publish-modal-content p {
-  margin: 0;
-  font-size: 14px;
+.publish-toast-text {
+  font-size: 13px;
   font-weight: 400;
-  color: #000000;
-  line-height: 1.5;
+  color: #4b5563;
 }
 
-.publish-modal-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
+.publish-toast-progress {
+  width: 100%;
+  height: 4px;
+  border-radius: 999px;
+  background: #e5e7eb;
+  overflow: hidden;
 }
 
-.publish-modal-secondary {
-  background: #ffffff;
-  border: 1px solid #d4e9c4;
-  border-radius: 8px;
-  padding: 8px 14px;
-  font-size: 14px;
-  font-weight: 400;
-  cursor: pointer;
-}
-
-.publish-modal-primary {
+.publish-toast-progress-bar {
+  width: 40%;
+  height: 100%;
   background: #d4e9c4;
-  border: 1px solid #d4e9c4;
-  border-radius: 8px;
-  padding: 8px 14px;
-  font-size: 14px;
-  font-weight: 500;
-  cursor: pointer;
+  border-radius: 999px;
+  animation: publish-progress-indeterminate 1.2s infinite ease-in-out;
 }
 
-.publish-modal-secondary:disabled,
-.publish-modal-primary:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
+@keyframes publish-progress-indeterminate {
+  0% {
+    transform: translateX(-100%);
+  }
+  50% {
+    transform: translateX(0%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
 }
 
-.selected-filters-empty {
-  font-size: 12px;
-  font-weight: 400;
-  font-family: 'Poppins', sans-serif;
-  color: #6b7280;
-}
 
 .app-calendar-wrapper {
   flex: 1;

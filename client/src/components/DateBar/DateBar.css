@@ -86,6 +86,12 @@
 .date-bar-right {
   display: flex;
   align-items: center;
+  gap: 12px;
+}
+
+.date-bar-view-toggle {
+  display: flex;
+  align-items: center;
   gap: 5px;
 }
 

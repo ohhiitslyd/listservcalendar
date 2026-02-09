@@ -7,18 +7,12 @@ export const EventDetails = () => {
     selectedEvent,
     setSelectedEvent,
     handlePublishEvent,
-    handleDeleteEvent,
     listservCalendarId,
     logout,
   } = useContext(AppContext);
 
   if (!selectedEvent) {
-    return (
-      <div className="event-details-placeholder">
-        <h3>Event Details</h3>
-        <p>Click an event to see its details here.</p>
-      </div>
-    );
+    return null;
   }
 
   const isDraft = selectedEvent.id.startsWith("draft:");
@@ -93,9 +87,11 @@ export const EventDetails = () => {
           <div className="event-details-time-group">
             {selectedEvent.start && selectedEvent.end && (
               <>
-                <div className="event-details-text">
-                  {formatTime(selectedEvent.start)} - {formatTime(selectedEvent.end)}
-                </div>
+                {!selectedEvent.allDay && (
+                  <div className="event-details-text">
+                    {formatTime(selectedEvent.start)} - {formatTime(selectedEvent.end)}
+                  </div>
+                )}
                 <div className="event-details-text">
                   {formatDate(selectedEvent.start)}
                 </div>
@@ -169,17 +165,6 @@ export const EventDetails = () => {
         )}
       </div>
 
-      {/* Delete button for listserv events */}
-      {(isDraft || isEmail || isListServ) && (
-        <div className="event-details-actions">
-          <button 
-            className="event-delete-button" 
-            onClick={handleDeleteEvent}
-          >
-            Delete
-          </button>
-        </div>
-      )}
     </div>
   );
 };

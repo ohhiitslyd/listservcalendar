@@ -4,7 +4,15 @@ import { AppContext } from "../../context/AppContext";
 import { api } from "../../api/calendarApi";
 import "./Filters.css";
 
-export const Filters = ({ onClose, showHeader = true, onPendingKeyChange }) => {
+export const Filters = ({
+  onClose,
+  showHeader = true,
+  onPendingKeyChange,
+  onPendingCountChange,
+  autoFocusOrgSearch = false,
+  statusText,
+  statusDotClass,
+}) => {
   const {
     //tag level cats
     availableCats,
@@ -31,11 +39,15 @@ export const Filters = ({ onClose, showHeader = true, onPendingKeyChange }) => {
     listservCalendarId,
     setEvents,
     refetchEventsWithParams,
+
+    // color mapping
+    tagColorMap,
   } = useContext(AppContext);
 
-  const [activeTab, setActiveTab] = useState("organizations");
+  const [activeTab, setActiveTab] = useState("event-types");
   const [expandedCategories, setExpandedCategories] = useState(new Set());
   const [orgSearch, setOrgSearch] = useState("");
+  const orgSearchInputRef = useRef(null);
 
   // Local/pending state - only committed to context when "Apply Filters" is clicked
   const [pendingSelectedCats, setPendingSelectedCats] = useState(new Set(selectedCats));
@@ -44,6 +56,15 @@ export const Filters = ({ onClose, showHeader = true, onPendingKeyChange }) => {
 
   // Skip the first effect run so we don't refetch when dropdown just opens
   const skipFirstPreviewRef = useRef(true);
+
+  // When `autoFocusOrgSearch` is true (e.g. user clicked the left‑panel search bar),
+  // focus and select the organization search input as soon as the drawer opens.
+  useEffect(() => {
+    if (autoFocusOrgSearch && orgSearchInputRef.current) {
+      orgSearchInputRef.current.focus();
+      orgSearchInputRef.current.select();
+    }
+  }, [autoFocusOrgSearch]);
 
   // Keep a ref of the latest pending state so we can commit it on unmount (when user closes dropdown)
   const pendingStateRef = useRef({
@@ -114,6 +135,12 @@ export const Filters = ({ onClose, showHeader = true, onPendingKeyChange }) => {
       onPendingKeyChange(pendingKey);
     }
   }, [pendingKey, onPendingKeyChange]);
+
+  useEffect(() => {
+    if (onPendingCountChange) {
+      onPendingCountChange(pendingSelectedCats.size + pendingSelectedOrgCats.size);
+    }
+  }, [pendingSelectedCats, pendingSelectedOrgCats, onPendingCountChange]);
 
 
 
@@ -344,6 +371,24 @@ export const Filters = ({ onClose, showHeader = true, onPendingKeyChange }) => {
     return getTypeOrganizations(type).some((org) => pendingSelectedOrgCats.has(org.key));
   };
 
+  // Clear ALL filters in a given top-level type (its type key, subcategories, and orgs)
+  const clearAllForType = (type) => {
+    setPendingSelectedOrgCats((prev) => {
+      const next = new Set(prev);
+      // Remove the type key itself
+      next.delete(type.key);
+      // Remove all orgs under this type
+      getTypeOrganizations(type).forEach((org) => {
+        next.delete(org.key);
+      });
+      // Remove any subcategory keys under this type
+      Object.values(type.subcategories || {}).forEach((sub) => {
+        next.delete(sub.key);
+      });
+      return next;
+    });
+  };
+
   // Update parent selection: type (and sub keys for backend) based on whether all orgs are selected
   const updateParentSelection = (next, orgHierarchy) => {
     Object.values(orgHierarchy).forEach((type) => {
@@ -451,10 +496,24 @@ export const Filters = ({ onClose, showHeader = true, onPendingKeyChange }) => {
       {/* Header */}
       {showHeader && (
         <div className="filters-header">
-          <h4 className="filters-title">Filters</h4>
-          <span className="filters-selected-count">
-            {totalSelected > 0 ? `${totalSelected} filters selected` : ''}
-          </span>
+          <div className="filters-header-left">
+            <h4 className="filters-title">Filters</h4>
+            {statusText && (
+              <div className="filters-status">
+                <span
+                  className={`filters-status-dot ${statusDotClass || ""}`}
+                />
+                <span className="filters-status-text">
+                  {statusText}
+                </span>
+              </div>
+            )}
+            {totalSelected > 0 && (
+              <span className="filters-selected-count">
+                {totalSelected} filters selected
+              </span>
+            )}
+          </div>
         </div>
       )}
 
@@ -464,30 +523,33 @@ export const Filters = ({ onClose, showHeader = true, onPendingKeyChange }) => {
       <div className="filters-tabs">
         <div className="filters-tabs-group">
           <button
-            className={`filter-tab ${activeTab === 'organizations' ? 'active' : ''}`}
-            onClick={() => setActiveTab('organizations')}
-          >
-            Organizations
-          </button>
-          <button
             className={`filter-tab ${activeTab === 'event-types' ? 'active' : ''}`}
             onClick={() => setActiveTab('event-types')}
           >
             Event Types
           </button>
+          <button
+            className={`filter-tab ${activeTab === 'organizations' ? 'active' : ''}`}
+            onClick={() => setActiveTab('organizations')}
+          >
+            Organizations
+          </button>
         </div>
-        <button
-          onClick={clearAll}
-          className="filters-clear-all-tab"
-        >
-          Clear All
-        </button>
       </div>
 
       {/* Content */}
       <div className="filters-content">
+        <div className={`filters-clear-all-row ${activeTab === 'event-types' ? 'filters-clear-all-row-sticky' : ''}`}>
+          <button
+            onClick={clearAll}
+            className="filters-clear-all-tab"
+            type="button"
+          >
+            Clear all filters
+          </button>
+        </div>
         {activeTab === 'organizations' ? (
-          <div className="org-filters-list">
+          <>
             <div className="org-filters-search">
               <input
                 type="text"
@@ -495,8 +557,11 @@ export const Filters = ({ onClose, showHeader = true, onPendingKeyChange }) => {
                 value={orgSearch}
                 onChange={(event) => setOrgSearch(event.target.value)}
                 className="org-filters-search-input"
+                ref={orgSearchInputRef}
               />
             </div>
+            <div className="org-filters-list-wrapper">
+            <div className="org-filters-list">
             {filteredOrgHierarchy && Object.values(filteredOrgHierarchy).map((type) => {
               const typeColor = getCategoryColor(type.key);
               const typeSelected = pendingSelectedOrgCats.has(type.key);
@@ -548,8 +613,17 @@ export const Filters = ({ onClose, showHeader = true, onPendingKeyChange }) => {
                       <input
                         type="checkbox"
                         checked={typeSelected}
-                        onChange={() => toggleOrgCategory(type.key)}
-                        className={`org-filter-checkbox ${typePartiallySelected ? "partial" : ""} ${pendingExcludeMode && typeSelected ? "exclude-selected" : ""} ${pendingExcludeMode && typePartiallySelected ? "exclude-partial" : ""}`}
+                        onChange={() => {
+                          if (typeHighlighted) {
+                            // If any filters in this category are active, clicking the type checkbox
+                            // should clear ALL filters in this category (type + all orgs).
+                            clearAllForType(type);
+                          } else {
+                            // No filters currently selected in this category → behave as normal toggle (select all)
+                            toggleOrgCategory(type.key);
+                          }
+                        }}
+                        className={`org-filter-checkbox ${typePartiallySelected ? "partial" : ""}`}
                         aria-checked={typePartiallySelected ? "mixed" : typeSelected}
                         onClick={(e) => e.stopPropagation()}
                       />
@@ -561,6 +635,14 @@ export const Filters = ({ onClose, showHeader = true, onPendingKeyChange }) => {
                         backgroundColor: typeHighlighted ? typeFillColor : "transparent",
                         borderColor: typeBorderColor,
                         color: typeHighlighted ? "#000" : "#000",
+                      }}
+                      title={typeHighlighted ? "Remove all filters in this category" : ""}
+                      data-tooltip={typeHighlighted ? "Remove all filters in this category" : undefined}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (typeHighlighted) {
+                          clearAllForType(type);
+                        }
                       }}
                     >
                       {type.count}
@@ -601,24 +683,37 @@ export const Filters = ({ onClose, showHeader = true, onPendingKeyChange }) => {
                 </div>
               );
             })}
-          </div>
+            </div>
+            </div>
+          </>
         ) : (
-          <div className="event-types-list">
+          <div className="event-types-list-wrapper">
+            <div className="event-types-list">
             {availableCats.map((cat) => {
               const key = cat.key;
               const label = cat.label || key;
               const active = pendingSelectedCats.has(key);
               const count = categoryCounts[key] || 0;
+              const tagColor = tagColorMap?.[key] || '#e5e7eb'; // Default to light grey for untagged
               const eventFillColor = pendingExcludeMode ? "#f4b4b4" : "#d4e9c4";
               const eventBorderColor = pendingExcludeMode ? "#e07a7a" : "#d4e9c4";
 
               return (
-                <div key={key} className="org-filter-item">
+                <div 
+                  key={key} 
+                  className="org-filter-item event-type-filter-item"
+                >
                   <label className="org-filter-label">
                     <input
                       type="checkbox"
                       checked={active}
                       onChange={() => toggleEventCategory(key)}
+                      className="org-filter-checkbox event-type-checkbox"
+                      style={{
+                        borderColor: tagColor,
+                        accentColor: tagColor,
+                        color: tagColor,
+                      }}
                       className={`org-filter-checkbox ${pendingExcludeMode && active ? "exclude-selected" : ""}`}
                     />
                     <span className="org-filter-name">{label}</span>
@@ -626,6 +721,9 @@ export const Filters = ({ onClose, showHeader = true, onPendingKeyChange }) => {
                   <span 
                     className={`org-filter-count ${active ? 'selected' : ''}`}
                     style={{ 
+                      backgroundColor: active ? tagColor : 'transparent',
+                      borderColor: tagColor,
+                      color: '#000'
                       backgroundColor: active ? eventFillColor : 'transparent',
                       borderColor: eventBorderColor,
                       color: active ? '#000' : '#000'
@@ -636,8 +734,9 @@ export const Filters = ({ onClose, showHeader = true, onPendingKeyChange }) => {
                 </div>
             );
           })}
-        </div>
-      )}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Footer */}

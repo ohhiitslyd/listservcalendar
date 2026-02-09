@@ -243,6 +243,26 @@ export const AppProvider = ({ children }) => {
     return hierarchy;
   }, [availableOrgCats, orgCategoryCounts]);
 
+  // Legend mapping for EVENT TYPE TAG → color (shared with event coloring)
+  // These correspond to `ev.tags` values like "Free Food", "Performance", etc.
+  const tagColorMap = useMemo(() => {
+    return {
+      "Free Food": "#d4e9c4",
+      "Performance": "#c7d9f5",
+      "Lecture/Speaker": "#ddd6fe",
+      "Mixer": "#f5d7c7",
+      "Workshop": "#fed7aa",
+      "Giveaway/Compensation": "#fce7f3",
+      "Recurring Meetings": "#cffafe",
+      "Philanthropy": "#e9f5c7",
+      "Screening": "#e0e7ff",
+      "Off-campus": "#fecaca",
+      "21+": "#ccfbf1",
+      "Sport": "#faccba",
+      "Religious/Spiritual": "#e9ddff",
+    };
+  }, []);
+
   // UI-level filtering: if org filters are selected, only show listserv events
   // whose organization_email matches the selected org emails
   const filteredEvents = useMemo(() => {
@@ -380,58 +400,18 @@ export const AppProvider = ({ children }) => {
         excludeParam,
       });
 
-      // Color mapping for organization categories
-      const getCategoryColor = (orgCategories) => {
-        if (!orgCategories || orgCategories.length === 0) return null;
-
-        // Extract the type (first part before ":") from orgCategories
-        // e.g., "music:a_cappella:dartmouth_cords" -> "music"
-        for (const cat of orgCategories) {
-          const typeKey = cat.split(":")[0];
-
-          // Comprehensive color map for different organization types
-          // Pastel/light colors similar to default green (#d4e9c4) for good readability
-          const colorMap = {
-            music: "#c7d9f5", // light blue - pastel
-            sports: "#f5d7c7", // light peach/orange - pastel
-            academic: "#ddd6fe", // light purple - pastel
-            cultural: "#fed7aa", // light amber - pastel
-            social: "#d4e9c4", // light green - default (keep original)
-            greek: "#fce7f3", // light pink - pastel
-            arts: "#cffafe", // light cyan - pastel
-            community: "#e9f5c7", // light lime - pastel
-            religious: "#e0e7ff", // light indigo - pastel
-            political: "#fecaca", // light red - pastel
-            professional: "#ccfbf1", // light teal - pastel
-            volunteer: "#fed7aa", // light orange - pastel
-            service: "#cffafe", // light cyan (same as arts)
-            wellness: "#d4e9c4", // light green (same as social)
-            technology: "#e0e7ff", // light indigo (same as religious)
-          };
-
-          if (colorMap[typeKey]) return colorMap[typeKey];
-        }
-        return null; // Default to green (handled by CSS)
-      };
-
       const transformed = (data.events || []).map((ev) => {
         // Listserv events: drafts, email-sourced, or Google Calendar listserv events
         const isListServ =
           ev.calendarId === listservCalendarId ||
           ev.source === "draft" ||
           ev.source === "email";
-        const categoryColor = isListServ
-          ? getCategoryColor(ev.orgCategories)
-          : null;
-
         let className = isListServ ? "fc-event-listserv" : "fc-event-other";
 
         return {
           ...ev,
           className,
-          // Apply category color directly - this overrides the default green
-          backgroundColor: categoryColor || undefined,
-          borderColor: categoryColor || undefined,
+          // We handle visual coloring in Calendar.jsx based on tags + tagColorMap
           textColor: "#000000", // Always use black text for better readability
           extendedProps: {
             organization: ev.organization ?? "",
@@ -639,24 +619,24 @@ export const AppProvider = ({ children }) => {
         setPreferencesLoaded(true);
 
         // b) Now load calendars, categories, and org categories
-        fetchCalendars();
-        fetchWorkingCalendar();
-        fetchCategories(user);
+    fetchCalendars();
+    fetchWorkingCalendar();
+    fetchCategories(user);
 
-        try {
-          const res = await fetch("/api/org-categories", {
-            credentials: "include",
-          });
-          if (res.ok) {
-            const data = await res.json();
+      try {
+        const res = await fetch("/api/org-categories", {
+          credentials: "include",
+        });
+        if (res.ok) {
+          const data = await res.json();
             setAvailableOrgCats(data.categories || data.orgCategories || []);
-          } else {
-            setAvailableOrgCats([]);
-          }
-        } catch {
+        } else {
           setAvailableOrgCats([]);
         }
-      })();
+      } catch {
+        setAvailableOrgCats([]);
+      }
+    })();
     } else {
       // user logged out → clear all data
       setCalendars([]);
@@ -759,6 +739,7 @@ export const AppProvider = ({ children }) => {
     setSelectedOrgCats,
     orgCategoryCounts,
     orgHierarchy,
+    tagColorMap,
     refetchEventsWithParams, 
 
     currentViewRange,
