@@ -497,7 +497,14 @@ export const Filters = ({
       {showHeader && (
         <div className="filters-header">
           <div className="filters-header-left">
-            <h4 className="filters-title">Filters</h4>
+            <div className="filters-title-row">
+              <h4 className="filters-title">Filters</h4>
+              {totalSelected > 0 && (
+                <span className="filters-selected-count">
+                  {totalSelected} filters selected
+                </span>
+              )}
+            </div>
             {statusText && (
               <div className="filters-status">
                 <span
@@ -507,11 +514,6 @@ export const Filters = ({
                   {statusText}
                 </span>
               </div>
-            )}
-            {totalSelected > 0 && (
-              <span className="filters-selected-count">
-                {totalSelected} filters selected
-              </span>
             )}
           </div>
         </div>
@@ -708,25 +710,20 @@ export const Filters = ({
                       type="checkbox"
                       checked={active}
                       onChange={() => toggleEventCategory(key)}
-                      className="org-filter-checkbox event-type-checkbox"
+                      className={`org-filter-checkbox event-type-checkbox ${pendingExcludeMode && active ? "exclude-selected" : ""}`}
                       style={{
                         borderColor: tagColor,
                         accentColor: tagColor,
-                        color: tagColor,
                       }}
-                      className={`org-filter-checkbox ${pendingExcludeMode && active ? "exclude-selected" : ""}`}
                     />
                     <span className="org-filter-name">{label}</span>
                   </label>
                   <span 
-                    className={`org-filter-count ${active ? 'selected' : ''}`}
-                    style={{ 
-                      backgroundColor: active ? tagColor : 'transparent',
+                    className={`org-filter-count ${active ? "selected" : ""}`}
+                    style={{
+                      backgroundColor: active ? tagColor : "transparent",
                       borderColor: tagColor,
-                      color: '#000'
-                      backgroundColor: active ? eventFillColor : 'transparent',
-                      borderColor: eventBorderColor,
-                      color: active ? '#000' : '#000'
+                      color: "#000",
                     }}
                   >
                     {count}

@@ -77,30 +77,32 @@ export const Calendar = ({
 
   // Adjust personal event popup position after render to ensure it fits on screen
   useEffect(() => {
-    if (personalEventInfo && personalEventCardRef.current) {
-      const card = personalEventCardRef.current;
-      const cardRect = card.getBoundingClientRect();
-      const viewportHeight = window.innerHeight;
-      const minMargin = 16;
+    if (!personalEventInfo || !personalEventCardRef.current) return;
+    
+    const card = personalEventCardRef.current;
+    const cardRect = card.getBoundingClientRect();
+    const viewportHeight = window.innerHeight;
+    const minMargin = 16;
+    
+    // If card bottom exceeds viewport, adjust position upward
+    if (cardRect.bottom > viewportHeight - minMargin) {
+      const actualHeight = cardRect.height;
+      const newTop = Math.max(minMargin, viewportHeight - actualHeight - minMargin);
+      const currentTop = personalEventInfo.position.top;
       
-      // If card bottom exceeds viewport, adjust position upward
-      if (cardRect.bottom > viewportHeight - minMargin) {
-        const actualHeight = cardRect.height;
-        const newTop = Math.max(minMargin, viewportHeight - actualHeight - minMargin);
-        
-        // Only update if position needs to change
-        if (Math.abs(newTop - personalEventInfo.position.top) > 1) {
-          setPersonalEventInfo(prev => ({
-            ...prev,
-            position: {
-              ...prev.position,
-              top: newTop,
-            },
-          }));
-        }
+      // Only update if position needs to change significantly (avoid infinite loops)
+      if (Math.abs(newTop - currentTop) > 1) {
+        setPersonalEventInfo(prev => ({
+          ...prev,
+          position: {
+            ...prev.position,
+            top: newTop,
+          },
+        }));
       }
     }
-  }, [personalEventInfo]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [personalEventInfo]); // Run when popup opens or position changes
 
   // Local handler: position overlay next to the clicked event
   const handleEventClickLocal = (clickInfo) => {
@@ -423,7 +425,7 @@ export const Calendar = ({
               position: "fixed",
               top: personalEventInfo.position.top,
               left: personalEventInfo.position.left,
-              maxHeight: `${window.innerHeight - personalEventInfo.position.top - 16}px`,
+              maxHeight: `${Math.max(100, window.innerHeight - personalEventInfo.position.top - 16)}px`,
             }}
           >
             <div className="personal-event-card" ref={personalEventCardRef}>

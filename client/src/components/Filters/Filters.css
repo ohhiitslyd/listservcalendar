@@ -41,12 +41,20 @@
   flex: 1;
 }
 
+.filters-title-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: nowrap;
+}
+
 .filters-title {
   margin: 0;
   font-size: 16px;
   font-weight: 600;
   font-family: 'Poppins', sans-serif;
   color: #000000;
+  flex-shrink: 0;
 }
 
 .filters-status {
@@ -81,11 +89,12 @@
 }
 
 .filters-selected-count {
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 400;
   font-family: 'Poppins', sans-serif;
-  color: #4b5563;
-  margin-top: 4px;
+  color: #6b7280;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 /* Tabs */
