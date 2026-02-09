@@ -503,12 +503,17 @@ export const Filters = ({ onClose, showHeader = true, onPendingKeyChange }) => {
               const typePartiallySelected =
                 !typeSelected && getTypeOrganizations(type).some((org) => pendingSelectedOrgCats.has(org.key));
               const typeHighlighted = typeSelected || typePartiallySelected;
+              const typeFillColor = pendingExcludeMode ? "#f4b4b4" : typeColor;
+              const typeBorderColor = pendingExcludeMode ? "#e07a7a" : typeColor;
               const isExpanded = expandedCategories.has(type.key) || !!orgSearch.trim();
               const typeOrgs = getTypeOrganizations(type);
               const typeOrgsSorted = [...typeOrgs].sort((a, b) => {
                 const aSelected = pendingSelectedOrgCats.has(a.key);
                 const bSelected = pendingSelectedOrgCats.has(b.key);
                 if (aSelected !== bSelected) return aSelected ? -1 : 1;
+                const aCount = a.count || 0;
+                const bCount = b.count || 0;
+                if (aCount !== bCount) return bCount - aCount;
                 return String(a.label || "").localeCompare(String(b.label || ""), undefined, { sensitivity: "base" });
               });
               const hasOrganizations = typeOrgs.length > 0;
@@ -544,7 +549,7 @@ export const Filters = ({ onClose, showHeader = true, onPendingKeyChange }) => {
                         type="checkbox"
                         checked={typeSelected}
                         onChange={() => toggleOrgCategory(type.key)}
-                        className={`org-filter-checkbox ${typePartiallySelected ? "partial" : ""}`}
+                        className={`org-filter-checkbox ${typePartiallySelected ? "partial" : ""} ${pendingExcludeMode && typeSelected ? "exclude-selected" : ""} ${pendingExcludeMode && typePartiallySelected ? "exclude-partial" : ""}`}
                         aria-checked={typePartiallySelected ? "mixed" : typeSelected}
                         onClick={(e) => e.stopPropagation()}
                       />
@@ -553,8 +558,8 @@ export const Filters = ({ onClose, showHeader = true, onPendingKeyChange }) => {
                     <span
                       className={`org-filter-count ${typeHighlighted ? "selected" : ""}`}
                       style={{
-                        backgroundColor: typeHighlighted ? typeColor : "transparent",
-                        borderColor: typeColor,
+                        backgroundColor: typeHighlighted ? typeFillColor : "transparent",
+                        borderColor: typeBorderColor,
                         color: typeHighlighted ? "#000" : "#000",
                       }}
                     >
@@ -566,6 +571,8 @@ export const Filters = ({ onClose, showHeader = true, onPendingKeyChange }) => {
                   {isExpanded &&
                     typeOrgsSorted.map((org) => {
                       const orgSelected = pendingSelectedOrgCats.has(org.key);
+                      const orgFillColor = pendingExcludeMode ? "#f4b4b4" : typeColor;
+                      const orgBorderColor = pendingExcludeMode ? "#e07a7a" : typeColor;
                       return (
                         <div key={org.key} className="org-filter-item org-filter-item-indented">
                           <label className="org-filter-label">
@@ -573,7 +580,7 @@ export const Filters = ({ onClose, showHeader = true, onPendingKeyChange }) => {
                               type="checkbox"
                               checked={orgSelected}
                               onChange={() => toggleOrgCategory(org.key)}
-                              className="org-filter-checkbox"
+                              className={`org-filter-checkbox ${pendingExcludeMode && orgSelected ? "exclude-selected" : ""}`}
                               onClick={(e) => e.stopPropagation()}
                             />
                             <span className="org-filter-name">{org.label}</span>
@@ -581,8 +588,8 @@ export const Filters = ({ onClose, showHeader = true, onPendingKeyChange }) => {
                           <span
                             className={`org-filter-count ${orgSelected ? "selected" : ""}`}
                             style={{
-                              backgroundColor: orgSelected ? typeColor : "transparent",
-                              borderColor: typeColor,
+                              backgroundColor: orgSelected ? orgFillColor : "transparent",
+                              borderColor: orgBorderColor,
                               color: orgSelected ? "#000" : "#000",
                             }}
                           >
@@ -602,6 +609,8 @@ export const Filters = ({ onClose, showHeader = true, onPendingKeyChange }) => {
               const label = cat.label || key;
               const active = pendingSelectedCats.has(key);
               const count = categoryCounts[key] || 0;
+              const eventFillColor = pendingExcludeMode ? "#f4b4b4" : "#d4e9c4";
+              const eventBorderColor = pendingExcludeMode ? "#e07a7a" : "#d4e9c4";
 
               return (
                 <div key={key} className="org-filter-item">
@@ -610,15 +619,15 @@ export const Filters = ({ onClose, showHeader = true, onPendingKeyChange }) => {
                       type="checkbox"
                       checked={active}
                       onChange={() => toggleEventCategory(key)}
-                      className="org-filter-checkbox"
+                      className={`org-filter-checkbox ${pendingExcludeMode && active ? "exclude-selected" : ""}`}
                     />
                     <span className="org-filter-name">{label}</span>
                   </label>
                   <span 
                     className={`org-filter-count ${active ? 'selected' : ''}`}
                     style={{ 
-                      backgroundColor: active ? '#d4e9c4' : 'transparent',
-                      borderColor: '#d4e9c4',
+                      backgroundColor: active ? eventFillColor : 'transparent',
+                      borderColor: eventBorderColor,
                       color: active ? '#000' : '#000'
                     }}
                   >
@@ -640,7 +649,7 @@ export const Filters = ({ onClose, showHeader = true, onPendingKeyChange }) => {
               type="checkbox"
               checked={pendingExcludeMode}
               onChange={(e) => setPendingExcludeMode(e.target.checked)}
-              className="org-filter-checkbox"
+              className={`org-filter-checkbox ${pendingExcludeMode ? "exclude-selected" : ""}`}
             />
             <span className="org-filter-name">
               Exclude selected (hide matching events)
