@@ -103,6 +103,13 @@
   margin-left: 8px; /* keep badge close to "Filters" */
 }
 
+.calendars-button {
+  background: #ffffff;
+  color: #000000;
+  border: 1px solid #d4e9c4;
+  font-weight: 400;
+}
+
 .dropdown-arrow {
   width: 20px;
   height: 20px;

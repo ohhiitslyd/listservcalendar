@@ -10,6 +10,8 @@ export const Filters = ({
   onPendingKeyChange,
   onPendingCountChange,
   autoFocusOrgSearch = false,
+  statusText,
+  statusDotClass,
 }) => {
   const {
     //tag level cats
@@ -37,9 +39,12 @@ export const Filters = ({
     listservCalendarId,
     setEvents,
     refetchEventsWithParams,
+
+    // color mapping
+    tagColorMap,
   } = useContext(AppContext);
 
-  const [activeTab, setActiveTab] = useState("organizations");
+  const [activeTab, setActiveTab] = useState("event-types");
   const [expandedCategories, setExpandedCategories] = useState(new Set());
   const [orgSearch, setOrgSearch] = useState("");
   const orgSearchInputRef = useRef(null);
@@ -491,10 +496,24 @@ export const Filters = ({
       {/* Header */}
       {showHeader && (
         <div className="filters-header">
-          <h4 className="filters-title">Filters</h4>
-          <span className="filters-selected-count">
-            {totalSelected > 0 ? `${totalSelected} filters selected` : ''}
-          </span>
+          <div className="filters-header-left">
+            <h4 className="filters-title">Filters</h4>
+            {statusText && (
+              <div className="filters-status">
+                <span
+                  className={`filters-status-dot ${statusDotClass || ""}`}
+                />
+                <span className="filters-status-text">
+                  {statusText}
+                </span>
+              </div>
+            )}
+            {totalSelected > 0 && (
+              <span className="filters-selected-count">
+                {totalSelected} filters selected
+              </span>
+            )}
+          </div>
         </div>
       )}
 
@@ -504,23 +523,23 @@ export const Filters = ({
       <div className="filters-tabs">
         <div className="filters-tabs-group">
           <button
-            className={`filter-tab ${activeTab === 'organizations' ? 'active' : ''}`}
-            onClick={() => setActiveTab('organizations')}
-          >
-            Organizations
-          </button>
-          <button
             className={`filter-tab ${activeTab === 'event-types' ? 'active' : ''}`}
             onClick={() => setActiveTab('event-types')}
           >
             Event Types
+          </button>
+          <button
+            className={`filter-tab ${activeTab === 'organizations' ? 'active' : ''}`}
+            onClick={() => setActiveTab('organizations')}
+          >
+            Organizations
           </button>
         </div>
       </div>
 
       {/* Content */}
       <div className="filters-content">
-        <div className="filters-clear-all-row">
+        <div className={`filters-clear-all-row ${activeTab === 'event-types' ? 'filters-clear-all-row-sticky' : ''}`}>
           <button
             onClick={clearAll}
             className="filters-clear-all-tab"
@@ -530,7 +549,7 @@ export const Filters = ({
           </button>
         </div>
         {activeTab === 'organizations' ? (
-          <div className="org-filters-list">
+          <>
             <div className="org-filters-search">
               <input
                 type="text"
@@ -541,6 +560,8 @@ export const Filters = ({
                 ref={orgSearchInputRef}
               />
             </div>
+            <div className="org-filters-list-wrapper">
+            <div className="org-filters-list">
             {filteredOrgHierarchy && Object.values(filteredOrgHierarchy).map((type) => {
               const typeColor = getCategoryColor(type.key);
               const typeSelected = pendingSelectedOrgCats.has(type.key);
@@ -655,32 +676,44 @@ export const Filters = ({
                 </div>
               );
             })}
-          </div>
+            </div>
+            </div>
+          </>
         ) : (
-          <div className="event-types-list">
+          <div className="event-types-list-wrapper">
+            <div className="event-types-list">
             {availableCats.map((cat) => {
               const key = cat.key;
               const label = cat.label || key;
               const active = pendingSelectedCats.has(key);
               const count = categoryCounts[key] || 0;
+              const tagColor = tagColorMap?.[key] || '#e5e7eb'; // Default to light grey for untagged
 
               return (
-                <div key={key} className="org-filter-item">
+                <div 
+                  key={key} 
+                  className="org-filter-item event-type-filter-item"
+                >
                   <label className="org-filter-label">
                     <input
                       type="checkbox"
                       checked={active}
                       onChange={() => toggleEventCategory(key)}
-                      className="org-filter-checkbox"
+                      className="org-filter-checkbox event-type-checkbox"
+                      style={{
+                        borderColor: tagColor,
+                        accentColor: tagColor,
+                        color: tagColor,
+                      }}
                     />
                     <span className="org-filter-name">{label}</span>
                   </label>
                   <span 
                     className={`org-filter-count ${active ? 'selected' : ''}`}
                     style={{ 
-                      backgroundColor: active ? '#d4e9c4' : 'transparent',
-                      borderColor: '#d4e9c4',
-                      color: active ? '#000' : '#000'
+                      backgroundColor: active ? tagColor : 'transparent',
+                      borderColor: tagColor,
+                      color: '#000'
                     }}
                   >
                     {count}
@@ -688,8 +721,9 @@ export const Filters = ({
                 </div>
             );
           })}
-        </div>
-      )}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Footer */}

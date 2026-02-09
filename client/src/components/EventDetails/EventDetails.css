@@ -12,7 +12,7 @@
   flex-direction: column;
   min-width: 260px;
   max-width: 320px;
-  max-height: 420px; /* keep card within viewport; content scrolls if taller */
+  max-height: 520px; /* keep card within viewport; content scrolls if taller */
   overflow: hidden;
 }
 

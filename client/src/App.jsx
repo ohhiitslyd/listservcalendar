@@ -45,8 +45,6 @@ const InnerApp = () => {
     // **NOTE:** we *do not* destructure `onSelect` or `onEventClick`
     // because we will define them locally (see below).
   } = useContext(AppContext);
-  const [filtersDrawerOpen, setFiltersDrawerOpen] = useState(false);
-  const [filtersShouldFocusSearch, setFiltersShouldFocusSearch] = useState(false);
   const [pendingPublishKey, setPendingPublishKey] = useState(null);
   const [pendingFiltersCount, setPendingFiltersCount] = useState(null);
   const [publishResult, setPublishResult] = useState(null);
@@ -54,39 +52,7 @@ const InnerApp = () => {
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
   const [lastPublishedKey, setLastPublishedKey] = useState(null);
   const [hasEverPublished, setHasEverPublished] = useState(false);
-  const [eventTypesOpen, setEventTypesOpen] = useState(true);
-  const [orgsOpen, setOrgsOpen] = useState(true);
 
-  const selectedOrgChips = useMemo(() => {
-    if (!availableOrgCats || !selectedOrgCats) return [];
-    const orgMap = new Map();
-    availableOrgCats.forEach((cat) => {
-      if (!cat?.key) return;
-      const parts = cat.key.split(":");
-      const level =
-        cat.level || (parts.length === 1 ? "type" : parts.length === 2 ? "subcategory" : "organization");
-      if (level === "organization") {
-        orgMap.set(cat.key, cat.label || cat.key);
-      }
-    });
-
-    return Array.from(selectedOrgCats)
-      .filter((key) => orgMap.has(key))
-      .map((key) => ({ key, label: orgMap.get(key) }))
-      .sort((a, b) => a.label.localeCompare(b.label));
-  }, [availableOrgCats, selectedOrgCats]);
-
-  const selectedEventTypeChips = useMemo(() => {
-    if (!availableCats || !selectedCats) return [];
-    const typeMap = new Map(
-      availableCats.map((cat) => [cat.key, cat.label || cat.key])
-    );
-
-    return Array.from(selectedCats)
-      .filter((key) => typeMap.has(key))
-      .map((key) => ({ key, label: typeMap.get(key) }))
-      .sort((a, b) => a.label.localeCompare(b.label));
-  }, [availableCats, selectedCats]);
 
   const totalSelectedFilters = (selectedCats?.size || 0) + (selectedOrgCats?.size || 0);
 
@@ -108,32 +74,11 @@ const InnerApp = () => {
   }, [user, lastPublishedKey, currentPublishKey]);
 
   const effectivePublishKey =
-    filtersDrawerOpen && pendingPublishKey ? pendingPublishKey : currentPublishKey;
+    pendingPublishKey ? pendingPublishKey : currentPublishKey;
 
   const hasUnpublishedChanges =
     !!user && lastPublishedKey !== null && effectivePublishKey !== lastPublishedKey;
 
-  const handleClearAll = () => {
-    setSelectedCats(new Set());
-    setSelectedOrgCats(new Set());
-    setExcludeMode(false);
-  };
-
-  const handleRemoveOrgChip = (key) => {
-    setSelectedOrgCats((prev) => {
-      const next = new Set(prev);
-      next.delete(key);
-      return next;
-    });
-  };
-
-  const handleRemoveEventTypeChip = (key) => {
-    setSelectedCats((prev) => {
-      const next = new Set(prev);
-      next.delete(key);
-      return next;
-    });
-  };
 
   const publishFilters = async () => {
     try {
@@ -278,53 +223,6 @@ const InnerApp = () => {
     await fetchEvents(Array.from(visibleCalendars));
   };
 
-  // Legend of event-type tags → colors (for right-hand panel)
-  const typeLegend = useMemo(() => {
-    if (!events || !Array.isArray(events) || !tagColorMap) return [];
-    const seen = new Set();
-    const legend = [];
-    let hasUntagged = false;
-
-    events.forEach((ev) => {
-      const isListServ =
-        ev.calendarId === listservCalendarId ||
-        ev.source === "draft" ||
-        ev.source === "email";
-      if (!isListServ) return;
-
-      const tags = ev.tags || ev?.extendedProps?.tags || [];
-      if (!tags || tags.length === 0) {
-        hasUntagged = true;
-      }
-
-      tags.forEach((tag) => {
-        const key = String(tag || "");
-        if (!key || seen.has(key)) return;
-        const color = tagColorMap[key];
-        if (!color) return;
-        seen.add(key);
-        legend.push({
-          key,
-          color,
-          label: key,
-        });
-      });
-    });
-
-    // Sort regular tags alphabetically
-    legend.sort((a, b) => a.label.localeCompare(b.label));
-
-    // Add "No event type tag" at the bottom if needed
-    if (hasUntagged) {
-      legend.push({
-        key: "__untagged__",
-        color: "#e5e7eb",
-        label: "No event type tag",
-      });
-    }
-
-    return legend;
-  }, [events, listservCalendarId, tagColorMap]);
 
   const statusText = useMemo(() => {
     if (!hasEverPublished) {
@@ -342,13 +240,6 @@ const InnerApp = () => {
   return (
     <div className="app-container">
       <Header
-        onOpenFilters={() => {
-          setFiltersShouldFocusSearch(false);
-          setFiltersDrawerOpen(true);
-        }}
-        filtersCount={filtersDrawerOpen && typeof pendingFiltersCount === "number"
-          ? pendingFiltersCount
-          : undefined}
         onPublish={() => {
           if (isPublishing) return;
           publishFilters();
@@ -358,132 +249,14 @@ const InnerApp = () => {
 
       <div className="app-content">
         <div className="app-left-panel">
-          <div className="left-panel-status">
-            <span
-              className={`left-panel-status-dot ${
-                !hasEverPublished || hasUnpublishedChanges ? "unsynced" : "synced"
-              }`}
-            />
-            <span className="left-panel-status-text">
-              {statusText}
-            </span>
-          </div>
-          <div className="left-panel-search-bar">
-            <input
-              type="text"
-              className="left-panel-search-input"
-              placeholder="Search organizations..."
-              readOnly
-              onClick={() => {
-                setFiltersShouldFocusSearch(true);
-                setFiltersDrawerOpen(true);
-              }}
-              onFocus={() => {
-                setFiltersShouldFocusSearch(true);
-                setFiltersDrawerOpen(true);
-              }}
-            />
-          </div>
-          <div className="selected-filters-panel">
-            <div className="selected-filters-header">
-              <span className="selected-filters-title">Selected filters</span>
-              <span className="selected-filters-count">{totalSelectedFilters}</span>
-              <button
-                type="button"
-                className="selected-filters-clear"
-                onClick={handleClearAll}
-              >
-                Clear all
-              </button>
-            </div>
-            <div className="selected-filters-chips">
-              {selectedEventTypeChips.length > 0 && (
-                <div className="selected-filters-group">
-                  <button
-                    type="button"
-                    className="selected-filters-group-toggle"
-                    onClick={() => setEventTypesOpen((prev) => !prev)}
-                    aria-expanded={eventTypesOpen}
-                  >
-                    <span className="selected-filters-group-title">Event types</span>
-                    <svg
-                      className={`selected-filters-group-caret ${eventTypesOpen ? "open" : ""}`}
-                      width="16"
-                      height="16"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      aria-hidden="true"
-                    >
-                      <polyline points="6 9 12 15 18 9"></polyline>
-                    </svg>
-                  </button>
-                  {eventTypesOpen && (
-                    <div className="selected-filters-group-chips">
-                      {selectedEventTypeChips.map((chip) => (
-                        <span key={chip.key} className="selected-filter-chip">
-                          <span className="selected-filter-chip-label">{chip.label}</span>
-                          <button
-                            type="button"
-                            className="selected-filter-chip-remove"
-                            onClick={() => handleRemoveEventTypeChip(chip.key)}
-                            aria-label={`Remove ${chip.label}`}
-                          >
-                            ×
-                          </button>
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-              {selectedOrgChips.length > 0 && (
-                <div className="selected-filters-group">
-                  <button
-                    type="button"
-                    className="selected-filters-group-toggle"
-                    onClick={() => setOrgsOpen((prev) => !prev)}
-                    aria-expanded={orgsOpen}
-                  >
-                    <span className="selected-filters-group-title">Organizations</span>
-                    <svg
-                      className={`selected-filters-group-caret ${orgsOpen ? "open" : ""}`}
-                      width="16"
-                      height="16"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      aria-hidden="true"
-                    >
-                      <polyline points="6 9 12 15 18 9"></polyline>
-                    </svg>
-                  </button>
-                  {orgsOpen && (
-                    <div className="selected-filters-group-chips">
-                      {selectedOrgChips.map((chip) => (
-                        <span key={chip.key} className="selected-filter-chip">
-                          <span className="selected-filter-chip-label">{chip.label}</span>
-                          <button
-                            type="button"
-                            className="selected-filter-chip-remove"
-                            onClick={() => handleRemoveOrgChip(chip.key)}
-                            aria-label={`Remove ${chip.label}`}
-                          >
-                            ×
-                          </button>
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-              {selectedOrgChips.length === 0 && selectedEventTypeChips.length === 0 && (
-                <span className="selected-filters-empty">No filters selected.</span>
-              )}
-            </div>
-          </div>
+          <Filters
+            showHeader={true}
+            statusText={statusText}
+            statusDotClass={!hasEverPublished || hasUnpublishedChanges ? "unsynced" : "synced"}
+            onPendingKeyChange={setPendingPublishKey}
+            onPendingCountChange={setPendingFiltersCount}
+            autoFocusOrgSearch={false}
+          />
         </div>
 
         <div className="app-main-panel">
@@ -494,76 +267,11 @@ const InnerApp = () => {
         />
       </div>
 
-        {/* RIGHT PANEL – event-type color legend */}
-        <div className="app-right-panel legend-right-panel">
-          <div className="legend-panel">
-            <h4 className="legend-title">Event type colors</h4>
-            {typeLegend.length === 0 ? (
-              <p className="legend-empty">
-                Event colors will appear here once events are loaded.
-              </p>
-            ) : (
-              <div className="legend-items">
-                {typeLegend.map((item) => (
-                  <div key={item.key} className="legend-item">
-                    <span
-                      className="legend-swatch"
-                      style={{ backgroundColor: item.color }}
-                    />
-                    <span className="legend-label">{item.label}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
       </div>
 
       {/* MODAL – create event */}
       <CreateEventModal />
 
-      {filtersDrawerOpen && (
-        <div
-          className="filters-drawer-overlay"
-          onClick={() => {
-            setFiltersDrawerOpen(false);
-            setPendingPublishKey(null);
-            setFiltersShouldFocusSearch(false);
-          }}
-        >
-          <div
-            className="filters-drawer"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div className="filters-drawer-header">
-              <h3>Filters</h3>
-              <button
-                type="button"
-                className="filters-drawer-close"
-                onClick={() => {
-                  setFiltersDrawerOpen(false);
-                  setPendingPublishKey(null);
-                  setFiltersShouldFocusSearch(false);
-                }}
-              >
-                ✕
-              </button>
-            </div>
-            <Filters
-              onClose={() => {
-                setFiltersDrawerOpen(false);
-                setPendingPublishKey(null);
-                setFiltersShouldFocusSearch(false);
-                setPendingFiltersCount(null);
-              }}
-              showHeader={false}
-              onPendingKeyChange={setPendingPublishKey}
-              onPendingCountChange={setPendingFiltersCount}
-              autoFocusOrgSearch={filtersShouldFocusSearch}
-            />
-          </div>
-        </div>
-      )}
 
       {(isPublishing || publishResult) && (
         <div className="publish-toast">
