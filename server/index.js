@@ -125,7 +125,20 @@ function getOAuthClient(req) {
 
 // --- Helper: Ensure ListServ calendar exists (with session caching) ---
 async function getOrCreateListServCalendar(req, oauth2Client) {
-  // Always do a fresh lookup to avoid stale cache (e.g. calendar was deleted)
+  if (req.session.listservCalendarId) {
+    try {
+      const cal = google.calendar({ version: "v3", auth: oauth2Client });
+      await cal.calendars.get({ calendarId: req.session.listservCalendarId });
+      return { id: req.session.listservCalendarId, created: false };
+    } catch (err) {
+      if (err.code === 404) {
+        console.warn("[listserv-calendar] Cached calendar ID stale, re-discovering...");
+        delete req.session.listservCalendarId;
+      } else {
+        throw err;
+      }
+    }
+  }
   const result = await getOrCreateListServCalendarShared(oauth2Client);
   req.session.listservCalendarId = result.id;
   return result;
