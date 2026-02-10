@@ -125,13 +125,8 @@ function getOAuthClient(req) {
 
 // --- Helper: Ensure ListServ calendar exists (with session caching) ---
 async function getOrCreateListServCalendar(req, oauth2Client) {
-  // Use session cache if available
-  if (req.session.listservCalendarId) {
-    return { id: req.session.listservCalendarId, created: false };
-  }
-  // Use shared function for actual work
+  // Always do a fresh lookup to avoid stale cache (e.g. calendar was deleted)
   const result = await getOrCreateListServCalendarShared(oauth2Client);
-  // Cache the result in session
   req.session.listservCalendarId = result.id;
   return result;
 }
