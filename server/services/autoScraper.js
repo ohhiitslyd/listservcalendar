@@ -339,6 +339,20 @@ async function processUnprocessedEmails(userId, pool, oauth2Client) {
             continue;
           }
 
+          // Layer 4: Same org + same start time = duplicate
+          // Catches cases where the org sends multiple emails about the same event
+          // with substantially different wording each time
+          const sameOrgSameTime = fuzzyDuplicateCheck.rows.find((row) => {
+            return normalizeForComparison(row.organization) === normalizedOrg;
+          });
+
+          if (sameOrgSameTime) {
+            console.log(
+              `[autoScraper] Skipping same-org-same-time duplicate: "${event.title}" (org "${event.organization}" already has "${sameOrgSameTime.title}" at ${start})`
+            );
+            continue;
+          }
+
           const eventId = `event_${Math.random().toString(36).substr(2, 16)}`;
 
           await pool.query(

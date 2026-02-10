@@ -45,8 +45,6 @@ const InnerApp = () => {
     // **NOTE:** we *do not* destructure `onSelect` or `onEventClick`
     // because we will define them locally (see below).
   } = useContext(AppContext);
-  const [pendingPublishKey, setPendingPublishKey] = useState(null);
-  const [pendingFiltersCount, setPendingFiltersCount] = useState(null);
   const [publishResult, setPublishResult] = useState(null);
   const [isPublishing, setIsPublishing] = useState(false);
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
@@ -73,11 +71,8 @@ const InnerApp = () => {
     }
   }, [user, lastPublishedKey, currentPublishKey]);
 
-  const effectivePublishKey =
-    pendingPublishKey ? pendingPublishKey : currentPublishKey;
-
   const hasUnpublishedChanges =
-    !!user && lastPublishedKey !== null && effectivePublishKey !== lastPublishedKey;
+    !!user && lastPublishedKey !== null && currentPublishKey !== lastPublishedKey;
 
 
   const publishFilters = async () => {
@@ -253,8 +248,6 @@ const InnerApp = () => {
             showHeader={true}
             statusText={statusText}
             statusDotClass={!hasEverPublished || hasUnpublishedChanges ? "unsynced" : "synced"}
-            onPendingKeyChange={setPendingPublishKey}
-            onPendingCountChange={setPendingFiltersCount}
             autoFocusOrgSearch={false}
           />
         </div>

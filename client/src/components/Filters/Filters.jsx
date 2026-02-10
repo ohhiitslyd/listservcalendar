@@ -1,14 +1,11 @@
 // src/components/Filters/Filters.jsx
 import React, { useContext, useState, useMemo, useEffect, useRef } from "react";
 import { AppContext } from "../../context/AppContext";
-import { api } from "../../api/calendarApi";
 import "./Filters.css";
 
 export const Filters = ({
   onClose,
   showHeader = true,
-  onPendingKeyChange,
-  onPendingCountChange,
   autoFocusOrgSearch = false,
   statusText,
   statusDotClass,
@@ -30,16 +27,6 @@ export const Filters = ({
     excludeMode,
     setExcludeMode,
 
-    negativeFilterEnabled,
-    setNegativeFilterEnabled,
-
-    // events fetching
-    fetchEvents,
-    visibleCalendars,
-    listservCalendarId,
-    setEvents,
-    refetchEventsWithParams,
-
     // color mapping
     tagColorMap,
   } = useContext(AppContext);
@@ -48,14 +35,6 @@ export const Filters = ({
   const [expandedCategories, setExpandedCategories] = useState(new Set());
   const [orgSearch, setOrgSearch] = useState("");
   const orgSearchInputRef = useRef(null);
-
-  // Local/pending state - only committed to context when "Apply Filters" is clicked
-  const [pendingSelectedCats, setPendingSelectedCats] = useState(new Set(selectedCats));
-  const [pendingSelectedOrgCats, setPendingSelectedOrgCats] = useState(new Set(selectedOrgCats));
-  const [pendingExcludeMode, setPendingExcludeMode] = useState(excludeMode);
-
-  // Skip the first effect run so we don't refetch when dropdown just opens
-  const skipFirstPreviewRef = useRef(true);
 
   // When `autoFocusOrgSearch` is true (e.g. user clicked the left‑panel search bar),
   // focus and select the organization search input as soon as the drawer opens.
@@ -66,81 +45,13 @@ export const Filters = ({
     }
   }, [autoFocusOrgSearch]);
 
-  // Keep a ref of the latest pending state so we can commit it on unmount (when user closes dropdown)
-  const pendingStateRef = useRef({
-    pendingSelectedCats,
-    pendingSelectedOrgCats,
-    pendingExcludeMode,
-  });
-  useEffect(() => {
-    pendingStateRef.current = {
-      pendingSelectedCats,
-      pendingSelectedOrgCats,
-      pendingExcludeMode,
-    };
-  }, [pendingSelectedCats, pendingSelectedOrgCats, pendingExcludeMode]);
-
-  // When dropdown closes (component unmounts), commit pending state to context so reopen shows same selection
-  useEffect(() => {
-    return () => {
-      const { pendingSelectedCats: pCats, pendingSelectedOrgCats: pOrgCats, pendingExcludeMode: pExclude } = pendingStateRef.current;
-      setSelectedCats(pCats);
-      setSelectedOrgCats(pOrgCats);
-      setExcludeMode(pExclude);
-    };
-  }, [setSelectedCats, setSelectedOrgCats, setExcludeMode]);
-
-  // Initialize pending state from context when component mounts or context changes externally
-  useEffect(() => {
-    setPendingSelectedCats(new Set(selectedCats));
-    setPendingSelectedOrgCats(new Set(selectedOrgCats));
-    setPendingExcludeMode(excludeMode);
-  }, [selectedCats, selectedOrgCats, excludeMode]);
-
-  // When user toggles a checkbox, immediately refetch so the calendar reflects the change.
-  // "Apply filters" is still used to save preferences and sync to the personalized Google calendar.
-  useEffect(() => {
-    if (skipFirstPreviewRef.current) {
-      skipFirstPreviewRef.current = false;
-      return;
-    }
-    if (!refetchEventsWithParams) return;
-    refetchEventsWithParams(
-      Array.from(pendingSelectedOrgCats),
-      Array.from(pendingSelectedCats),
-      pendingExcludeMode
-    );
-  }, [pendingSelectedOrgCats, pendingSelectedCats, pendingExcludeMode, refetchEventsWithParams]);
-
   const clearAll = () => {
-    setPendingSelectedCats(new Set());
-    setPendingSelectedOrgCats(new Set());
-    setPendingExcludeMode(false);
+    setSelectedCats(new Set());
+    setSelectedOrgCats(new Set());
+    setExcludeMode(false);
   };
 
-  // Calculate total selected count from pending state
-  const totalSelected = pendingSelectedCats.size + pendingSelectedOrgCats.size;
-  const pendingKey = useMemo(() => {
-    const cats = Array.from(pendingSelectedCats).sort();
-    const orgs = Array.from(pendingSelectedOrgCats).sort();
-    return JSON.stringify({
-      cats,
-      orgs,
-      exclude: !!pendingExcludeMode,
-    });
-  }, [pendingSelectedCats, pendingSelectedOrgCats, pendingExcludeMode]);
-
-  useEffect(() => {
-    if (onPendingKeyChange) {
-      onPendingKeyChange(pendingKey);
-    }
-  }, [pendingKey, onPendingKeyChange]);
-
-  useEffect(() => {
-    if (onPendingCountChange) {
-      onPendingCountChange(pendingSelectedCats.size + pendingSelectedOrgCats.size);
-    }
-  }, [pendingSelectedCats, pendingSelectedOrgCats, onPendingCountChange]);
+  const totalSelected = selectedCats.size + selectedOrgCats.size;
 
 
 
@@ -367,13 +278,13 @@ export const Filters = ({
   };
 
   const hasSelectedInType = (type) => {
-    if (pendingSelectedOrgCats.has(type.key)) return true;
-    return getTypeOrganizations(type).some((org) => pendingSelectedOrgCats.has(org.key));
+    if (selectedOrgCats.has(type.key)) return true;
+    return getTypeOrganizations(type).some((org) => selectedOrgCats.has(org.key));
   };
 
   // Clear ALL filters in a given top-level type (its type key, subcategories, and orgs)
   const clearAllForType = (type) => {
-    setPendingSelectedOrgCats((prev) => {
+    setSelectedOrgCats((prev) => {
       const next = new Set(prev);
       // Remove the type key itself
       next.delete(type.key);
@@ -404,7 +315,7 @@ export const Filters = ({
   };
 
   const toggleOrgCategory = (key) => {
-    setPendingSelectedOrgCats((prev) => {
+    setSelectedOrgCats((prev) => {
       const next = new Set(prev);
       const isCurrentlySelected = next.has(key);
       
@@ -484,7 +395,7 @@ export const Filters = ({
   };
 
   const toggleEventCategory = (key) => {
-    setPendingSelectedCats((prev) => {
+    setSelectedCats((prev) => {
       const next = new Set(prev);
       next.has(key) ? next.delete(key) : next.add(key);
       return next;
@@ -566,17 +477,17 @@ export const Filters = ({
             <div className="org-filters-list">
             {filteredOrgHierarchy && Object.values(filteredOrgHierarchy).map((type) => {
               const typeColor = getCategoryColor(type.key);
-              const typeSelected = pendingSelectedOrgCats.has(type.key);
+              const typeSelected = selectedOrgCats.has(type.key);
               const typePartiallySelected =
-                !typeSelected && getTypeOrganizations(type).some((org) => pendingSelectedOrgCats.has(org.key));
+                !typeSelected && getTypeOrganizations(type).some((org) => selectedOrgCats.has(org.key));
               const typeHighlighted = typeSelected || typePartiallySelected;
-              const typeFillColor = pendingExcludeMode ? "#f4b4b4" : typeColor;
-              const typeBorderColor = pendingExcludeMode ? "#e07a7a" : typeColor;
+              const typeFillColor = excludeMode ? "#f4b4b4" : typeColor;
+              const typeBorderColor = excludeMode ? "#e07a7a" : typeColor;
               const isExpanded = expandedCategories.has(type.key) || !!orgSearch.trim();
               const typeOrgs = getTypeOrganizations(type);
               const typeOrgsSorted = [...typeOrgs].sort((a, b) => {
-                const aSelected = pendingSelectedOrgCats.has(a.key);
-                const bSelected = pendingSelectedOrgCats.has(b.key);
+                const aSelected = selectedOrgCats.has(a.key);
+                const bSelected = selectedOrgCats.has(b.key);
                 if (aSelected !== bSelected) return aSelected ? -1 : 1;
                 const aCount = a.count || 0;
                 const bCount = b.count || 0;
@@ -654,9 +565,9 @@ export const Filters = ({
                   {/* Organizations directly under type (no "Organizations" subcategory row) */}
                   {isExpanded &&
                     typeOrgsSorted.map((org) => {
-                      const orgSelected = pendingSelectedOrgCats.has(org.key);
-                      const orgFillColor = pendingExcludeMode ? "#f4b4b4" : typeColor;
-                      const orgBorderColor = pendingExcludeMode ? "#e07a7a" : typeColor;
+                      const orgSelected = selectedOrgCats.has(org.key);
+                      const orgFillColor = excludeMode ? "#f4b4b4" : typeColor;
+                      const orgBorderColor = excludeMode ? "#e07a7a" : typeColor;
                       return (
                         <div key={org.key} className="org-filter-item org-filter-item-indented">
                           <label className="org-filter-label">
@@ -664,7 +575,7 @@ export const Filters = ({
                               type="checkbox"
                               checked={orgSelected}
                               onChange={() => toggleOrgCategory(org.key)}
-                              className={`org-filter-checkbox ${pendingExcludeMode && orgSelected ? "exclude-selected" : ""}`}
+                              className={`org-filter-checkbox ${excludeMode && orgSelected ? "exclude-selected" : ""}`}
                               onClick={(e) => e.stopPropagation()}
                             />
                             <span className="org-filter-name">{org.label}</span>
@@ -694,11 +605,11 @@ export const Filters = ({
             {availableCats.map((cat) => {
               const key = cat.key;
               const label = cat.label || key;
-              const active = pendingSelectedCats.has(key);
+              const active = selectedCats.has(key);
               const count = categoryCounts[key] || 0;
               const tagColor = tagColorMap?.[key] || '#e5e7eb'; // Default to light grey for untagged
-              const eventFillColor = pendingExcludeMode ? "#f4b4b4" : "#d4e9c4";
-              const eventBorderColor = pendingExcludeMode ? "#e07a7a" : "#d4e9c4";
+              const eventFillColor = excludeMode ? "#f4b4b4" : "#d4e9c4";
+              const eventBorderColor = excludeMode ? "#e07a7a" : "#d4e9c4";
 
               return (
                 <div 
@@ -710,7 +621,7 @@ export const Filters = ({
                       type="checkbox"
                       checked={active}
                       onChange={() => toggleEventCategory(key)}
-                      className={`org-filter-checkbox event-type-checkbox ${pendingExcludeMode && active ? "exclude-selected" : ""}`}
+                      className={`org-filter-checkbox event-type-checkbox ${excludeMode && active ? "exclude-selected" : ""}`}
                       style={{
                         borderColor: tagColor,
                         accentColor: tagColor,
@@ -743,9 +654,9 @@ export const Filters = ({
           <label className="org-filter-label" style={{ cursor: "pointer" }}>
             <input
               type="checkbox"
-              checked={pendingExcludeMode}
-              onChange={(e) => setPendingExcludeMode(e.target.checked)}
-              className={`org-filter-checkbox ${pendingExcludeMode ? "exclude-selected" : ""}`}
+              checked={excludeMode}
+              onChange={(e) => setExcludeMode(e.target.checked)}
+              className={`org-filter-checkbox ${excludeMode ? "exclude-selected" : ""}`}
             />
             <span className="org-filter-name">
               Exclude selected (hide matching events)
