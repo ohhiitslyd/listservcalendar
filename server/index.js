@@ -303,11 +303,19 @@ app.get("/api/user/preferences", ensureAuthed, async (req, res) => {
 app.put("/api/user/preferences", ensureAuthed, async (req, res) => {
   try {
     const { preferences, organizationPreference, eventTypePreference } = req.body;
+    const userId = req.session.user.id;
+
+    console.log("[preferences] Updating preferences for user:", userId, {
+      hasPreferences: !!preferences,
+      organizationPreferenceCount: organizationPreference?.length || 0,
+      eventTypePreferenceCount: eventTypePreference?.length || 0,
+      excludeMode: preferences?.excludeMode,
+    });
 
     // Pull existing preferences once so we can merge if needed
     const existingUser = await queryOne(
       "SELECT preferences FROM users WHERE id = $1",
-      [req.session.user.id]
+      [userId]
     );
 
     let mergedPreferences = existingUser?.preferences || {};
@@ -354,17 +362,28 @@ app.put("/api/user/preferences", ensureAuthed, async (req, res) => {
 
     updates.push(`updated_at = CURRENT_TIMESTAMP`);
 
-    values.push(req.session.user.id);
-    await execute(
-      `UPDATE users SET ${updates.join(", ")} WHERE id = $${paramIndex}`,
-      values
-    );
+    values.push(userId);
+    const updateQuery = `UPDATE users SET ${updates.join(", ")} WHERE id = $${paramIndex}`;
+    
+    console.log("[preferences] Executing update query:", updateQuery);
+    console.log("[preferences] With values:", values.map((v, i) => 
+      i === values.length - 1 ? `userId` : (Array.isArray(v) ? `[${v.length} items]` : typeof v === 'string' && v.length > 100 ? `[${v.length} chars]` : v)
+    ));
+
+    const result = await execute(updateQuery, values);
+    console.log("[preferences] Update result:", result?.rowCount || "unknown");
 
     // Return the full updated state (what your frontend expects)
     const updatedUser = await queryOne(
       "SELECT organization_preference, event_type_preference, preferences FROM users WHERE id = $1",
-      [req.session.user.id]
+      [userId]
     );
+
+    console.log("[preferences] Updated user preferences:", {
+      organizationPreferenceCount: updatedUser?.organization_preference?.length || 0,
+      eventTypePreferenceCount: updatedUser?.event_type_preference?.length || 0,
+      excludeMode: updatedUser?.preferences?.excludeMode,
+    });
 
     res.json({
       preferences: updatedUser?.preferences || {},
@@ -608,6 +627,7 @@ app.post("/api/user/sync-calendar-by-preferences", ensureAuthed, async (req, res
         // If this event doesn't have a source_event_id or doesn't match current filters, delete it
         if (!sourceEventId || !matchingEventIds.has(sourceEventId)) {
           try {
+            const eventTitle = gcalEvent.summary || "(No title)";
             await calendar.events.delete({
               calendarId: listservCalendarId,
               eventId: gcalEvent.id,
@@ -615,6 +635,7 @@ app.post("/api/user/sync-calendar-by-preferences", ensureAuthed, async (req, res
             deletedCount++;
             deleteResults.push({ 
               googleEventId: gcalEvent.id, 
+              title: eventTitle,
               action: "deleted",
               reason: sourceEventId ? "no_longer_matches_filters" : "unknown_source"
             });
@@ -622,6 +643,7 @@ app.post("/api/user/sync-calendar-by-preferences", ensureAuthed, async (req, res
             console.error(`[sync] Failed to delete event ${gcalEvent.id}:`, error.message);
             deleteResults.push({ 
               googleEventId: gcalEvent.id, 
+              title: gcalEvent.summary || "(No title)",
               action: "delete_failed", 
               error: error.message 
             });

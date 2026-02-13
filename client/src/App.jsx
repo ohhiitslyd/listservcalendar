@@ -50,7 +50,7 @@ const InnerApp = () => {
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
   const [lastPublishedKey, setLastPublishedKey] = useState(null);
   const [hasEverPublished, setHasEverPublished] = useState(false);
-
+  const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
 
   const totalSelectedFilters = (selectedCats?.size || 0) + (selectedOrgCats?.size || 0);
 
@@ -81,13 +81,23 @@ const InnerApp = () => {
       const orgPrefsArray = Array.from(selectedOrgCats);
       const eventTypePrefsArray = Array.from(selectedCats);
 
-      await api.updatePreferences({
+      console.log("[publish] Updating preferences:", {
+        organizationPreference: orgPrefsArray.length,
+        eventTypePreference: eventTypePrefsArray.length,
+        excludeMode,
+      });
+
+      const preferencesResult = await api.updatePreferences({
         organizationPreference: orgPrefsArray,
         eventTypePreference: eventTypePrefsArray,
         excludeMode,
       });
 
+      console.log("[publish] Preferences updated successfully:", preferencesResult);
+
       const syncResult = await api.syncCalendarByPreferences();
+      console.log("[publish] Calendar sync result:", syncResult);
+      
       setPublishResult(syncResult);
       setLastPublishedKey(currentPublishKey);
       setHasEverPublished(true);
@@ -240,6 +250,8 @@ const InnerApp = () => {
           publishFilters();
         }}
         onLogout={handleLogout}
+        onMobileFiltersToggle={() => setMobileFiltersOpen(!mobileFiltersOpen)}
+        mobileFiltersOpen={mobileFiltersOpen}
       />
 
       <div className="app-content">
@@ -249,6 +261,7 @@ const InnerApp = () => {
             statusText={statusText}
             statusDotClass={!hasEverPublished || hasUnpublishedChanges ? "unsynced" : "synced"}
             autoFocusOrgSearch={false}
+            onClose={() => setMobileFiltersOpen(false)}
           />
         </div>
 
@@ -261,6 +274,36 @@ const InnerApp = () => {
       </div>
 
       </div>
+
+      {/* Mobile filters overlay */}
+      {mobileFiltersOpen && (
+        <div className="mobile-filters-overlay" onClick={() => setMobileFiltersOpen(false)}>
+          <div className="mobile-filters-drawer" onClick={(e) => e.stopPropagation()}>
+            <div className="mobile-filters-header">
+              <h3>Filters</h3>
+              <button
+                className="mobile-filters-close"
+                onClick={() => setMobileFiltersOpen(false)}
+                aria-label="Close filters"
+              >
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <line x1="18" y1="6" x2="6" y2="18"></line>
+                  <line x1="6" y1="6" x2="18" y2="18"></line>
+                </svg>
+              </button>
+            </div>
+            <Filters
+              showHeader={false}
+              statusText={statusText}
+              statusDotClass={!hasEverPublished || hasUnpublishedChanges ? "unsynced" : "synced"}
+              onPendingKeyChange={setPendingPublishKey}
+              onPendingCountChange={setPendingFiltersCount}
+              autoFocusOrgSearch={false}
+              onClose={() => setMobileFiltersOpen(false)}
+            />
+          </div>
+        </div>
+      )}
 
       {/* MODAL – create event */}
       <CreateEventModal />
@@ -307,7 +350,7 @@ const InnerApp = () => {
             <div className="publish-modal-content">
               <h4>Leave without publishing?</h4>
               <p>
-                If you don’t publish, changes won’t be reflected on your Google Calendar.
+                If you don't publish, changes won't be reflected on your Google Calendar.
                 Are you sure you want to leave?
               </p>
             </div>
@@ -334,6 +377,21 @@ const InnerApp = () => {
           </div>
         </div>
       )}
+
+      {/* Floating Action Button (FAB) for mobile */}
+      <button
+        className="fab-button"
+        onClick={() => {
+          // TODO: Add event creation functionality
+          console.log("FAB clicked - event creation not yet implemented");
+        }}
+        aria-label="Add event"
+      >
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <line x1="12" y1="5" x2="12" y2="19"></line>
+          <line x1="5" y1="12" x2="19" y2="12"></line>
+        </svg>
+      </button>
     </div>
   );
 };

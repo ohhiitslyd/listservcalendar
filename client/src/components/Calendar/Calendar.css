@@ -410,3 +410,54 @@
 .fc-timeGridDay-view .fc-daygrid-day-frame {
   min-height: 0;
 }
+
+/* Mobile Responsive Styles */
+@media (max-width: 768px) {
+  .app-calendar-wrapper {
+    padding: 0px 8px 0px 8px;
+  }
+
+  /* Make event details overlay full-page on mobile */
+  .event-details-overlay {
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    width: 100% !important;
+    height: 100% !important;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 1500;
+  }
+
+  .personal-event-overlay {
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    width: 100% !important;
+    height: 100% !important;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 1500;
+  }
+
+  /* Adjust calendar font sizes for mobile */
+  .fc-event-title {
+    font-size: 11px;
+  }
+
+  .fc-timegrid-slot {
+    font-size: 11px;
+  }
+
+  .fc-col-header-cell {
+    font-size: 12px;
+  }
+}
