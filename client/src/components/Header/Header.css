@@ -417,9 +417,10 @@
 }
 
 .nudges-events-list {
-  max-height: 280px;
+  /* Show up to 4 full bubbles (4 * 52px) plus 3 gaps (3 * 8px) */
+  max-height: 232px;
   overflow-y: auto;
-  padding: 6px 8px 10px 8px;
+  padding: 0 8px;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -433,6 +434,13 @@
   box-sizing: border-box;
   border: 1px solid #9fbe8b;
   overflow: hidden;
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+}
+
+.nudges-event-bubble:hover {
+  border-color: #7fa56a;
 }
 
 .nudges-event-title {

@@ -169,6 +169,7 @@ export const api = {
     eventTypePreference: string[];
     nudgedEvents: { id: string; email: string }[];
     invitedEvents: { id: string; email: string }[];
+    acceptedNudges: { id: string; email: string }[];
   }> =>
     fetch("/api/user/preferences", { credentials: "include" }).then((r) =>
       r.json()
@@ -208,5 +209,26 @@ export const api = {
       credentials: "include",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ eventId, targetEmail }),
+    }).then((r) => r.json()),
+
+  respondToInvite: async ({
+    eventId,
+    action,
+  }: {
+    eventId: string;
+    action: "accept" | "decline";
+  }): Promise<{
+    success?: boolean;
+    error?: string;
+    action?: "accept" | "decline";
+    eventId?: string;
+    invitedEvents?: { id: string; email: string }[];
+    acceptedNudges?: { id: string; email: string }[];
+  }> =>
+    fetch("/api/user/invited-events/respond", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ eventId, action }),
     }).then((r) => r.json()),
 };

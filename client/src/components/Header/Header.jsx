@@ -11,6 +11,7 @@ export const Header = ({ onPublish, onLogout }) => {
     visibleCalendars, 
     toggleCalendar,
     events,
+    requestFocusEvent,
     selectedCats,
     selectedOrgCats,
   } = useContext(AppContext);
@@ -23,17 +24,29 @@ export const Header = ({ onPublish, onLogout }) => {
   const calendarsMenuRef = useRef(null);
   const nudgesMenuRef = useRef(null);
 
-  const invitedEventIds = Array.from(
-    new Set(
-      (Array.isArray(user?.invitedEvents) ? user.invitedEvents : [])
-        .map((entry) => String(entry?.id || "").trim())
-        .filter(Boolean)
-    )
-  );
+  const invitedEventsRaw = Array.isArray(user?.invitedEvents)
+    ? user.invitedEvents
+    : [];
+
+  const invitedEventMap = new Map();
+  invitedEventsRaw.forEach((entry) => {
+    const eventId = String(entry?.id || "").trim();
+    const inviter = String(entry?.email || "").trim().toLowerCase();
+    if (!eventId) return;
+    if (!invitedEventMap.has(eventId)) {
+      invitedEventMap.set(eventId, new Set());
+    }
+    if (inviter) {
+      invitedEventMap.get(eventId).add(inviter);
+    }
+  });
+
+  const invitedEventIds = Array.from(invitedEventMap.keys());
 
   const eventsById = new Map((events || []).map((ev) => [String(ev?.id || ""), ev]));
   const invitedEventBubbles = invitedEventIds.map((eventId) => {
     const ev = eventsById.get(eventId);
+    const inviterEmails = Array.from(invitedEventMap.get(eventId) || []);
     return {
       id: eventId,
       title: ev?.title || "(Event unavailable)",
@@ -41,6 +54,7 @@ export const Header = ({ onPublish, onLogout }) => {
         ev?.extendedProps?.organization ||
         ev?.organization ||
         "Unknown organization",
+      inviterEmails,
     };
   });
 
@@ -253,10 +267,19 @@ export const Header = ({ onPublish, onLogout }) => {
                 <div className="nudges-events-list">
                   {invitedEventBubbles.length > 0 ? (
                     invitedEventBubbles.map((eventInfo) => (
-                      <div key={eventInfo.id} className="nudges-event-bubble" title={eventInfo.id}>
+                      <button
+                        key={eventInfo.id}
+                        type="button"
+                        className="nudges-event-bubble"
+                        title={eventInfo.id}
+                        onClick={() => {
+                          requestFocusEvent(eventInfo.id, eventInfo.inviterEmails);
+                          setNudgesOpen(false);
+                        }}
+                      >
                         <div className="nudges-event-title">{eventInfo.title}</div>
                         <div className="nudges-event-org">{eventInfo.organization}</div>
-                      </div>
+                      </button>
                     ))
                   ) : (
                     <div className="user-menu-empty">No invited events yet.</div>

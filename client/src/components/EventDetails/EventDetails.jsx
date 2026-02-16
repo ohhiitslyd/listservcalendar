@@ -7,16 +7,23 @@ export const EventDetails = () => {
   const {
     selectedEvent,
     setSelectedEvent,
-    listservCalendarId
+    listservCalendarId,
+    eventDetailsSource,
+    setEventDetailsSource,
+    selectedEventInviters,
+    setSelectedEventInviters,
+    setUserInviteState,
   } = useContext(AppContext);
   const [showNudgeForm, setShowNudgeForm] = useState(false);
   const [nudgeEmail, setNudgeEmail] = useState("");
   const [nudgeLoading, setNudgeLoading] = useState(false);
+  const [inviteResponseLoading, setInviteResponseLoading] = useState(false);
 
   useEffect(() => {
     setShowNudgeForm(false);
     setNudgeEmail("");
     setNudgeLoading(false);
+    setInviteResponseLoading(false);
   }, [selectedEvent?.id]);
 
   if (!selectedEvent) {
@@ -27,6 +34,7 @@ export const EventDetails = () => {
   const isEmail = selectedEvent.id.startsWith("email:");
   const isListServ =
     selectedEvent.extendedProps?.calendarId === listservCalendarId;
+  const openedFromNudges = eventDetailsSource === "nudge";
   const canNudge = !!selectedEvent?.id && (isEmail || isListServ || isDraft);
 
   // Format date and time
@@ -80,6 +88,40 @@ export const EventDetails = () => {
     }
   };
 
+  const closeDetails = () => {
+    setSelectedEvent(null);
+    setEventDetailsSource("calendar");
+    setSelectedEventInviters([]);
+  };
+
+  const respondToInvite = async (action) => {
+    if (!selectedEvent?.id) return;
+    try {
+      setInviteResponseLoading(true);
+      const result = await api.respondToInvite({
+        eventId: selectedEvent.id,
+        action,
+      });
+
+      if (!result?.success) {
+        alert(result?.error || "Failed to update invited event");
+        return;
+      }
+
+      setUserInviteState({
+        invitedEvents: result?.invitedEvents || [],
+        acceptedNudges: result?.acceptedNudges || [],
+      });
+      if (action === "decline") {
+        closeDetails();
+      }
+    } catch (error) {
+      alert("Failed to update invited event");
+    } finally {
+      setInviteResponseLoading(false);
+    }
+  };
+
   return (
     <div className="event-details-card">
       {/* Header with colored background */}
@@ -87,7 +129,7 @@ export const EventDetails = () => {
         <h3 className="event-details-title">{selectedEvent.title || "(No title)"}</h3>
         <button
           className="close-panel-button"
-          onClick={() => setSelectedEvent(null)}
+          onClick={closeDetails}
           aria-label="Close"
         >
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#93b3ea" strokeWidth="2">
@@ -99,6 +141,13 @@ export const EventDetails = () => {
 
       {/* Separator line */}
       <div className="event-details-separator"></div>
+
+      {openedFromNudges && selectedEventInviters.length > 0 && (
+        <div className="event-details-inviters">
+          <span className="event-details-inviters-label">Invited by:</span>{" "}
+          <span>{selectedEventInviters.join(", ")}</span>
+        </div>
+      )}
 
       {/* Event details */}
       <div className="event-details-content">
@@ -200,7 +249,26 @@ export const EventDetails = () => {
         )}
       </div>
 
-      {canNudge && (
+      {openedFromNudges ? (
+        <div className="event-details-actions event-details-actions-split">
+          <button
+            type="button"
+            className="event-action-button event-action-button-secondary"
+            onClick={() => respondToInvite("decline")}
+            disabled={inviteResponseLoading}
+          >
+            {inviteResponseLoading ? "Working..." : "Decline"}
+          </button>
+          <button
+            type="button"
+            className="event-action-button"
+            onClick={() => respondToInvite("accept")}
+            disabled={inviteResponseLoading}
+          >
+            {inviteResponseLoading ? "Working..." : "Accept"}
+          </button>
+        </div>
+      ) : canNudge && (
         <div className="event-details-actions">
           {!showNudgeForm ? (
             <button

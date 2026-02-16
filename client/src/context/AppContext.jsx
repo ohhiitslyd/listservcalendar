@@ -54,6 +54,9 @@ export const AppProvider = ({ children }) => {
     poster_url: "",
   });
   const [selectedEvent, setSelectedEvent] = useState(null);
+  const [eventDetailsSource, setEventDetailsSource] = useState("calendar");
+  const [selectedEventInviters, setSelectedEventInviters] = useState([]);
+  const [focusEventRequest, setFocusEventRequest] = useState(null);
 
   const calendarRef = useRef(null); // shared ref (used by handleCreateEvent)
 
@@ -311,12 +314,43 @@ export const AppProvider = ({ children }) => {
     const data = await api.fetchMe();
     setUser(data.user);
   };
+  const setUserInviteState = ({ invitedEvents, acceptedNudges } = {}) => {
+    setUser((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        invitedEvents: Array.isArray(invitedEvents)
+          ? invitedEvents
+          : Array.isArray(prev.invitedEvents)
+            ? prev.invitedEvents
+            : [],
+        acceptedNudges: Array.isArray(acceptedNudges)
+          ? acceptedNudges
+          : Array.isArray(prev.acceptedNudges)
+            ? prev.acceptedNudges
+            : [],
+      };
+    });
+  };
+
+  const requestFocusEvent = (eventId, inviterEmails = []) => {
+    setFocusEventRequest({
+      eventId,
+      inviterEmails: Array.isArray(inviterEmails) ? inviterEmails : [],
+      requestedAt: Date.now(),
+    });
+  };
+
+  const clearFocusEventRequest = () => setFocusEventRequest(null);
   const login = () => (window.location.href = "/auth/google");
   const logout = async () => {
     await fetch("/auth/logout", { method: "POST", credentials: "include" });
     setUser(null);
     setEvents([]);
     setSelectedEvent(null); // Clear selected event when logging out
+    setEventDetailsSource("calendar");
+    setSelectedEventInviters([]);
+    setFocusEventRequest(null);
     // Preferences will be cleared in the useEffect when user becomes null
   };
 
@@ -423,6 +457,7 @@ export const AppProvider = ({ children }) => {
             calendarId: ev.calendarId ?? null,
             filter: ev.filter ?? ev.tag ?? null,
             orgCategories: ev.orgCategories ?? [],
+            isNudged: !!ev.isNudged,
           },
         };
       });
@@ -459,6 +494,7 @@ export const AppProvider = ({ children }) => {
           organization: ev.organization ?? "",
           tags: ev.tags ?? [],
           orgCategories: ev.orgCategories ?? [],
+          isNudged: !!ev.isNudged,
         },
       }));
       setEvents(transformed);
@@ -488,8 +524,9 @@ export const AppProvider = ({ children }) => {
         source: ev.source,
         calendarId: ev.calendarId ?? null,
         filter: ev.filter ?? ev.tag ?? null,
-          tags: ev.tags ?? [],
+        tags: ev.tags ?? [],
         orgCategories: ev.orgCategories ?? [],
+        isNudged: !!ev.isNudged,
       },
     }));
 
@@ -645,6 +682,9 @@ export const AppProvider = ({ children }) => {
       setListservCalendarId(null);
       setAllEventsForCounts([]);
       setSelectedEvent(null);
+      setEventDetailsSource("calendar");
+      setSelectedEventInviters([]);
+      setFocusEventRequest(null);
       setSelectedOrgCats(new Set());
       setSelectedCats(new Set());
       setExcludeMode(false);
@@ -724,6 +764,14 @@ export const AppProvider = ({ children }) => {
     setEventForm,
     selectedEvent,
     setSelectedEvent,
+    eventDetailsSource,
+    setEventDetailsSource,
+    selectedEventInviters,
+    setSelectedEventInviters,
+    focusEventRequest,
+    requestFocusEvent,
+    clearFocusEventRequest,
+    setUserInviteState,
 
     // shared ref for the calendar (used by handleCreateEvent)
     calendarRef,

@@ -128,6 +128,19 @@ async function migrateUserPreferences(client) {
       WHERE invited_events IS NULL
     `);
 
+    // Add accepted_nudges column if it doesn't exist
+    await client.query(`
+      ALTER TABLE users
+      ADD COLUMN IF NOT EXISTS accepted_nudges JSONB DEFAULT '[]'::jsonb
+    `);
+
+    // Backfill null accepted_nudges to empty array
+    await client.query(`
+      UPDATE users
+      SET accepted_nudges = '[]'::jsonb
+      WHERE accepted_nudges IS NULL
+    `);
+
     // Migrate existing preferences data if both new columns are empty and old preferences exist
     const usersWithOldPrefs = await client.query(`
       SELECT id, preferences 
@@ -297,6 +310,7 @@ export async function initializeSchema() {
         event_type_preference TEXT[] DEFAULT '{}',
         nudged_events JSONB DEFAULT '[]'::jsonb,
         invited_events JSONB DEFAULT '[]'::jsonb,
+        accepted_nudges JSONB DEFAULT '[]'::jsonb,
         created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
       )

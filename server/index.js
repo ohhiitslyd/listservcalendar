@@ -265,7 +265,7 @@ app.get("/api/me", async (req, res) => {
   // Fetch user preferences from database
   try {
     const userRecord = await queryOne(
-      "SELECT organization_preference, event_type_preference, preferences, nudged_events, invited_events FROM users WHERE id = $1",
+      "SELECT organization_preference, event_type_preference, preferences, nudged_events, invited_events, accepted_nudges FROM users WHERE id = $1",
       [req.session.user.id]
     );
     res.json({
@@ -276,6 +276,7 @@ app.get("/api/me", async (req, res) => {
         eventTypePreference: userRecord?.event_type_preference || [],
         nudgedEvents: userRecord?.nudged_events || [],
         invitedEvents: userRecord?.invited_events || [],
+        acceptedNudges: userRecord?.accepted_nudges || [],
       },
     });
   } catch (error) {
@@ -288,7 +289,7 @@ app.get("/api/me", async (req, res) => {
 app.get("/api/user/preferences", ensureAuthed, async (req, res) => {
   try {
     const userRecord = await queryOne(
-      "SELECT organization_preference, event_type_preference, preferences, nudged_events, invited_events FROM users WHERE id = $1",
+      "SELECT organization_preference, event_type_preference, preferences, nudged_events, invited_events, accepted_nudges FROM users WHERE id = $1",
       [req.session.user.id]
     );
     res.json({ 
@@ -297,6 +298,7 @@ app.get("/api/user/preferences", ensureAuthed, async (req, res) => {
       eventTypePreference: userRecord?.event_type_preference || [],
       nudgedEvents: userRecord?.nudged_events || [],
       invitedEvents: userRecord?.invited_events || [],
+      acceptedNudges: userRecord?.accepted_nudges || [],
     });
   } catch (error) {
     console.error("[preferences] Error fetching:", error);
@@ -366,7 +368,7 @@ app.put("/api/user/preferences", ensureAuthed, async (req, res) => {
 
     // Return the full updated state (what your frontend expects)
     const updatedUser = await queryOne(
-      "SELECT organization_preference, event_type_preference, preferences, nudged_events, invited_events FROM users WHERE id = $1",
+      "SELECT organization_preference, event_type_preference, preferences, nudged_events, invited_events, accepted_nudges FROM users WHERE id = $1",
       [req.session.user.id]
     );
 
@@ -376,6 +378,7 @@ app.put("/api/user/preferences", ensureAuthed, async (req, res) => {
       eventTypePreference: updatedUser?.event_type_preference || [],
       nudgedEvents: updatedUser?.nudged_events || [],
       invitedEvents: updatedUser?.invited_events || [],
+      acceptedNudges: updatedUser?.accepted_nudges || [],
     });
   } catch (error) {
     console.error("[preferences] Error updating:", error);
@@ -464,6 +467,67 @@ app.post("/api/user/nudge-event", ensureAuthed, async (req, res) => {
   }
 });
 
+// --- Respond to Invited Event ---
+app.post("/api/user/invited-events/respond", ensureAuthed, async (req, res) => {
+  const { eventId, action } = req.body || {};
+  const normalizedAction = String(action || "").toLowerCase();
+
+  if (!eventId || typeof eventId !== "string") {
+    return res.status(400).json({ error: "eventId is required" });
+  }
+  if (!["accept", "decline"].includes(normalizedAction)) {
+    return res.status(400).json({ error: "action must be 'accept' or 'decline'" });
+  }
+
+  try {
+    const updated = await queryOne(
+      `UPDATE users
+       SET accepted_nudges = CASE
+         WHEN $2::text = 'accept' THEN COALESCE(accepted_nudges, '[]'::jsonb) ||
+           COALESCE(
+             (
+               SELECT jsonb_agg(elem)
+               FROM jsonb_array_elements(COALESCE(invited_events, '[]'::jsonb)) AS elem
+               WHERE elem->>'id' = $1::text
+             ),
+             '[]'::jsonb
+           )
+         ELSE COALESCE(accepted_nudges, '[]'::jsonb)
+       END,
+       invited_events = CASE
+         WHEN $2::text IN ('decline', 'accept') THEN COALESCE(
+           (
+             SELECT jsonb_agg(elem)
+             FROM jsonb_array_elements(COALESCE(invited_events, '[]'::jsonb)) AS elem
+             WHERE elem->>'id' <> $1::text
+           ),
+           '[]'::jsonb
+         )
+         ELSE COALESCE(invited_events, '[]'::jsonb)
+       END,
+       updated_at = CURRENT_TIMESTAMP
+       WHERE id = $3
+       RETURNING invited_events, accepted_nudges`,
+      [eventId, normalizedAction, req.session.user.id]
+    );
+
+    if (!updated) {
+      return res.status(404).json({ error: "Current user not found" });
+    }
+
+    return res.json({
+      success: true,
+      action: normalizedAction,
+      eventId,
+      invitedEvents: updated.invited_events || [],
+      acceptedNudges: updated.accepted_nudges || [],
+    });
+  } catch (error) {
+    console.error("[invited-events/respond] Error:", error);
+    return res.status(500).json({ error: "Failed to respond to invited event" });
+  }
+});
+
 // --- Sync calendar based on user preferences (called when Apply Filters is clicked) ---
 app.post("/api/user/sync-calendar-by-preferences", ensureAuthed, async (req, res) => {
   try {
@@ -477,13 +541,16 @@ app.post("/api/user/sync-calendar-by-preferences", ensureAuthed, async (req, res
 
     // Get user preferences
     const userRecord = await queryOne(
-      "SELECT organization_preference, event_type_preference, preferences, nudged_events, invited_events FROM users WHERE id = $1",
+      "SELECT organization_preference, event_type_preference, preferences, nudged_events, invited_events, accepted_nudges FROM users WHERE id = $1",
       [userId]
     );
 
     const orgPrefs = userRecord?.organization_preference || [];
     const eventTypePrefs = userRecord?.event_type_preference || [];
     const excludeMode = !!(userRecord?.preferences && userRecord.preferences.excludeMode);
+    const acceptedNudges = Array.isArray(userRecord?.accepted_nudges)
+      ? userRecord.accepted_nudges
+      : [];
 
     // If no preferences, publish ALL events (show everything)
     // This means the user wants to see all events, so we sync all email-sourced events
@@ -526,6 +593,33 @@ app.post("/api/user/sync-calendar-by-preferences", ensureAuthed, async (req, res
       matchingEvents = allEmailEvents.filter((event) => {
         const matches = eventMatches(event);
         return excludeMode ? !matches : matches;
+      });
+    }
+
+    // Always include accepted nudges in sync output, regardless of current filters.
+    const toSourceEventId = (value) => {
+      const id = String(value || "").trim();
+      if (!id) return "";
+      if (id.startsWith("email:")) return id.slice("email:".length);
+      return id;
+    };
+
+    const acceptedNudgeSourceIds = new Set(
+      acceptedNudges
+        .map((entry) => toSourceEventId(entry?.id))
+        .filter(Boolean)
+    );
+
+    if (acceptedNudgeSourceIds.size > 0) {
+      const matchingIds = new Set(matchingEvents.map((e) => e.id));
+      allEmailEvents.forEach((event) => {
+        if (
+          acceptedNudgeSourceIds.has(String(event.id || "").trim()) &&
+          !matchingIds.has(event.id)
+        ) {
+          matchingEvents.push(event);
+          matchingIds.add(event.id);
+        }
       });
     }
 
@@ -1082,6 +1176,24 @@ app.get("/api/events", ensureAuthed, async (req, res) => {
       [req.session.user.id]
     );
 
+    const userNudgesRecord = await queryOne(
+      "SELECT invited_events, accepted_nudges FROM users WHERE id = $1",
+      [req.session.user.id]
+    );
+
+    const alwaysVisibleNudgedEventIds = new Set();
+    const invitedEvents = Array.isArray(userNudgesRecord?.invited_events)
+      ? userNudgesRecord.invited_events
+      : [];
+    const acceptedNudges = Array.isArray(userNudgesRecord?.accepted_nudges)
+      ? userNudgesRecord.accepted_nudges
+      : [];
+
+    [...invitedEvents, ...acceptedNudges].forEach((entry) => {
+      const id = String(entry?.id || "").trim();
+      if (id) alwaysVisibleNudgedEventIds.add(id);
+    });
+
     const localEvents = localEventsRaw.map((e) => ({
       id: e.source === "manual" ? `draft:${e.id}` : `email:${e.id}`,
       source: e.source === "manual" ? "draft" : "email",
@@ -1098,10 +1210,18 @@ app.get("/api/events", ensureAuthed, async (req, res) => {
       poster_url: e.poster_url || "",
       status: e.status || "pending",
       google_event_id: e.google_event_id || null,
+      isNudged: alwaysVisibleNudgedEventIds.has(
+        e.source === "manual" ? `draft:${e.id}` : `email:${e.id}`
+      ),
     }));
 
     // Combine local + Google events, then apply org + event-type filters (branch logic)
-    const combined = [...localEvents, ...allEvents];
+    const combined = [...localEvents, ...allEvents].map((ev) => ({
+      ...ev,
+      isNudged:
+        !!ev.isNudged ||
+        alwaysVisibleNudgedEventIds.has(String(ev.id || "").trim()),
+    }));
 
     // Basic debug counts to help verify primary vs ListServ / email events
     const debugCounts = {
@@ -1137,6 +1257,7 @@ app.get("/api/events", ensureAuthed, async (req, res) => {
     if (reqCategories.length > 0 || allowedOrgEmails.size > 0) {
       filtered = combined.filter((ev) => {
         if (!isListServ(ev)) return true;
+        if (alwaysVisibleNudgedEventIds.has(String(ev.id || "").trim())) return true;
 
         const tags = ev.tags || [];
         const evtEmail = String(ev.organization_email || "").trim().toLowerCase();

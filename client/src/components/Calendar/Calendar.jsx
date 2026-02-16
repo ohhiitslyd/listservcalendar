@@ -46,6 +46,10 @@ export const Calendar = ({
     calendarRef,
     selectedEvent,
     setSelectedEvent,
+    setEventDetailsSource,
+    setSelectedEventInviters,
+    focusEventRequest,
+    clearFocusEventRequest,
     listservCalendarId,
     tagColorMap,
     calendars,
@@ -208,14 +212,122 @@ export const Calendar = ({
     if (top < minTop) top = Math.max(16, minTop);
 
     setDetailsOverlayPosition({ top, left });
+    setEventDetailsSource("calendar");
+    setSelectedEventInviters([]);
     setSelectedEvent(ev);
   };
 
+  const computeOverlayPosition = (elRect, cardWidth = 320, cardMaxHeight = 520) => {
+    const margin = 8;
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+
+    let left = elRect.right + margin;
+    if (left + cardWidth > viewportWidth - 16) {
+      left = elRect.left - cardWidth - margin;
+      if (left < 16) left = 16;
+    }
+
+    let top = elRect.top + 4;
+    const maxTop = viewportHeight - cardMaxHeight - 16;
+    if (top > maxTop) top = Math.max(16, maxTop);
+    if (top < 16) top = 16;
+
+    const minTop = viewportHeight - cardMaxHeight - 16;
+    if (top < minTop) top = Math.max(16, minTop);
+
+    return { top, left };
+  };
+
+  useEffect(() => {
+    const requestedId = focusEventRequest?.eventId;
+    if (!requestedId) return;
+
+    const api = calendarRef.current?.getApi?.();
+    if (!api) {
+      clearFocusEventRequest();
+      return;
+    }
+
+    const targetEvent = (events || []).find(
+      (ev) => String(ev?.id || "") === String(requestedId)
+    );
+
+    if (!targetEvent) {
+      clearFocusEventRequest();
+      window.alert("Could not find the invited event in the current event list.");
+      return;
+    }
+
+    if (targetEvent.start) {
+      api.gotoDate(targetEvent.start);
+    }
+
+    const escapeAttrValue = (value) =>
+      String(value).replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+
+    const openNearCalendarEvent = (attempt = 0) => {
+      const selector = `.fc-event[data-event-id="${escapeAttrValue(requestedId)}"]`;
+      const eventEl = document.querySelector(selector);
+
+      if (eventEl) {
+        const pos = computeOverlayPosition(eventEl.getBoundingClientRect(), 320, 520);
+        setPersonalEventInfo(null);
+        setDetailsOverlayPosition(pos);
+        setEventDetailsSource("nudge");
+        setSelectedEventInviters(focusEventRequest?.inviterEmails || []);
+        setSelectedEvent(targetEvent);
+        clearFocusEventRequest();
+        return;
+      }
+
+      if (attempt >= 15) {
+        const wrapper = document.querySelector(".app-calendar-wrapper");
+        const rect = wrapper?.getBoundingClientRect?.();
+        if (rect) {
+          setDetailsOverlayPosition({
+            top: Math.max(16, rect.top + 32),
+            left: Math.max(16, rect.right - 340),
+          });
+        }
+        setEventDetailsSource("nudge");
+        setSelectedEventInviters(focusEventRequest?.inviterEmails || []);
+        setSelectedEvent(targetEvent);
+        clearFocusEventRequest();
+        return;
+      }
+
+      setTimeout(() => openNearCalendarEvent(attempt + 1), 90);
+    };
+
+    setTimeout(() => openNearCalendarEvent(0), 90);
+  }, [
+    focusEventRequest,
+    events,
+    calendarRef,
+    setSelectedEvent,
+    clearFocusEventRequest,
+    setEventDetailsSource,
+    setSelectedEventInviters,
+  ]);
+
   // Apply full-block background "splotch" based on event-type tags
   const handleEventDidMount = (info) => {
+    info.el.setAttribute("data-event-id", info.event.id || "");
     const ev = info.event;
+    const isNudged = !!ev.extendedProps?.isNudged;
     const isListServ = ev.classNames.includes("fc-event-listserv");
     const harness = info.el.parentElement; // FullCalendar wraps events in a harness div
+
+    if (isNudged) {
+      if (harness) harness.style.zIndex = "35";
+      info.el.style.zIndex = "35";
+      info.el.style.backgroundImage = "none";
+      info.el.style.backgroundColor = "#c4b5fd";
+      info.el.style.color = "#000000";
+      info.el.style.borderRadius = "5px";
+      return;
+    }
 
     if (!isListServ) {
       // Primary / other calendars → intentionally under ListServ events
