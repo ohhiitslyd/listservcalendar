@@ -51,8 +51,6 @@ const InnerApp = () => {
   const [lastPublishedKey, setLastPublishedKey] = useState(null);
   const [hasEverPublished, setHasEverPublished] = useState(false);
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
-  const [pendingPublishKey, setPendingPublishKey] = useState(null);
-  const [pendingFiltersCount, setPendingFiltersCount] = useState(0);
   const [showPublishConfirm, setShowPublishConfirm] = useState(false);
 
   const totalSelectedFilters = (selectedCats?.size || 0) + (selectedOrgCats?.size || 0);
@@ -88,24 +86,14 @@ const InnerApp = () => {
       const orgPrefsArray = Array.from(selectedOrgCats || []);
       const eventTypePrefsArray = Array.from(selectedCats || []);
 
-      console.log("[publish] Updating preferences before confirmed publish:", {
-        organizationPreference: orgPrefsArray.length,
-        eventTypePreference: eventTypePrefsArray.length,
-        excludeMode,
-      });
-
-      const preferencesResult = await api.updatePreferences({
+      await api.updatePreferences({
         organizationPreference: orgPrefsArray,
         eventTypePreference: eventTypePrefsArray,
         excludeMode,
       });
 
-      console.log("[publish] Preferences updated successfully:", preferencesResult);
-
-      console.log("[publish] Starting confirmed publish with current preferences");
       const syncResult = await api.syncCalendarByPreferences();
-      console.log("[publish] Calendar sync result:", syncResult);
-      
+
       setPublishResult(syncResult);
       setLastPublishedKey(currentPublishKey);
       setHasEverPublished(true);
@@ -329,8 +317,6 @@ const InnerApp = () => {
               showHeader={false}
               statusText={statusText}
               statusDotClass={!hasEverPublished || hasUnpublishedChanges ? "unsynced" : "synced"}
-              onPendingKeyChange={setPendingPublishKey}
-              onPendingCountChange={setPendingFiltersCount}
               autoFocusOrgSearch={false}
               onClose={() => setMobileFiltersOpen(false)}
             />
