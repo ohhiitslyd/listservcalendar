@@ -50,7 +50,8 @@ const InnerApp = () => {
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
   const [lastPublishedKey, setLastPublishedKey] = useState(null);
   const [hasEverPublished, setHasEverPublished] = useState(false);
-
+  const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
+  const [showPublishConfirm, setShowPublishConfirm] = useState(false);
 
   const totalSelectedFilters = (selectedCats?.size || 0) + (selectedOrgCats?.size || 0);
 
@@ -74,12 +75,16 @@ const InnerApp = () => {
   const hasUnpublishedChanges =
     !!user && lastPublishedKey !== null && currentPublishKey !== lastPublishedKey;
 
+  const handleOpenPublishConfirm = () => {
+    // Just show the confirmation popup; we only update DB + GCal if user confirms.
+    setShowPublishConfirm(true);
+  };
 
   const publishFilters = async () => {
     try {
       setIsPublishing(true);
-      const orgPrefsArray = Array.from(selectedOrgCats);
-      const eventTypePrefsArray = Array.from(selectedCats);
+      const orgPrefsArray = Array.from(selectedOrgCats || []);
+      const eventTypePrefsArray = Array.from(selectedCats || []);
 
       await api.updatePreferences({
         organizationPreference: orgPrefsArray,
@@ -88,6 +93,7 @@ const InnerApp = () => {
       });
 
       const syncResult = await api.syncCalendarByPreferences();
+
       setPublishResult(syncResult);
       setLastPublishedKey(currentPublishKey);
       setHasEverPublished(true);
@@ -229,6 +235,31 @@ const InnerApp = () => {
     return "Dashboard matches GCal";
   }, [hasEverPublished, hasUnpublishedChanges]);
 
+  const selectedEventTypeLabels = useMemo(() => {
+    const labels = [];
+    const labelMap = new Map(
+      (availableCats || []).map((c) => [c.key, c.label || c.key])
+    );
+    (selectedCats || new Set()).forEach((key) => {
+      const label = labelMap.get(key);
+      if (label) labels.push(label);
+    });
+    return labels.sort();
+  }, [availableCats, selectedCats]);
+
+  const selectedOrgLabels = useMemo(() => {
+    const labels = [];
+    const labelMap = new Map(
+      (availableOrgCats || []).map((c) => [c.key, c.label || c.key])
+    );
+    (selectedOrgCats || new Set()).forEach((key) => {
+      const label = labelMap.get(key);
+      if (label) labels.push(label);
+    });
+    return labels.sort();
+  }, [availableOrgCats, selectedOrgCats]);
+
+
   /* -------------------------------------------------
      Render the UI layout
      ------------------------------------------------- */
@@ -237,9 +268,11 @@ const InnerApp = () => {
       <Header
         onPublish={() => {
           if (isPublishing) return;
-          publishFilters();
+          handleOpenPublishConfirm();
         }}
         onLogout={handleLogout}
+        onMobileFiltersToggle={() => setMobileFiltersOpen(!mobileFiltersOpen)}
+        mobileFiltersOpen={mobileFiltersOpen}
       />
 
       <div className="app-content">
@@ -249,6 +282,7 @@ const InnerApp = () => {
             statusText={statusText}
             statusDotClass={!hasEverPublished || hasUnpublishedChanges ? "unsynced" : "synced"}
             autoFocusOrgSearch={false}
+            onClose={() => setMobileFiltersOpen(false)}
           />
         </div>
 
@@ -261,6 +295,34 @@ const InnerApp = () => {
       </div>
 
       </div>
+
+      {/* Mobile filters overlay */}
+      {mobileFiltersOpen && (
+        <div className="mobile-filters-overlay" onClick={() => setMobileFiltersOpen(false)}>
+          <div className="mobile-filters-drawer" onClick={(e) => e.stopPropagation()}>
+            <div className="mobile-filters-header">
+              <h3>Filters</h3>
+              <button
+                className="mobile-filters-close"
+                onClick={() => setMobileFiltersOpen(false)}
+                aria-label="Close filters"
+              >
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <line x1="18" y1="6" x2="6" y2="18"></line>
+                  <line x1="6" y1="6" x2="18" y2="18"></line>
+                </svg>
+              </button>
+            </div>
+            <Filters
+              showHeader={false}
+              statusText={statusText}
+              statusDotClass={!hasEverPublished || hasUnpublishedChanges ? "unsynced" : "synced"}
+              autoFocusOrgSearch={false}
+              onClose={() => setMobileFiltersOpen(false)}
+            />
+          </div>
+        </div>
+      )}
 
       {/* MODAL – create event */}
       <CreateEventModal />
@@ -307,7 +369,7 @@ const InnerApp = () => {
             <div className="publish-modal-content">
               <h4>Leave without publishing?</h4>
               <p>
-                If you don’t publish, changes won’t be reflected on your Google Calendar.
+                If you don't publish, changes won't be reflected on your Google Calendar.
                 Are you sure you want to leave?
               </p>
             </div>
@@ -329,6 +391,68 @@ const InnerApp = () => {
                 }}
               >
                 Leave
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showPublishConfirm && (
+        <div className="publish-modal-overlay">
+          <div className="publish-modal">
+            <div className="publish-modal-content">
+              <h4>Publish to GCal?</h4>
+              <p className="publish-modal-caption">
+                Review your current filters before publishing events to your ListServ Google Calendar.
+              </p>
+
+              <div className="publish-filters-summary">
+                <div className="publish-filters-section">
+                  <div className="publish-filters-section-title">Event type filters</div>
+                  <div className="publish-filters-section-body">
+                    {selectedEventTypeLabels.length === 0
+                      ? "All event types (no filters applied)"
+                      : selectedEventTypeLabels.join(", ")}
+                  </div>
+                </div>
+                <div className="publish-filters-section">
+                  <div className="publish-filters-section-title">Organization filters</div>
+                  <div className="publish-filters-section-body">
+                    {selectedOrgLabels.length === 0
+                      ? "All organizations (no filters applied)"
+                      : selectedOrgLabels.join(", ")}
+                  </div>
+                </div>
+                <div className="publish-filters-section">
+                  <div className="publish-filters-section-title">Mode</div>
+                  <div className="publish-filters-section-body">
+                    {excludeMode
+                      ? "Exclude selected (show everything except these filters)"
+                      : "Include selected (show only events matching these filters)"}
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div className="publish-modal-actions">
+              <button
+                type="button"
+                className="publish-modal-secondary"
+                onClick={() => {
+                  setShowPublishConfirm(false);
+                  setPublishPreview(null);
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="publish-modal-primary"
+                onClick={async () => {
+                  setShowPublishConfirm(false);
+                  await publishFilters();
+                }}
+              >
+                Yes, publish
               </button>
             </div>
           </div>

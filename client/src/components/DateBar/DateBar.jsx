@@ -7,6 +7,17 @@ export const DateBar = () => {
   const { calendarRef, currentViewRange } = useContext(AppContext);
   const [currentView, setCurrentView] = useState("timeGridWeek");
   const [dateRange, setDateRange] = useState("");
+  const [isSmallScreen, setIsSmallScreen] = useState(window.innerWidth < 768);
+
+  // Track window size for responsive date format
+  useEffect(() => {
+    const handleResize = () => {
+      setIsSmallScreen(window.innerWidth < 768);
+    };
+
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
 
   // Update date range when view changes
   useEffect(() => {
@@ -18,32 +29,40 @@ export const DateBar = () => {
       const start = view.activeStart;
       const end = view.activeEnd;
       
-      if (view.type === "timeGridWeek") {
-        // Format as "Nov 9 - 15, 2025" or "Jan 25 - 31, 2026"
-        const startMonth = start.toLocaleDateString("en-US", { month: "short" });
-        const startDay = start.getDate();
-        const year = start.getFullYear();
-        
-        // Calculate the last day of the week (end is exclusive, so subtract 1 day)
-        const endDate = new Date(end);
-        endDate.setDate(endDate.getDate() - 1);
-        const endDay = endDate.getDate();
-        const endMonth = endDate.toLocaleDateString("en-US", { month: "short" });
-        
-        // If the week spans two months, show both months: "Jan 25 - Feb 1, 2026"
-        // Otherwise show single month: "Jan 25 - 31, 2026"
-        if (startMonth === endMonth) {
-          setDateRange(`${startMonth} ${startDay} - ${endDay}, ${year}`);
-        } else {
-          const endYear = endDate.getFullYear();
-          setDateRange(`${startMonth} ${startDay} - ${endMonth} ${endDay}, ${endYear}`);
-        }
-      } else if (view.type === "timeGridDay") {
-        // Format as "Nov 9, 2025"
+      if (isSmallScreen) {
+        // Short format: "Feb '26" (month and 2-digit year)
         const month = start.toLocaleDateString("en-US", { month: "short" });
-        const day = start.getDate();
-        const year = start.getFullYear();
-        setDateRange(`${month} ${day}, ${year}`);
+        const year = start.getFullYear().toString().slice(-2);
+        setDateRange(`${month} '${year}`);
+      } else {
+        // Full format
+        if (view.type === "timeGridWeek") {
+          // Format as "Nov 9 - 15, 2025" or "Jan 25 - 31, 2026"
+          const startMonth = start.toLocaleDateString("en-US", { month: "short" });
+          const startDay = start.getDate();
+          const year = start.getFullYear();
+          
+          // Calculate the last day of the week (end is exclusive, so subtract 1 day)
+          const endDate = new Date(end);
+          endDate.setDate(endDate.getDate() - 1);
+          const endDay = endDate.getDate();
+          const endMonth = endDate.toLocaleDateString("en-US", { month: "short" });
+          
+          // If the week spans two months, show both months: "Jan 25 - Feb 1, 2026"
+          // Otherwise show single month: "Jan 25 - 31, 2026"
+          if (startMonth === endMonth) {
+            setDateRange(`${startMonth} ${startDay} - ${endDay}, ${year}`);
+          } else {
+            const endYear = endDate.getFullYear();
+            setDateRange(`${startMonth} ${startDay} - ${endMonth} ${endDay}, ${endYear}`);
+          }
+        } else if (view.type === "timeGridDay") {
+          // Format as "Nov 9, 2025"
+          const month = start.toLocaleDateString("en-US", { month: "short" });
+          const day = start.getDate();
+          const year = start.getFullYear();
+          setDateRange(`${month} ${day}, ${year}`);
+        }
       }
       
       setCurrentView(view.type);
@@ -59,7 +78,7 @@ export const DateBar = () => {
       api.off("datesSet", updateDateRange);
       api.off("viewChange", updateDateRange);
     };
-  }, [calendarRef, currentViewRange]);
+  }, [calendarRef, currentViewRange, isSmallScreen]);
 
   const handlePrev = () => {
     const api = calendarRef.current?.getApi?.();

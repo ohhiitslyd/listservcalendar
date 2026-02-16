@@ -150,18 +150,31 @@ export const api = {
     organizationPreference?: string[];
     eventTypePreference?: string[];
     excludeMode?: boolean;
-  }): Promise<any> =>
-    fetch("/api/user/preferences", {
+  }): Promise<any> => {
+    const body: any = {
+      organizationPreference,
+      eventTypePreference,
+    };
+    
+    // Always include excludeMode in preferences if provided (even if false)
+    if (excludeMode !== undefined) {
+      body.preferences = { excludeMode };
+    }
+    
+    const response = await fetch("/api/user/preferences", {
       method: "PUT",
       credentials: "include",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        organizationPreference,
-        eventTypePreference,
-        // store excludeMode inside the "preferences" JSON blob
-        preferences: excludeMode !== undefined ? { excludeMode } : undefined,
-      }),
-    }).then((r) => r.json()),
+      body: JSON.stringify(body),
+    });
+    
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: "Failed to update preferences" }));
+      throw new Error(error.error || `HTTP ${response.status}`);
+    }
+    
+    return response.json();
+  },
 
   fetchPreferences: async (): Promise<{
     preferences: any;
@@ -174,15 +187,29 @@ export const api = {
 
   /* -----------------------------------------------------------------
    * Sync Calendar by Preferences
+   * Optional `dryRun` flag returns counts only without modifying GCal.
    * ----------------------------------------------------------------- */
-  syncCalendarByPreferences: async (): Promise<{
+  syncCalendarByPreferences: async ({ dryRun = false }: { dryRun?: boolean } = {}): Promise<{
     success: boolean;
     published: number;
     deleted: number;
     totalMatching: number;
     message: string;
+    publishResults?: Array<{
+      eventId: string;
+      action: string;
+      googleEventId?: string;
+      error?: string;
+    }>;
+    deleteResults?: Array<{
+      googleEventId: string;
+      title?: string;
+      action: string;
+      reason?: string;
+      error?: string;
+    }>;
   }> =>
-    fetch("/api/user/sync-calendar-by-preferences", {
+    fetch(`/api/user/sync-calendar-by-preferences${dryRun ? "?dryRun=true" : ""}`, {
       method: "POST",
       credentials: "include",
       headers: { "Content-Type": "application/json" },

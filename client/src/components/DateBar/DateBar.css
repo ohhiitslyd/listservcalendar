@@ -126,3 +126,115 @@
   background-color: #c4d9b4;
 }
 
+/* Responsive styles for smaller screens */
+@media (max-width: 1200px) {
+  .date-bar {
+    padding: 8px 30px;
+  }
+
+  .date-bar-left {
+    gap: 16px;
+  }
+
+  .date-bar-today-btn,
+  .date-bar-date-range,
+  .date-bar-view-btn {
+    font-size: 15px;
+    padding: 6px 9px;
+  }
+
+  .date-bar-view-btn {
+    min-width: 60px;
+  }
+
+  .date-bar-arrow-btn {
+    width: 16px;
+    height: 16px;
+  }
+}
+
+@media (max-width: 900px) {
+  .date-bar {
+    padding: 8px 20px;
+  }
+
+  .date-bar-left {
+    gap: 12px;
+  }
+
+  .date-bar-today-btn,
+  .date-bar-date-range,
+  .date-bar-view-btn {
+    font-size: 14px;
+    padding: 5px 8px;
+  }
+
+  .date-bar-view-btn {
+    min-width: 55px;
+  }
+
+  .date-bar-arrow-btn {
+    width: 15px;
+    height: 15px;
+  }
+}
+
+@media (max-width: 768px) {
+  .date-bar {
+    padding: 6px 16px;
+  }
+
+  .date-bar-left {
+    gap: 10px;
+  }
+
+  .date-bar-today-btn,
+  .date-bar-date-range,
+  .date-bar-view-btn {
+    font-size: 13px;
+    padding: 5px 7px;
+  }
+
+  .date-bar-view-btn {
+    min-width: 50px;
+  }
+
+  .date-bar-arrow-btn {
+    width: 14px;
+    height: 14px;
+  }
+
+  .date-bar-navigation {
+    gap: 8px;
+  }
+}
+
+@media (max-width: 600px) {
+  .date-bar {
+    padding: 6px 12px;
+  }
+
+  .date-bar-left {
+    gap: 8px;
+  }
+
+  .date-bar-today-btn,
+  .date-bar-date-range,
+  .date-bar-view-btn {
+    font-size: 12px;
+    padding: 4px 6px;
+  }
+
+  .date-bar-view-btn {
+    min-width: 45px;
+  }
+
+  .date-bar-arrow-btn {
+    width: 13px;
+    height: 13px;
+  }
+
+  .date-bar-navigation {
+    gap: 6px;
+  }
+}
