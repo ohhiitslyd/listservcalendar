@@ -11,6 +11,7 @@ export const Filters = ({
   statusDotClass,
 }) => {
   const {
+    user,
     //tag level cats
     availableCats,
     selectedCats,
@@ -33,6 +34,8 @@ export const Filters = ({
 
   const [activeTab, setActiveTab] = useState("event-types");
   const [expandedCategories, setExpandedCategories] = useState(new Set());
+  const [nudgesExpanded, setNudgesExpanded] = useState(true);
+  const [expandedNudgeEmails, setExpandedNudgeEmails] = useState(new Set());
   const [orgSearch, setOrgSearch] = useState("");
   const orgSearchInputRef = useRef(null);
 
@@ -53,8 +56,32 @@ export const Filters = ({
 
   const totalSelected = selectedCats.size + selectedOrgCats.size;
 
+  const invitedByEmail = useMemo(() => {
+    const grouped = {};
+    const invitedEvents = Array.isArray(user?.invitedEvents)
+      ? user.invitedEvents
+      : [];
 
+    invitedEvents.forEach((entry) => {
+      if (!entry || typeof entry !== "object") return;
+      const email = String(entry.email || "").trim().toLowerCase();
+      const eventId = String(entry.id || "").trim();
+      if (!email || !eventId) return;
+      if (!grouped[email]) grouped[email] = [];
+      grouped[email].push(eventId);
+    });
 
+    return grouped;
+  }, [user?.invitedEvents]);
+
+  const invitedEmailEntries = useMemo(() => {
+    return Object.entries(invitedByEmail)
+      .map(([email, eventIds]) => ({
+        email,
+        eventIds,
+      }))
+      .sort((a, b) => a.email.localeCompare(b.email));
+  }, [invitedByEmail]);
 
   const toggleCategoryExpansion = (typeKey) => {
     setExpandedCategories((prev) => {
@@ -63,6 +90,18 @@ export const Filters = ({
         next.delete(typeKey);
       } else {
         next.add(typeKey);
+      }
+      return next;
+    });
+  };
+
+  const toggleNudgeEmailExpansion = (email) => {
+    setExpandedNudgeEmails((prev) => {
+      const next = new Set(prev);
+      if (next.has(email)) {
+        next.delete(email);
+      } else {
+        next.add(email);
       }
       return next;
     });
@@ -447,20 +486,28 @@ export const Filters = ({
           >
             Organizations
           </button>
+          <button
+            className={`filter-tab ${activeTab === 'nudges' ? 'active' : ''}`}
+            onClick={() => setActiveTab('nudges')}
+          >
+            Nudges
+          </button>
         </div>
       </div>
 
       {/* Content */}
       <div className="filters-content">
-        <div className={`filters-clear-all-row ${activeTab === 'event-types' ? 'filters-clear-all-row-sticky' : ''}`}>
-          <button
-            onClick={clearAll}
-            className="filters-clear-all-tab"
-            type="button"
-          >
-            Clear all filters
-          </button>
-        </div>
+        {activeTab !== "nudges" && (
+          <div className={`filters-clear-all-row ${activeTab === 'event-types' ? 'filters-clear-all-row-sticky' : ''}`}>
+            <button
+              onClick={clearAll}
+              className="filters-clear-all-tab"
+              type="button"
+            >
+              Clear all filters
+            </button>
+          </div>
+        )}
         {activeTab === 'organizations' ? (
           <>
             <div className="org-filters-search">
@@ -599,7 +646,7 @@ export const Filters = ({
             </div>
             </div>
           </>
-        ) : (
+        ) : activeTab === "event-types" ? (
           <div className="event-types-list-wrapper">
             <div className="event-types-list">
             {availableCats.map((cat) => {
@@ -644,10 +691,94 @@ export const Filters = ({
           })}
             </div>
           </div>
+        ) : (
+          <div className="org-filters-list-wrapper">
+            <div className="org-filters-list">
+              <div className="org-filter-group">
+                <div className="org-filter-item">
+                  <label className="org-filter-label">
+                    <button
+                      type="button"
+                      className="org-filter-expand-btn"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setNudgesExpanded((prev) => !prev);
+                      }}
+                    >
+                      <svg
+                        className={`org-filter-expand-icon ${nudgesExpanded ? "expanded" : ""}`}
+                        width="16"
+                        height="16"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                      >
+                        <polyline points="6 9 12 15 18 9"></polyline>
+                      </svg>
+                    </button>
+                    <span className="org-filter-name">Invited Events</span>
+                  </label>
+                  <span className="org-filter-count" style={{ borderColor: "#d4e9c4" }}>
+                    {Array.isArray(user?.invitedEvents) ? user.invitedEvents.length : 0}
+                  </span>
+                </div>
+
+                {nudgesExpanded && invitedEmailEntries.map(({ email, eventIds }) => {
+                  const emailExpanded = expandedNudgeEmails.has(email);
+                  return (
+                    <div key={email} className="org-filter-group">
+                      <div className="org-filter-item org-filter-item-indented">
+                        <label className="org-filter-label">
+                          <button
+                            type="button"
+                            className="org-filter-expand-btn"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              toggleNudgeEmailExpansion(email);
+                            }}
+                          >
+                            <svg
+                              className={`org-filter-expand-icon ${emailExpanded ? "expanded" : ""}`}
+                              width="16"
+                              height="16"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2"
+                            >
+                              <polyline points="6 9 12 15 18 9"></polyline>
+                            </svg>
+                          </button>
+                          <span className="org-filter-name">{email}</span>
+                        </label>
+                        <span className="org-filter-count" style={{ borderColor: "#93b3ea" }}>
+                          {eventIds.length}
+                        </span>
+                      </div>
+
+                      {emailExpanded && eventIds.map((eventId, idx) => (
+                        <div key={`${email}-${eventId}-${idx}`} className="org-filter-item org-filter-item-double-indented">
+                          <span className="org-filter-name">{eventId}</span>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })}
+
+                {nudgesExpanded && invitedEmailEntries.length === 0 && (
+                  <div className="org-filter-item org-filter-item-indented">
+                    <span className="org-filter-name">No invited events yet</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
         )}
       </div>
 
       {/* Footer */}
+      {activeTab !== "nudges" && (
       <div className="filters-footer">
         {/* Negative filter toggle - aligned like other filter rows */}
         <div className="org-filter-item" style={{ marginBottom: 0 }}>
@@ -666,6 +797,7 @@ export const Filters = ({
 
         <div />
       </div>
+      )}
     </div>
   );
 };

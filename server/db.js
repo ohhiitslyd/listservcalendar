@@ -23,7 +23,7 @@ pool.on("error", (err) => {
   console.error("[db] Unexpected error on idle client", err);
 });
 
-// Migration function to add new preference columns and migrate existing data
+// Migration function to add user profile columns and migrate existing data
 async function migrateUserPreferences(client) {
   try {
     // Check if organization_preference column exists
@@ -101,6 +101,32 @@ async function migrateUserPreferences(client) {
         console.log("[db] Converted event_type_preference from JSONB to TEXT[]");
       }
     }
+
+    // Add nudged_events column if it doesn't exist
+    await client.query(`
+      ALTER TABLE users
+      ADD COLUMN IF NOT EXISTS nudged_events JSONB DEFAULT '[]'::jsonb
+    `);
+
+    // Backfill null nudged_events to empty array
+    await client.query(`
+      UPDATE users
+      SET nudged_events = '[]'::jsonb
+      WHERE nudged_events IS NULL
+    `);
+
+    // Add invited_events column if it doesn't exist
+    await client.query(`
+      ALTER TABLE users
+      ADD COLUMN IF NOT EXISTS invited_events JSONB DEFAULT '[]'::jsonb
+    `);
+
+    // Backfill null invited_events to empty array
+    await client.query(`
+      UPDATE users
+      SET invited_events = '[]'::jsonb
+      WHERE invited_events IS NULL
+    `);
 
     // Migrate existing preferences data if both new columns are empty and old preferences exist
     const usersWithOldPrefs = await client.query(`
@@ -269,6 +295,8 @@ export async function initializeSchema() {
         preferences JSONB DEFAULT '{}',
         organization_preference TEXT[] DEFAULT '{}',
         event_type_preference TEXT[] DEFAULT '{}',
+        nudged_events JSONB DEFAULT '[]'::jsonb,
+        invited_events JSONB DEFAULT '[]'::jsonb,
         created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
       )

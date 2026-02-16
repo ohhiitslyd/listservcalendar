@@ -265,7 +265,7 @@ app.get("/api/me", async (req, res) => {
   // Fetch user preferences from database
   try {
     const userRecord = await queryOne(
-      "SELECT organization_preference, event_type_preference, preferences FROM users WHERE id = $1",
+      "SELECT organization_preference, event_type_preference, preferences, nudged_events, invited_events FROM users WHERE id = $1",
       [req.session.user.id]
     );
     res.json({
@@ -274,6 +274,8 @@ app.get("/api/me", async (req, res) => {
         preferences: userRecord?.preferences || {},
         organizationPreference: userRecord?.organization_preference || [],
         eventTypePreference: userRecord?.event_type_preference || [],
+        nudgedEvents: userRecord?.nudged_events || [],
+        invitedEvents: userRecord?.invited_events || [],
       },
     });
   } catch (error) {
@@ -286,13 +288,15 @@ app.get("/api/me", async (req, res) => {
 app.get("/api/user/preferences", ensureAuthed, async (req, res) => {
   try {
     const userRecord = await queryOne(
-      "SELECT organization_preference, event_type_preference, preferences FROM users WHERE id = $1",
+      "SELECT organization_preference, event_type_preference, preferences, nudged_events, invited_events FROM users WHERE id = $1",
       [req.session.user.id]
     );
     res.json({ 
       preferences: userRecord?.preferences || {},
       organizationPreference: userRecord?.organization_preference || [],
       eventTypePreference: userRecord?.event_type_preference || [],
+      nudgedEvents: userRecord?.nudged_events || [],
+      invitedEvents: userRecord?.invited_events || [],
     });
   } catch (error) {
     console.error("[preferences] Error fetching:", error);
@@ -362,7 +366,7 @@ app.put("/api/user/preferences", ensureAuthed, async (req, res) => {
 
     // Return the full updated state (what your frontend expects)
     const updatedUser = await queryOne(
-      "SELECT organization_preference, event_type_preference, preferences FROM users WHERE id = $1",
+      "SELECT organization_preference, event_type_preference, preferences, nudged_events, invited_events FROM users WHERE id = $1",
       [req.session.user.id]
     );
 
@@ -370,10 +374,93 @@ app.put("/api/user/preferences", ensureAuthed, async (req, res) => {
       preferences: updatedUser?.preferences || {},
       organizationPreference: updatedUser?.organization_preference || [],
       eventTypePreference: updatedUser?.event_type_preference || [],
+      nudgedEvents: updatedUser?.nudged_events || [],
+      invitedEvents: updatedUser?.invited_events || [],
     });
   } catch (error) {
     console.error("[preferences] Error updating:", error);
     res.status(500).json({ error: "Failed to update preferences" });
+  }
+});
+
+// --- Nudge Event ---
+app.post("/api/user/nudge-event", ensureAuthed, async (req, res) => {
+  const { eventId, targetEmail } = req.body || {};
+
+  if (!eventId || typeof eventId !== "string") {
+    return res.status(400).json({ error: "eventId is required" });
+  }
+  if (!targetEmail || typeof targetEmail !== "string") {
+    return res.status(400).json({ error: "targetEmail is required" });
+  }
+
+  const normalizedTargetEmail = targetEmail.trim().toLowerCase();
+  const senderUserId = req.session.user.id;
+  const senderEmail = String(req.session.user.email || "").trim().toLowerCase();
+
+  if (!normalizedTargetEmail) {
+    return res.status(400).json({ error: "targetEmail cannot be empty" });
+  }
+  if (normalizedTargetEmail === senderEmail) {
+    return res.status(400).json({ error: "You cannot nudge yourself" });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    const senderResult = await client.query(
+      "SELECT id, email FROM users WHERE id = $1 FOR UPDATE",
+      [senderUserId]
+    );
+    if (senderResult.rows.length === 0) {
+      await client.query("ROLLBACK");
+      return res.status(404).json({ error: "Current user not found" });
+    }
+
+    const targetResult = await client.query(
+      "SELECT id, email FROM users WHERE LOWER(email) = LOWER($1::text) FOR UPDATE",
+      [normalizedTargetEmail]
+    );
+    if (targetResult.rows.length === 0) {
+      await client.query("ROLLBACK");
+      return res.status(404).json({ error: "Target email does not match any user" });
+    }
+
+    const targetUser = targetResult.rows[0];
+    const senderUser = senderResult.rows[0];
+
+    await client.query(
+      `UPDATE users
+       SET invited_events = COALESCE(invited_events, '[]'::jsonb) ||
+         jsonb_build_array(jsonb_build_object('id', $1::text, 'email', $2::text)),
+           updated_at = CURRENT_TIMESTAMP
+       WHERE id = $3`,
+      [eventId, senderUser.email, targetUser.id]
+    );
+
+    await client.query(
+      `UPDATE users
+       SET nudged_events = COALESCE(nudged_events, '[]'::jsonb) ||
+         jsonb_build_array(jsonb_build_object('id', $1::text, 'email', $2::text)),
+           updated_at = CURRENT_TIMESTAMP
+       WHERE id = $3`,
+      [eventId, targetUser.email, senderUser.id]
+    );
+
+    await client.query("COMMIT");
+    return res.json({
+      success: true,
+      eventId,
+      invitedEmail: targetUser.email,
+      nudgedBy: senderUser.email,
+    });
+  } catch (error) {
+    await client.query("ROLLBACK");
+    console.error("[nudge-event] Error:", error);
+    return res.status(500).json({ error: "Failed to nudge event" });
+  } finally {
+    client.release();
   }
 });
 
@@ -390,7 +477,7 @@ app.post("/api/user/sync-calendar-by-preferences", ensureAuthed, async (req, res
 
     // Get user preferences
     const userRecord = await queryOne(
-      "SELECT organization_preference, event_type_preference, preferences FROM users WHERE id = $1",
+      "SELECT organization_preference, event_type_preference, preferences, nudged_events, invited_events FROM users WHERE id = $1",
       [userId]
     );
 

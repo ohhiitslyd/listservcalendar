@@ -1,15 +1,23 @@
-import React, { useContext } from "react";
+import React, { useContext, useEffect, useState } from "react";
 import { AppContext } from "../../context/AppContext";
+import { api } from "../../api/calendarApi";
 import "./EventDetails.css";
 
 export const EventDetails = () => {
   const {
     selectedEvent,
     setSelectedEvent,
-    handlePublishEvent,
-    listservCalendarId,
-    logout,
+    listservCalendarId
   } = useContext(AppContext);
+  const [showNudgeForm, setShowNudgeForm] = useState(false);
+  const [nudgeEmail, setNudgeEmail] = useState("");
+  const [nudgeLoading, setNudgeLoading] = useState(false);
+
+  useEffect(() => {
+    setShowNudgeForm(false);
+    setNudgeEmail("");
+    setNudgeLoading(false);
+  }, [selectedEvent?.id]);
 
   if (!selectedEvent) {
     return null;
@@ -19,6 +27,7 @@ export const EventDetails = () => {
   const isEmail = selectedEvent.id.startsWith("email:");
   const isListServ =
     selectedEvent.extendedProps?.calendarId === listservCalendarId;
+  const canNudge = !!selectedEvent?.id && (isEmail || isListServ || isDraft);
 
   // Format date and time
   const formatTime = (date) => {
@@ -43,6 +52,32 @@ export const EventDetails = () => {
     // For now, default to blue for music organizations
     // You can enhance this based on the organization type
     return "#93b3ea";
+  };
+
+  const handleNudgeSubmit = async (e) => {
+    e.preventDefault();
+    if (!selectedEvent?.id || !nudgeEmail.trim()) return;
+
+    try {
+      setNudgeLoading(true);
+      const result = await api.nudgeEvent({
+        eventId: selectedEvent.id,
+        targetEmail: nudgeEmail.trim(),
+      });
+
+      if (!result?.success) {
+        alert(result?.error || "Failed to nudge event");
+        return;
+      }
+
+      alert(`Nudge sent to ${result.invitedEmail || nudgeEmail.trim()}`);
+      setNudgeEmail("");
+      setShowNudgeForm(false);
+    } catch (error) {
+      alert("Failed to nudge event");
+    } finally {
+      setNudgeLoading(false);
+    }
   };
 
   return (
@@ -164,6 +199,51 @@ export const EventDetails = () => {
           </div>
         )}
       </div>
+
+      {canNudge && (
+        <div className="event-details-actions">
+          {!showNudgeForm ? (
+            <button
+              type="button"
+              className="event-action-button"
+              onClick={() => setShowNudgeForm(true)}
+            >
+              Nudge
+            </button>
+          ) : (
+            <form className="event-nudge-form" onSubmit={handleNudgeSubmit}>
+              <input
+                type="email"
+                className="event-nudge-input"
+                placeholder="Enter email"
+                value={nudgeEmail}
+                onChange={(e) => setNudgeEmail(e.target.value)}
+                required
+              />
+              <div className="event-nudge-actions">
+                <button
+                  type="button"
+                  className="event-action-button event-action-button-secondary"
+                  onClick={() => {
+                    setShowNudgeForm(false);
+                    setNudgeEmail("");
+                  }}
+                  disabled={nudgeLoading}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="event-action-button"
+                  disabled={nudgeLoading}
+                >
+                  {nudgeLoading ? "Sending..." : "Submit"}
+                </button>
+              </div>
+            </form>
+          )}
+        </div>
+      )}
 
     </div>
   );
