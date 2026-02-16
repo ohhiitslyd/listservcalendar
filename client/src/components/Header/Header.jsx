@@ -10,14 +10,39 @@ export const Header = ({ onPublish, onLogout }) => {
     calendars, 
     visibleCalendars, 
     toggleCalendar,
+    events,
     selectedCats,
     selectedOrgCats,
   } = useContext(AppContext);
 
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [userCalendarsOpen, setUserCalendarsOpen] = useState(false);
+  const [nudgesOpen, setNudgesOpen] = useState(false);
+  const [invitedEventsExpanded, setInvitedEventsExpanded] = useState(true);
   const userMenuRef = useRef(null);
   const calendarsMenuRef = useRef(null);
+  const nudgesMenuRef = useRef(null);
+
+  const invitedEventIds = Array.from(
+    new Set(
+      (Array.isArray(user?.invitedEvents) ? user.invitedEvents : [])
+        .map((entry) => String(entry?.id || "").trim())
+        .filter(Boolean)
+    )
+  );
+
+  const eventsById = new Map((events || []).map((ev) => [String(ev?.id || ""), ev]));
+  const invitedEventBubbles = invitedEventIds.map((eventId) => {
+    const ev = eventsById.get(eventId);
+    return {
+      id: eventId,
+      title: ev?.title || "(Event unavailable)",
+      organization:
+        ev?.extendedProps?.organization ||
+        ev?.organization ||
+        "Unknown organization",
+    };
+  });
 
   // Close dropdowns when clicking outside
   useEffect(() => {
@@ -27,6 +52,9 @@ export const Header = ({ onPublish, onLogout }) => {
       }
       if (calendarsMenuRef.current && !calendarsMenuRef.current.contains(event.target)) {
         setUserCalendarsOpen(false);
+      }
+      if (nudgesMenuRef.current && !nudgesMenuRef.current.contains(event.target)) {
+        setNudgesOpen(false);
       }
     };
 
@@ -102,7 +130,10 @@ export const Header = ({ onPublish, onLogout }) => {
         <div className="dropdown-container" ref={calendarsMenuRef}>
           <button
             className="app-header-button calendars-button"
-            onClick={() => setUserCalendarsOpen(!userCalendarsOpen)}
+            onClick={() => {
+              setUserCalendarsOpen(!userCalendarsOpen);
+              setNudgesOpen(false);
+            }}
             type="button"
           >
             My Calendars
@@ -168,6 +199,70 @@ export const Header = ({ onPublish, onLogout }) => {
                   <div className="user-menu-empty">No calendars available.</div>
                 )}
               </div>
+            </div>
+          )}
+        </div>
+
+        <div className="dropdown-container" ref={nudgesMenuRef}>
+          <button
+            className="app-header-button calendars-button"
+            onClick={() => {
+              setNudgesOpen(!nudgesOpen);
+              setUserCalendarsOpen(false);
+            }}
+            type="button"
+          >
+            Nudges
+            <svg
+              className={`dropdown-arrow ${nudgesOpen ? "open" : ""}`}
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              style={{ marginLeft: "6px" }}
+            >
+              <polyline points="6 9 12 15 18 9"></polyline>
+            </svg>
+          </button>
+          {nudgesOpen && (
+            <div className="dropdown-content nudges-dropdown">
+              <div className="calendars-dropdown-header">
+                <h4>Nudges</h4>
+              </div>
+              <button
+                className="user-menu-accordion"
+                type="button"
+                onClick={() => setInvitedEventsExpanded((prev) => !prev)}
+              >
+                <span>Invited Events</span>
+                <svg
+                  className={`dropdown-arrow ${invitedEventsExpanded ? "open" : ""}`}
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                >
+                  <polyline points="6 9 12 15 18 9"></polyline>
+                </svg>
+              </button>
+              {invitedEventsExpanded && (
+                <div className="nudges-events-list">
+                  {invitedEventBubbles.length > 0 ? (
+                    invitedEventBubbles.map((eventInfo) => (
+                      <div key={eventInfo.id} className="nudges-event-bubble" title={eventInfo.id}>
+                        <div className="nudges-event-title">{eventInfo.title}</div>
+                        <div className="nudges-event-org">{eventInfo.organization}</div>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="user-menu-empty">No invited events yet.</div>
+                  )}
+                </div>
+              )}
             </div>
           )}
         </div>
