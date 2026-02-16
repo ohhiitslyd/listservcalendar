@@ -52,10 +52,6 @@ export const Header = ({ onPublish, onLogout, onMobileFiltersToggle, mobileFilte
     return user.name || user.email || "";
   };
 
-  const handleRefresh = () => {
-    window.location.reload();
-  };
-
   if (!user) {
     return (
       <div className="app-header">
@@ -193,14 +189,6 @@ export const Header = ({ onPublish, onLogout, onMobileFiltersToggle, mobileFilte
       </div>
 
       <div className="app-header-right">
-        <button className="app-header-button refresh-button" onClick={handleRefresh}>
-          <svg className="refresh-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <polyline points="23 4 23 10 17 10"></polyline>
-            <polyline points="1 20 1 14 7 14"></polyline>
-            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
-          </svg>
-          <span className="button-text">Refresh</span>
-        </button>
         <div className="dropdown-container" ref={userMenuRef}>
           <button
             className="user-account user-account-button"

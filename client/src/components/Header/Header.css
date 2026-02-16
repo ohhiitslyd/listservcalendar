@@ -108,6 +108,9 @@
   color: #000000;
   border: 1px solid #d4e9c4;
   font-weight: 400;
+  padding: 5px 8px;
+  font-size: 14px;
+  white-space: nowrap;
 }
 
 .dropdown-arrow {
@@ -485,6 +488,12 @@
   }
 
   .calendars-button {
-    display: none;
+    padding: 6px 10px;
+    font-size: 13px;
+  }
+
+  .calendars-button .dropdown-arrow {
+    width: 14px;
+    height: 14px;
   }
 }
