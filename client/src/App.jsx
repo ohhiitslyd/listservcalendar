@@ -51,6 +51,9 @@ const InnerApp = () => {
   const [lastPublishedKey, setLastPublishedKey] = useState(null);
   const [hasEverPublished, setHasEverPublished] = useState(false);
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
+  const [pendingPublishKey, setPendingPublishKey] = useState(null);
+  const [pendingFiltersCount, setPendingFiltersCount] = useState(0);
+  const [showPublishConfirm, setShowPublishConfirm] = useState(false);
 
   const totalSelectedFilters = (selectedCats?.size || 0) + (selectedOrgCats?.size || 0);
 
@@ -74,14 +77,18 @@ const InnerApp = () => {
   const hasUnpublishedChanges =
     !!user && lastPublishedKey !== null && currentPublishKey !== lastPublishedKey;
 
+  const handleOpenPublishConfirm = () => {
+    // Just show the confirmation popup; we only update DB + GCal if user confirms.
+    setShowPublishConfirm(true);
+  };
 
   const publishFilters = async () => {
     try {
       setIsPublishing(true);
-      const orgPrefsArray = Array.from(selectedOrgCats);
-      const eventTypePrefsArray = Array.from(selectedCats);
+      const orgPrefsArray = Array.from(selectedOrgCats || []);
+      const eventTypePrefsArray = Array.from(selectedCats || []);
 
-      console.log("[publish] Updating preferences:", {
+      console.log("[publish] Updating preferences before confirmed publish:", {
         organizationPreference: orgPrefsArray.length,
         eventTypePreference: eventTypePrefsArray.length,
         excludeMode,
@@ -95,6 +102,7 @@ const InnerApp = () => {
 
       console.log("[publish] Preferences updated successfully:", preferencesResult);
 
+      console.log("[publish] Starting confirmed publish with current preferences");
       const syncResult = await api.syncCalendarByPreferences();
       console.log("[publish] Calendar sync result:", syncResult);
       
@@ -239,6 +247,31 @@ const InnerApp = () => {
     return "Dashboard matches GCal";
   }, [hasEverPublished, hasUnpublishedChanges]);
 
+  const selectedEventTypeLabels = useMemo(() => {
+    const labels = [];
+    const labelMap = new Map(
+      (availableCats || []).map((c) => [c.key, c.label || c.key])
+    );
+    (selectedCats || new Set()).forEach((key) => {
+      const label = labelMap.get(key);
+      if (label) labels.push(label);
+    });
+    return labels.sort();
+  }, [availableCats, selectedCats]);
+
+  const selectedOrgLabels = useMemo(() => {
+    const labels = [];
+    const labelMap = new Map(
+      (availableOrgCats || []).map((c) => [c.key, c.label || c.key])
+    );
+    (selectedOrgCats || new Set()).forEach((key) => {
+      const label = labelMap.get(key);
+      if (label) labels.push(label);
+    });
+    return labels.sort();
+  }, [availableOrgCats, selectedOrgCats]);
+
+
   /* -------------------------------------------------
      Render the UI layout
      ------------------------------------------------- */
@@ -247,7 +280,7 @@ const InnerApp = () => {
       <Header
         onPublish={() => {
           if (isPublishing) return;
-          publishFilters();
+          handleOpenPublishConfirm();
         }}
         onLogout={handleLogout}
         onMobileFiltersToggle={() => setMobileFiltersOpen(!mobileFiltersOpen)}
@@ -378,20 +411,67 @@ const InnerApp = () => {
         </div>
       )}
 
-      {/* Floating Action Button (FAB) for mobile */}
-      <button
-        className="fab-button"
-        onClick={() => {
-          // TODO: Add event creation functionality
-          console.log("FAB clicked - event creation not yet implemented");
-        }}
-        aria-label="Add event"
-      >
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-          <line x1="12" y1="5" x2="12" y2="19"></line>
-          <line x1="5" y1="12" x2="19" y2="12"></line>
-        </svg>
-      </button>
+      {showPublishConfirm && (
+        <div className="publish-modal-overlay">
+          <div className="publish-modal">
+            <div className="publish-modal-content">
+              <h4>Publish to GCal?</h4>
+              <p className="publish-modal-caption">
+                Review your current filters before publishing events to your ListServ Google Calendar.
+              </p>
+
+              <div className="publish-filters-summary">
+                <div className="publish-filters-section">
+                  <div className="publish-filters-section-title">Event type filters</div>
+                  <div className="publish-filters-section-body">
+                    {selectedEventTypeLabels.length === 0
+                      ? "All event types (no filters applied)"
+                      : selectedEventTypeLabels.join(", ")}
+                  </div>
+                </div>
+                <div className="publish-filters-section">
+                  <div className="publish-filters-section-title">Organization filters</div>
+                  <div className="publish-filters-section-body">
+                    {selectedOrgLabels.length === 0
+                      ? "All organizations (no filters applied)"
+                      : selectedOrgLabels.join(", ")}
+                  </div>
+                </div>
+                <div className="publish-filters-section">
+                  <div className="publish-filters-section-title">Mode</div>
+                  <div className="publish-filters-section-body">
+                    {excludeMode
+                      ? "Exclude selected (show everything except these filters)"
+                      : "Include selected (show only events matching these filters)"}
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div className="publish-modal-actions">
+              <button
+                type="button"
+                className="publish-modal-secondary"
+                onClick={() => {
+                  setShowPublishConfirm(false);
+                  setPublishPreview(null);
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="publish-modal-primary"
+                onClick={async () => {
+                  setShowPublishConfirm(false);
+                  await publishFilters();
+                }}
+              >
+                Yes, publish
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

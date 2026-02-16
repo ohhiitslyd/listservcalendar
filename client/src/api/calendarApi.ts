@@ -187,8 +187,9 @@ export const api = {
 
   /* -----------------------------------------------------------------
    * Sync Calendar by Preferences
+   * Optional `dryRun` flag returns counts only without modifying GCal.
    * ----------------------------------------------------------------- */
-  syncCalendarByPreferences: async (): Promise<{
+  syncCalendarByPreferences: async ({ dryRun = false }: { dryRun?: boolean } = {}): Promise<{
     success: boolean;
     published: number;
     deleted: number;
@@ -208,7 +209,7 @@ export const api = {
       error?: string;
     }>;
   }> =>
-    fetch("/api/user/sync-calendar-by-preferences", {
+    fetch(`/api/user/sync-calendar-by-preferences${dryRun ? "?dryRun=true" : ""}`, {
       method: "POST",
       credentials: "include",
       headers: { "Content-Type": "application/json" },
