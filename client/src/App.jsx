@@ -230,7 +230,7 @@ const InnerApp = () => {
   }, [hasEverPublished, hasUnpublishedChanges]);
 
   const statusText = useMemo(() => {
-    return isPublishedUpToDate ? "Published" : "Changes to publish";
+    return isPublishedUpToDate ? "Published" : "Unpublished Changes";
   }, [isPublishedUpToDate]);
 
   const statusDotClass = useMemo(() => {
