@@ -248,7 +248,7 @@ async function processRawEvent(rawEvent, context) {
   const parsed = { ...rawEvent };
 
   // If key information is missing but we have image attachments, try vision API
-  const needsVisionExtraction = !parsed.startTime || !parsed.startDate || !parsed.title;
+  const needsVisionExtraction = !parsed.startTime || !parsed.startDate || !parsed.title || !parsed.location;
   if (needsVisionExtraction && attachments && emailId) {
     try {
       const attachmentsList =
