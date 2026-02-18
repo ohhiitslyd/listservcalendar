@@ -1419,7 +1419,7 @@ try {
 }
 
 // ---------- Org preference -> allowed email helper ----------
-const toKey = (s) => String(s || "").trim().toLowerCase().replace(/\s+/g, "_");
+const toKey = (s) => String(s || "").trim().toLowerCase().replace(/,/g, "").replace(/\s+/g, "_");
 
 // pref key format (leaf): "<typeKey>:all:<orgKey>"
 function buildAllowedOrgEmailSet(orgPrefs) {
