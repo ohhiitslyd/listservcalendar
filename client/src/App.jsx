@@ -42,14 +42,14 @@ const InnerApp = () => {
     tagColorMap,
     listservCalendarId,
     logout,
+    preferencesLoaded,
     // **NOTE:** we *do not* destructure `onSelect` or `onEventClick`
     // because we will define them locally (see below).
   } = useContext(AppContext);
   const [publishResult, setPublishResult] = useState(null);
   const [isPublishing, setIsPublishing] = useState(false);
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
-  const [lastPublishedKey, setLastPublishedKey] = useState(null);
-  const [hasEverPublished, setHasEverPublished] = useState(false);
+  const [publishedKey, setPublishedKey] = useState(null); // Key computed from database preferences
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
   const [showPublishConfirm, setShowPublishConfirm] = useState(false);
 
@@ -65,15 +65,23 @@ const InnerApp = () => {
     });
   }, [selectedCats, selectedOrgCats, excludeMode]);
 
+  // Compute publishedKey from loaded preferences (what's in the database)
+  // This represents what was last published
   useEffect(() => {
-    if (!user) return;
-    if (lastPublishedKey === null) {
-      setLastPublishedKey(currentPublishKey);
+    if (user && preferencesLoaded) {
+      // Compute key from current filter state when preferences are first loaded
+      // At that moment, current state matches what's in the database
+      if (publishedKey === null && currentPublishKey) {
+        setPublishedKey(currentPublishKey);
+      }
+    } else if (!user) {
+      // Reset when user logs out
+      setPublishedKey(null);
     }
-  }, [user, lastPublishedKey, currentPublishKey]);
+  }, [user, preferencesLoaded, currentPublishKey, publishedKey]);
 
   const hasUnpublishedChanges =
-    !!user && lastPublishedKey !== null && currentPublishKey !== lastPublishedKey;
+    !!user && publishedKey !== null && currentPublishKey !== publishedKey;
 
   const handleOpenPublishConfirm = () => {
     // Just show the confirmation popup; we only update DB + GCal if user confirms.
@@ -95,8 +103,8 @@ const InnerApp = () => {
       const syncResult = await api.syncCalendarByPreferences();
 
       setPublishResult(syncResult);
-      setLastPublishedKey(currentPublishKey);
-      setHasEverPublished(true);
+      // Update publishedKey to match what we just published
+      setPublishedKey(currentPublishKey);
     } catch (error) {
       console.error("Failed to publish filters:", error);
       alert(`Failed to publish filters: ${error.message || error.error || "Unknown error"}`);
@@ -226,8 +234,8 @@ const InnerApp = () => {
 
 
   const isPublishedUpToDate = useMemo(() => {
-    return hasEverPublished && !hasUnpublishedChanges;
-  }, [hasEverPublished, hasUnpublishedChanges]);
+    return publishedKey !== null && !hasUnpublishedChanges;
+  }, [publishedKey, hasUnpublishedChanges]);
 
   const statusText = useMemo(() => {
     return isPublishedUpToDate ? "Published" : "Unpublished Changes";
@@ -390,7 +398,6 @@ const InnerApp = () => {
                 className="publish-modal-secondary"
                 onClick={() => {
                   setShowLeaveConfirm(false);
-                  setLastPublishedKey(null);
                   logout();
                 }}
               >
