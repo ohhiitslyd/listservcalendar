@@ -2,7 +2,14 @@ import React, { useContext, useState, useRef, useEffect } from "react";
 import { AppContext } from "../../context/AppContext";
 import "./Header.css";
 
-export const Header = ({ onPublish, onLogout, onMobileFiltersToggle, mobileFiltersOpen }) => {
+export const Header = ({
+  onPublish,
+  onLogout,
+  onMobileFiltersToggle,
+  mobileFiltersOpen,
+  statusText,
+  statusDotClass,
+}) => {
   const { 
     user, 
     login, 
@@ -143,18 +150,31 @@ export const Header = ({ onPublish, onLogout, onMobileFiltersToggle, mobileFilte
           <h2 className="app-header-title">ListServCalendar</h2>
         </div>
         
-        <button
-          className="app-header-button publish-button"
-          onClick={onPublish}
-        >
-          <span className="publish-button-text">Publish to Google Calendar</span>
-          <svg className="publish-button-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-            <polyline points="17 8 12 3 7 8"></polyline>
-            <line x1="12" y1="3" x2="12" y2="15"></line>
-          </svg>
-        </button>
+        <div className="app-header-publish-group">
+          <button
+            className="app-header-button publish-button"
+            onClick={onPublish}
+          >
+            <span className="publish-button-text">Publish to Google Calendar</span>
+            <svg className="publish-button-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+              <polyline points="17 8 12 3 7 8"></polyline>
+              <line x1="12" y1="3" x2="12" y2="15"></line>
+            </svg>
+          </button>
+          <div className="header-status">
+            <span
+              className={`filters-status-dot ${statusDotClass || ""}`}
+            />
+            <span className="filters-status-text">
+              {statusText}
+            </span>
+          </div>
+        </div>
 
+      </div>
+
+      <div className="app-header-right">
         <div className="dropdown-container" ref={calendarsMenuRef}>
           <button
             className="app-header-button calendars-button"
@@ -230,7 +250,6 @@ export const Header = ({ onPublish, onLogout, onMobileFiltersToggle, mobileFilte
             </div>
           )}
         </div>
-
         <div className="dropdown-container" ref={nudgesMenuRef}>
           <button
             className="app-header-button calendars-button"
@@ -303,10 +322,6 @@ export const Header = ({ onPublish, onLogout, onMobileFiltersToggle, mobileFilte
             </div>
           )}
         </div>
-
-      </div>
-
-      <div className="app-header-right">
         <div className="dropdown-container" ref={userMenuRef}>
           <button
             className="user-account user-account-button"

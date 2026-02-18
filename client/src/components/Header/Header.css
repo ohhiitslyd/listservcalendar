@@ -14,13 +14,28 @@
 .app-header-left {
   display: flex;
   align-items: center;
-  gap: 12px; /* bring Filters and Publish a bit closer together */
+  gap: 16px;
 }
 
 .app-header-right {
   display: flex;
   align-items: center;
   gap: 16px;
+}
+
+.app-header-publish-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.header-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-family: 'Poppins', sans-serif;
+  color: #4b5563;
 }
 
 /* Logo Section */

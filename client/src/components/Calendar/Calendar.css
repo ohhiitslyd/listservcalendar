@@ -285,6 +285,13 @@
   font-family: 'Poppins', sans-serif;
   font-size: 12px;
   font-weight: 400;
+  cursor: pointer;
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.fc-event:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  transform: translateY(-1px);
 }
 
 /* Ensure ListServ events visually sit on top of primary calendar events */
@@ -311,6 +318,11 @@
   overflow: hidden;
 }
 
+.fc-event-other:hover {
+  box-shadow: 0 4px 12px rgba(212, 233, 196, 0.4);
+  border-color: #9fbe8b !important;
+}
+
 .fc-event-other .fc-event-title {
   color: #000 !important;
   font-weight: 500;
@@ -331,6 +343,11 @@
   white-space: nowrap;
   overflow: hidden;
   background-color: #d4e9c4; /* Default green, can be overridden by JS */
+}
+
+.fc-event-listserv:hover {
+  box-shadow: 0 4px 12px rgba(212, 233, 196, 0.5);
+  filter: brightness(1.05);
 }
 
 .fc-event-listserv .fc-event-title {

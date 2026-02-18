@@ -42,14 +42,14 @@ const InnerApp = () => {
     tagColorMap,
     listservCalendarId,
     logout,
+    preferencesLoaded,
     // **NOTE:** we *do not* destructure `onSelect` or `onEventClick`
     // because we will define them locally (see below).
   } = useContext(AppContext);
   const [publishResult, setPublishResult] = useState(null);
   const [isPublishing, setIsPublishing] = useState(false);
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
-  const [lastPublishedKey, setLastPublishedKey] = useState(null);
-  const [hasEverPublished, setHasEverPublished] = useState(false);
+  const [publishedKey, setPublishedKey] = useState(null); // Key computed from database preferences
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
   const [showPublishConfirm, setShowPublishConfirm] = useState(false);
 
@@ -65,15 +65,23 @@ const InnerApp = () => {
     });
   }, [selectedCats, selectedOrgCats, excludeMode]);
 
+  // Compute publishedKey from loaded preferences (what's in the database)
+  // This represents what was last published
   useEffect(() => {
-    if (!user) return;
-    if (lastPublishedKey === null) {
-      setLastPublishedKey(currentPublishKey);
+    if (user && preferencesLoaded) {
+      // Compute key from current filter state when preferences are first loaded
+      // At that moment, current state matches what's in the database
+      if (publishedKey === null && currentPublishKey) {
+        setPublishedKey(currentPublishKey);
+      }
+    } else if (!user) {
+      // Reset when user logs out
+      setPublishedKey(null);
     }
-  }, [user, lastPublishedKey, currentPublishKey]);
+  }, [user, preferencesLoaded, currentPublishKey, publishedKey]);
 
   const hasUnpublishedChanges =
-    !!user && lastPublishedKey !== null && currentPublishKey !== lastPublishedKey;
+    !!user && publishedKey !== null && currentPublishKey !== publishedKey;
 
   const handleOpenPublishConfirm = () => {
     // Just show the confirmation popup; we only update DB + GCal if user confirms.
@@ -95,8 +103,8 @@ const InnerApp = () => {
       const syncResult = await api.syncCalendarByPreferences();
 
       setPublishResult(syncResult);
-      setLastPublishedKey(currentPublishKey);
-      setHasEverPublished(true);
+      // Update publishedKey to match what we just published
+      setPublishedKey(currentPublishKey);
     } catch (error) {
       console.error("Failed to publish filters:", error);
       alert(`Failed to publish filters: ${error.message || error.error || "Unknown error"}`);
@@ -225,15 +233,17 @@ const InnerApp = () => {
   };
 
 
+  const isPublishedUpToDate = useMemo(() => {
+    return publishedKey !== null && !hasUnpublishedChanges;
+  }, [publishedKey, hasUnpublishedChanges]);
+
   const statusText = useMemo(() => {
-    if (!hasEverPublished) {
-      return "No events published to ListServ calendar";
-    }
-    if (hasUnpublishedChanges) {
-      return "Changes not yet published to GCal";
-    }
-    return "Dashboard matches GCal";
-  }, [hasEverPublished, hasUnpublishedChanges]);
+    return isPublishedUpToDate ? "Published" : "Unpublished Changes";
+  }, [isPublishedUpToDate]);
+
+  const statusDotClass = useMemo(() => {
+    return isPublishedUpToDate ? "synced" : "unsynced";
+  }, [isPublishedUpToDate]);
 
   const selectedEventTypeLabels = useMemo(() => {
     const labels = [];
@@ -273,14 +283,16 @@ const InnerApp = () => {
         onLogout={handleLogout}
         onMobileFiltersToggle={() => setMobileFiltersOpen(!mobileFiltersOpen)}
         mobileFiltersOpen={mobileFiltersOpen}
+        statusText={statusText}
+        statusDotClass={statusDotClass}
       />
 
       <div className="app-content">
         <div className="app-left-panel">
           <Filters
             showHeader={true}
-            statusText={statusText}
-            statusDotClass={!hasEverPublished || hasUnpublishedChanges ? "unsynced" : "synced"}
+            statusText={null}
+            statusDotClass={null}
             autoFocusOrgSearch={false}
             onClose={() => setMobileFiltersOpen(false)}
           />
@@ -315,8 +327,8 @@ const InnerApp = () => {
             </div>
             <Filters
               showHeader={false}
-              statusText={statusText}
-              statusDotClass={!hasEverPublished || hasUnpublishedChanges ? "unsynced" : "synced"}
+              statusText={null}
+              statusDotClass={null}
               autoFocusOrgSearch={false}
               onClose={() => setMobileFiltersOpen(false)}
             />
@@ -369,24 +381,23 @@ const InnerApp = () => {
             <div className="publish-modal-content">
               <h4>Leave without publishing?</h4>
               <p>
-                If you don't publish, changes won't be reflected on your Google Calendar.
+                ‼️ Changes won't be reflected on your Google Calendar!
                 Are you sure you want to leave?
               </p>
             </div>
             <div className="publish-modal-actions">
               <button
                 type="button"
-                className="publish-modal-secondary"
+                className="publish-modal-primary"
                 onClick={() => setShowLeaveConfirm(false)}
               >
                 Stay
               </button>
               <button
                 type="button"
-                className="publish-modal-primary"
+                className="publish-modal-secondary"
                 onClick={() => {
                   setShowLeaveConfirm(false);
-                  setLastPublishedKey(null);
                   logout();
                 }}
               >
@@ -401,37 +412,13 @@ const InnerApp = () => {
         <div className="publish-modal-overlay">
           <div className="publish-modal">
             <div className="publish-modal-content">
-              <h4>Publish to GCal?</h4>
+              <h4>Publish to Google Calendar?</h4>
               <p className="publish-modal-caption">
-                Review your current filters before publishing events to your ListServ Google Calendar.
+                All events currently visible will be added to your ListServ calendar!
               </p>
-
-              <div className="publish-filters-summary">
-                <div className="publish-filters-section">
-                  <div className="publish-filters-section-title">Event type filters</div>
-                  <div className="publish-filters-section-body">
-                    {selectedEventTypeLabels.length === 0
-                      ? "All event types (no filters applied)"
-                      : selectedEventTypeLabels.join(", ")}
-                  </div>
-                </div>
-                <div className="publish-filters-section">
-                  <div className="publish-filters-section-title">Organization filters</div>
-                  <div className="publish-filters-section-body">
-                    {selectedOrgLabels.length === 0
-                      ? "All organizations (no filters applied)"
-                      : selectedOrgLabels.join(", ")}
-                  </div>
-                </div>
-                <div className="publish-filters-section">
-                  <div className="publish-filters-section-title">Mode</div>
-                  <div className="publish-filters-section-body">
-                    {excludeMode
-                      ? "Exclude selected (show everything except these filters)"
-                      : "Include selected (show only events matching these filters)"}
-                  </div>
-                </div>
-              </div>
+              <p className="publish-modal-note">
+                ⭐️ This will not affect your main personal calendar.
+              </p>
             </div>
             <div className="publish-modal-actions">
               <button
@@ -439,7 +426,6 @@ const InnerApp = () => {
                 className="publish-modal-secondary"
                 onClick={() => {
                   setShowPublishConfirm(false);
-                  setPublishPreview(null);
                 }}
               >
                 Cancel
@@ -452,7 +438,7 @@ const InnerApp = () => {
                   await publishFilters();
                 }}
               >
-                Yes, publish
+                Publish
               </button>
             </div>
           </div>

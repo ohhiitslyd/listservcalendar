@@ -795,7 +795,10 @@ export const AppProvider = ({ children }) => {
 
     // negative filtering toggle
     excludeMode,
-    setExcludeMode, 
+    setExcludeMode,
+
+    // preferences loading state
+    preferencesLoaded,
   };
 
   return (
