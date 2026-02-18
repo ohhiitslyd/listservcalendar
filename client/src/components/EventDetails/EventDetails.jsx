@@ -5,6 +5,7 @@ import "./EventDetails.css";
 
 export const EventDetails = () => {
   const {
+    user,
     selectedEvent,
     setSelectedEvent,
     listservCalendarId,
@@ -36,6 +37,35 @@ export const EventDetails = () => {
     selectedEvent.extendedProps?.calendarId === listservCalendarId;
   const openedFromNudges = eventDetailsSource === "nudge";
   const canNudge = !!selectedEvent?.id && (isEmail || isListServ || isDraft);
+
+  const normalizeEventId = (id) => {
+    const value = String(id || "").trim();
+    if (!value) return "";
+    if (value.startsWith("email:")) return value.slice("email:".length);
+    return value;
+  };
+
+  const selectedEventIds = new Set([
+    String(selectedEvent?.id || "").trim(),
+    normalizeEventId(selectedEvent?.id),
+  ]);
+
+  const acceptedInviters = Array.from(
+    new Set(
+      (Array.isArray(user?.acceptedNudges) ? user.acceptedNudges : [])
+        .filter((entry) => {
+          const entryId = String(entry?.id || "").trim();
+          const normalizedEntryId = normalizeEventId(entryId);
+          return selectedEventIds.has(entryId) || selectedEventIds.has(normalizedEntryId);
+        })
+        .map((entry) => String(entry?.email || "").trim().toLowerCase())
+        .filter(Boolean)
+    )
+  );
+
+  const displayInviters = Array.from(
+    new Set([...(selectedEventInviters || []), ...acceptedInviters])
+  );
 
   // Format date and time
   const formatTime = (date) => {
@@ -142,10 +172,12 @@ export const EventDetails = () => {
       {/* Separator line */}
       <div className="event-details-separator"></div>
 
-      {openedFromNudges && selectedEventInviters.length > 0 && (
+      {displayInviters.length > 0 && (
         <div className="event-details-inviters">
-          <span className="event-details-inviters-label">Invited by:</span>{" "}
-          <span>{selectedEventInviters.join(", ")}</span>
+          <span className="event-details-inviters-label">
+            {acceptedInviters.length > 0 ? "Accepted nudges from:" : "Invited by:"}
+          </span>{" "}
+          <span>{displayInviters.join(", ")}</span>
         </div>
       )}
 
