@@ -373,21 +373,21 @@ const InnerApp = () => {
             <div className="publish-modal-content">
               <h4>Leave without publishing?</h4>
               <p>
-                If you don't publish, changes won't be reflected on your Google Calendar.
+                ‼️ Changes won't be reflected on your Google Calendar!
                 Are you sure you want to leave?
               </p>
             </div>
             <div className="publish-modal-actions">
               <button
                 type="button"
-                className="publish-modal-secondary"
+                className="publish-modal-primary"
                 onClick={() => setShowLeaveConfirm(false)}
               >
                 Stay
               </button>
               <button
                 type="button"
-                className="publish-modal-primary"
+                className="publish-modal-secondary"
                 onClick={() => {
                   setShowLeaveConfirm(false);
                   setLastPublishedKey(null);
@@ -405,37 +405,13 @@ const InnerApp = () => {
         <div className="publish-modal-overlay">
           <div className="publish-modal">
             <div className="publish-modal-content">
-              <h4>Publish to GCal?</h4>
+              <h4>Publish to Google Calendar?</h4>
               <p className="publish-modal-caption">
-                Review your current filters before publishing events to your ListServ Google Calendar.
+                All events currently visible will be added to your ListServ calendar!
               </p>
-
-              <div className="publish-filters-summary">
-                <div className="publish-filters-section">
-                  <div className="publish-filters-section-title">Event type filters</div>
-                  <div className="publish-filters-section-body">
-                    {selectedEventTypeLabels.length === 0
-                      ? "All event types (no filters applied)"
-                      : selectedEventTypeLabels.join(", ")}
-                  </div>
-                </div>
-                <div className="publish-filters-section">
-                  <div className="publish-filters-section-title">Organization filters</div>
-                  <div className="publish-filters-section-body">
-                    {selectedOrgLabels.length === 0
-                      ? "All organizations (no filters applied)"
-                      : selectedOrgLabels.join(", ")}
-                  </div>
-                </div>
-                <div className="publish-filters-section">
-                  <div className="publish-filters-section-title">Mode</div>
-                  <div className="publish-filters-section-body">
-                    {excludeMode
-                      ? "Exclude selected (show everything except these filters)"
-                      : "Include selected (show only events matching these filters)"}
-                  </div>
-                </div>
-              </div>
+              <p className="publish-modal-note">
+                ⭐️ This will not affect your main personal calendar.
+              </p>
             </div>
             <div className="publish-modal-actions">
               <button
@@ -443,7 +419,6 @@ const InnerApp = () => {
                 className="publish-modal-secondary"
                 onClick={() => {
                   setShowPublishConfirm(false);
-                  setPublishPreview(null);
                 }}
               >
                 Cancel
@@ -456,7 +431,7 @@ const InnerApp = () => {
                   await publishFilters();
                 }}
               >
-                Yes, publish
+                Publish
               </button>
             </div>
           </div>
