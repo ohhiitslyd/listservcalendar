@@ -225,15 +225,17 @@ const InnerApp = () => {
   };
 
 
-  const statusText = useMemo(() => {
-    if (!hasEverPublished) {
-      return "No events published to ListServ calendar";
-    }
-    if (hasUnpublishedChanges) {
-      return "Changes not yet published to GCal";
-    }
-    return "Dashboard matches GCal";
+  const isPublishedUpToDate = useMemo(() => {
+    return hasEverPublished && !hasUnpublishedChanges;
   }, [hasEverPublished, hasUnpublishedChanges]);
+
+  const statusText = useMemo(() => {
+    return isPublishedUpToDate ? "Published" : "Changes to publish";
+  }, [isPublishedUpToDate]);
+
+  const statusDotClass = useMemo(() => {
+    return isPublishedUpToDate ? "synced" : "unsynced";
+  }, [isPublishedUpToDate]);
 
   const selectedEventTypeLabels = useMemo(() => {
     const labels = [];
@@ -274,9 +276,7 @@ const InnerApp = () => {
         onMobileFiltersToggle={() => setMobileFiltersOpen(!mobileFiltersOpen)}
         mobileFiltersOpen={mobileFiltersOpen}
         statusText={statusText}
-        statusDotClass={
-          !hasEverPublished || hasUnpublishedChanges ? "unsynced" : "synced"
-        }
+        statusDotClass={statusDotClass}
       />
 
       <div className="app-content">
@@ -319,8 +319,8 @@ const InnerApp = () => {
             </div>
             <Filters
               showHeader={false}
-              statusText={statusText}
-              statusDotClass={!hasEverPublished || hasUnpublishedChanges ? "unsynced" : "synced"}
+              statusText={null}
+              statusDotClass={null}
               autoFocusOrgSearch={false}
               onClose={() => setMobileFiltersOpen(false)}
             />

@@ -162,16 +162,14 @@ export const Header = ({
               <line x1="12" y1="3" x2="12" y2="15"></line>
             </svg>
           </button>
-          {statusText && (
-            <div className="header-status">
-              <span
-                className={`filters-status-dot ${statusDotClass || ""}`}
-              />
-              <span className="filters-status-text">
-                {statusText}
-              </span>
-            </div>
-          )}
+          <div className="header-status">
+            <span
+              className={`filters-status-dot ${statusDotClass || ""}`}
+            />
+            <span className="filters-status-text">
+              {statusText}
+            </span>
+          </div>
         </div>
 
       </div>
