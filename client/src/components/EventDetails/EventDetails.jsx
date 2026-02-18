@@ -1,15 +1,30 @@
-import React, { useContext } from "react";
+import React, { useContext, useEffect, useState } from "react";
 import { AppContext } from "../../context/AppContext";
+import { api } from "../../api/calendarApi";
 import "./EventDetails.css";
 
 export const EventDetails = () => {
   const {
     selectedEvent,
     setSelectedEvent,
-    handlePublishEvent,
     listservCalendarId,
-    logout,
+    eventDetailsSource,
+    setEventDetailsSource,
+    selectedEventInviters,
+    setSelectedEventInviters,
+    setUserInviteState,
   } = useContext(AppContext);
+  const [showNudgeForm, setShowNudgeForm] = useState(false);
+  const [nudgeEmail, setNudgeEmail] = useState("");
+  const [nudgeLoading, setNudgeLoading] = useState(false);
+  const [inviteResponseLoading, setInviteResponseLoading] = useState(false);
+
+  useEffect(() => {
+    setShowNudgeForm(false);
+    setNudgeEmail("");
+    setNudgeLoading(false);
+    setInviteResponseLoading(false);
+  }, [selectedEvent?.id]);
 
   if (!selectedEvent) {
     return null;
@@ -19,6 +34,8 @@ export const EventDetails = () => {
   const isEmail = selectedEvent.id.startsWith("email:");
   const isListServ =
     selectedEvent.extendedProps?.calendarId === listservCalendarId;
+  const openedFromNudges = eventDetailsSource === "nudge";
+  const canNudge = !!selectedEvent?.id && (isEmail || isListServ || isDraft);
 
   // Format date and time
   const formatTime = (date) => {
@@ -45,6 +62,66 @@ export const EventDetails = () => {
     return "#93b3ea";
   };
 
+  const handleNudgeSubmit = async (e) => {
+    e.preventDefault();
+    if (!selectedEvent?.id || !nudgeEmail.trim()) return;
+
+    try {
+      setNudgeLoading(true);
+      const result = await api.nudgeEvent({
+        eventId: selectedEvent.id,
+        targetEmail: nudgeEmail.trim(),
+      });
+
+      if (!result?.success) {
+        alert(result?.error || "Failed to nudge event");
+        return;
+      }
+
+      alert(`Nudge sent to ${result.invitedEmail || nudgeEmail.trim()}`);
+      setNudgeEmail("");
+      setShowNudgeForm(false);
+    } catch (error) {
+      alert("Failed to nudge event");
+    } finally {
+      setNudgeLoading(false);
+    }
+  };
+
+  const closeDetails = () => {
+    setSelectedEvent(null);
+    setEventDetailsSource("calendar");
+    setSelectedEventInviters([]);
+  };
+
+  const respondToInvite = async (action) => {
+    if (!selectedEvent?.id) return;
+    try {
+      setInviteResponseLoading(true);
+      const result = await api.respondToInvite({
+        eventId: selectedEvent.id,
+        action,
+      });
+
+      if (!result?.success) {
+        alert(result?.error || "Failed to update invited event");
+        return;
+      }
+
+      setUserInviteState({
+        invitedEvents: result?.invitedEvents || [],
+        acceptedNudges: result?.acceptedNudges || [],
+      });
+      if (action === "decline") {
+        closeDetails();
+      }
+    } catch (error) {
+      alert("Failed to update invited event");
+    } finally {
+      setInviteResponseLoading(false);
+    }
+  };
+
   return (
     <div className="event-details-card">
       {/* Header with colored background */}
@@ -52,7 +129,7 @@ export const EventDetails = () => {
         <h3 className="event-details-title">{selectedEvent.title || "(No title)"}</h3>
         <button
           className="close-panel-button"
-          onClick={() => setSelectedEvent(null)}
+          onClick={closeDetails}
           aria-label="Close"
         >
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#93b3ea" strokeWidth="2">
@@ -64,6 +141,13 @@ export const EventDetails = () => {
 
       {/* Separator line */}
       <div className="event-details-separator"></div>
+
+      {openedFromNudges && selectedEventInviters.length > 0 && (
+        <div className="event-details-inviters">
+          <span className="event-details-inviters-label">Invited by:</span>{" "}
+          <span>{selectedEventInviters.join(", ")}</span>
+        </div>
+      )}
 
       {/* Event details */}
       <div className="event-details-content">
@@ -164,6 +248,70 @@ export const EventDetails = () => {
           </div>
         )}
       </div>
+
+      {openedFromNudges ? (
+        <div className="event-details-actions event-details-actions-split">
+          <button
+            type="button"
+            className="event-action-button event-action-button-secondary"
+            onClick={() => respondToInvite("decline")}
+            disabled={inviteResponseLoading}
+          >
+            {inviteResponseLoading ? "Working..." : "Decline"}
+          </button>
+          <button
+            type="button"
+            className="event-action-button"
+            onClick={() => respondToInvite("accept")}
+            disabled={inviteResponseLoading}
+          >
+            {inviteResponseLoading ? "Working..." : "Accept"}
+          </button>
+        </div>
+      ) : canNudge && (
+        <div className="event-details-actions">
+          {!showNudgeForm ? (
+            <button
+              type="button"
+              className="event-action-button"
+              onClick={() => setShowNudgeForm(true)}
+            >
+              Nudge
+            </button>
+          ) : (
+            <form className="event-nudge-form" onSubmit={handleNudgeSubmit}>
+              <input
+                type="email"
+                className="event-nudge-input"
+                placeholder="Enter email"
+                value={nudgeEmail}
+                onChange={(e) => setNudgeEmail(e.target.value)}
+                required
+              />
+              <div className="event-nudge-actions">
+                <button
+                  type="button"
+                  className="event-action-button event-action-button-secondary"
+                  onClick={() => {
+                    setShowNudgeForm(false);
+                    setNudgeEmail("");
+                  }}
+                  disabled={nudgeLoading}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="event-action-button"
+                  disabled={nudgeLoading}
+                >
+                  {nudgeLoading ? "Sending..." : "Submit"}
+                </button>
+              </div>
+            </form>
+          )}
+        </div>
+      )}
 
     </div>
   );

@@ -53,9 +53,6 @@ export const Filters = ({
 
   const totalSelected = selectedCats.size + selectedOrgCats.size;
 
-
-
-
   const toggleCategoryExpansion = (typeKey) => {
     setExpandedCategories((prev) => {
       const next = new Set(prev);
