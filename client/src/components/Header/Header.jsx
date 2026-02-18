@@ -1,5 +1,6 @@
 import React, { useContext, useState, useRef, useEffect } from "react";
 import { AppContext } from "../../context/AppContext";
+import { api } from "../../api/calendarApi";
 import "./Header.css";
 
 export const Header = ({
@@ -27,6 +28,9 @@ export const Header = ({
   const [userCalendarsOpen, setUserCalendarsOpen] = useState(false);
   const [nudgesOpen, setNudgesOpen] = useState(false);
   const [invitedEventsExpanded, setInvitedEventsExpanded] = useState(true);
+  const [nudgedStatusExpanded, setNudgedStatusExpanded] = useState(false);
+  const [nudgedEventsStatus, setNudgedEventsStatus] = useState([]);
+  const [nudgedStatusLoading, setNudgedStatusLoading] = useState(false);
   const userMenuRef = useRef(null);
   const calendarsMenuRef = useRef(null);
   const nudgesMenuRef = useRef(null);
@@ -34,6 +38,7 @@ export const Header = ({
   const invitedEventsRaw = Array.isArray(user?.invitedEvents)
     ? user.invitedEvents
     : [];
+  const invitedEventsCount = invitedEventsRaw.length;
 
   const invitedEventMap = new Map();
   invitedEventsRaw.forEach((entry) => {
@@ -50,9 +55,23 @@ export const Header = ({
 
   const invitedEventIds = Array.from(invitedEventMap.keys());
 
-  const eventsById = new Map((events || []).map((ev) => [String(ev?.id || ""), ev]));
+  const normalizeEventId = (value) => {
+    const id = String(value || "").trim();
+    if (!id) return "";
+    if (id.startsWith("email:")) return id.slice("email:".length);
+    return id;
+  };
+
+  const eventsById = new Map();
+  (events || []).forEach((ev) => {
+    const fullId = String(ev?.id || "").trim();
+    if (!fullId) return;
+    eventsById.set(fullId, ev);
+    eventsById.set(normalizeEventId(fullId), ev);
+  });
+
   const invitedEventBubbles = invitedEventIds.map((eventId) => {
-    const ev = eventsById.get(eventId);
+    const ev = eventsById.get(eventId) || eventsById.get(normalizeEventId(eventId));
     const inviterEmails = Array.from(invitedEventMap.get(eventId) || []);
     return {
       id: eventId,
@@ -64,6 +83,32 @@ export const Header = ({
       inviterEmails,
     };
   });
+
+  const nudgedStatusBubbles = nudgedEventsStatus.map((entry) => {
+    const ev =
+      eventsById.get(entry.id) || eventsById.get(normalizeEventId(entry.id));
+    return {
+      ...entry,
+      title: ev?.title || "(Event unavailable)",
+    };
+  });
+
+  useEffect(() => {
+    const loadNudgedStatus = async () => {
+      if (!nudgesOpen) return;
+      setNudgedStatusLoading(true);
+      try {
+        const data = await api.fetchNudgedEventsStatus();
+        setNudgedEventsStatus(Array.isArray(data?.nudgedEventsStatus) ? data.nudgedEventsStatus : []);
+      } catch (error) {
+        setNudgedEventsStatus([]);
+      } finally {
+        setNudgedStatusLoading(false);
+      }
+    };
+
+    loadNudgedStatus();
+  }, [nudgesOpen, user?.nudgedEvents]);
 
   // Close dropdowns when clicking outside
   useEffect(() => {
@@ -260,6 +305,7 @@ export const Header = ({
             type="button"
           >
             Nudges
+            <span className="nudges-count-badge">{invitedEventsCount}</span>
             <svg
               className={`dropdown-arrow ${nudgesOpen ? "open" : ""}`}
               width="16"
@@ -268,7 +314,6 @@ export const Header = ({
               fill="none"
               stroke="currentColor"
               strokeWidth="2"
-              style={{ marginLeft: "6px" }}
             >
               <polyline points="6 9 12 15 18 9"></polyline>
             </svg>
@@ -283,7 +328,7 @@ export const Header = ({
                 type="button"
                 onClick={() => setInvitedEventsExpanded((prev) => !prev)}
               >
-                <span>Invited Events</span>
+                <span>Recieved</span>
                 <svg
                   className={`dropdown-arrow ${invitedEventsExpanded ? "open" : ""}`}
                   width="16"
@@ -316,6 +361,45 @@ export const Header = ({
                     ))
                   ) : (
                     <div className="user-menu-empty">No invited events yet.</div>
+                  )}
+                </div>
+              )}
+
+              <button
+                className="user-menu-accordion"
+                type="button"
+                onClick={() => setNudgedStatusExpanded((prev) => !prev)}
+              >
+                <span>Sent</span>
+                <svg
+                  className={`dropdown-arrow ${nudgedStatusExpanded ? "open" : ""}`}
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                >
+                  <polyline points="6 9 12 15 18 9"></polyline>
+                </svg>
+              </button>
+              {nudgedStatusExpanded && (
+                <div className="nudges-events-list">
+                  {nudgedStatusLoading ? (
+                    <div className="user-menu-empty">Loading status…</div>
+                  ) : nudgedStatusBubbles.length > 0 ? (
+                    nudgedStatusBubbles.map((entry, idx) => (
+                      <div
+                        key={`${entry.id}-${entry.email}-${idx}`}
+                        className={`nudges-event-bubble nudges-event-bubble-status nudges-event-bubble-${entry.status}`}
+                        title={entry.id}
+                      >
+                        <div className="nudges-event-title">{entry.title}</div>
+                        <div className="nudges-event-org">{entry.email}</div>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="user-menu-empty">No nudged events yet.</div>
                   )}
                 </div>
               )}

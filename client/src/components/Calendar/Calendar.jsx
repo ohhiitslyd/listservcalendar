@@ -338,15 +338,14 @@ export const Calendar = ({
     const isNudged = !!ev.extendedProps?.isNudged;
     const isListServ = ev.classNames.includes("fc-event-listserv");
     const harness = info.el.parentElement; // FullCalendar wraps events in a harness div
-
-    // Use the same green as the "Free Food" tag for all ListServ events
+    // Base color for untagged regular ListServ events.
     const freeFoodGreen = tagColorMap?.["Free Food"] || "#d4e9c4";
 
     if (isNudged) {
       if (harness) harness.style.zIndex = "35";
       info.el.style.zIndex = "35";
       info.el.style.backgroundImage = "none";
-      info.el.style.backgroundColor = freeFoodGreen;
+      info.el.style.backgroundColor = "#c4b5fd";
       info.el.style.color = "#000000";
       info.el.style.borderRadius = "5px";
       return;

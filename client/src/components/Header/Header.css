@@ -128,6 +128,21 @@
   white-space: nowrap;
 }
 
+.nudges-count-badge {
+  width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  background: #d4e9c4;
+  color: #000000;
+  font-size: 11px;
+  font-weight: 500;
+  font-family: 'Poppins', sans-serif;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: inset 2px 2px 4px 0px rgba(0, 0, 0, 0.15);
+}
+
 .dropdown-arrow {
   width: 20px;
   height: 20px;
@@ -438,7 +453,7 @@
   /* Show up to 4 full bubbles (4 * 52px) plus 3 gaps (3 * 8px) */
   max-height: 232px;
   overflow-y: auto;
-  padding: 0 8px;
+  padding: 8px;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -459,6 +474,45 @@
 
 .nudges-event-bubble:hover {
   border-color: #7fa56a;
+}
+
+.nudges-event-bubble-status {
+  cursor: default;
+  /* Match a single day-column style bubble footprint */
+  width: 165px;
+  min-width: 165px;
+  max-width: 165px;
+  height: 52px;
+  min-height: 52px;
+  max-height: 52px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  align-self: flex-start;
+}
+
+.nudges-event-bubble-status:hover {
+  border-color: inherit;
+}
+
+.nudges-event-bubble-pending {
+  background: transparent;
+  border: 3px dotted #6d28d9;
+}
+
+.nudges-event-bubble-accepted {
+  background: #c4b5fd;
+  border-color: #8b5cf6;
+}
+
+.nudges-event-bubble-declined {
+  background: transparent;
+  border-color: #8b5cf6;
+}
+
+.nudges-event-bubble-declined .nudges-event-title,
+.nudges-event-bubble-declined .nudges-event-org {
+  text-decoration: line-through;
 }
 
 .nudges-event-title {

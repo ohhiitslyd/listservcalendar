@@ -563,6 +563,132 @@ app.post("/api/user/invited-events/respond", ensureAuthed, async (req, res) => {
   }
 });
 
+// --- Nudged Events Status ---
+app.get("/api/user/nudged-events-status", ensureAuthed, async (req, res) => {
+  try {
+    const currentUser = await queryOne(
+      "SELECT nudged_events FROM users WHERE id = $1",
+      [req.session.user.id]
+    );
+
+    const nudgedEvents = Array.isArray(currentUser?.nudged_events)
+      ? currentUser.nudged_events
+      : [];
+
+    const normalizeEventId = (value) => {
+      const id = String(value || "").trim();
+      if (!id) return "";
+      if (id.startsWith("email:")) return id.slice("email:".length);
+      return id;
+    };
+
+    const containsEventId = (entries, targetId) => {
+      if (!Array.isArray(entries)) return false;
+      const normalizedTargetId = normalizeEventId(targetId);
+      return entries.some((entry) => {
+        const entryId = String(entry?.id || "").trim();
+        return (
+          entryId === String(targetId || "").trim() ||
+          normalizeEventId(entryId) === normalizedTargetId
+        );
+      });
+    };
+
+    if (nudgedEvents.length === 0) {
+      return res.json({ nudgedEventsStatus: [] });
+    }
+
+    const targetEmails = Array.from(
+      new Set(
+        nudgedEvents
+          .map((entry) => String(entry?.email || "").trim().toLowerCase())
+          .filter(Boolean)
+      )
+    );
+
+    const targetUsers = targetEmails.length
+      ? await query(
+          `SELECT email, invited_events, accepted_nudges
+           FROM users
+           WHERE LOWER(email) = ANY($1::text[])`,
+          [targetEmails]
+        )
+      : [];
+
+    const targetUserByEmail = new Map(
+      targetUsers.map((u) => [String(u.email || "").trim().toLowerCase(), u])
+    );
+
+    const sourceEventIds = Array.from(
+      new Set(
+        nudgedEvents
+          .map((entry) => normalizeEventId(entry?.id))
+          .filter(Boolean)
+      )
+    );
+
+    const eventRows = sourceEventIds.length
+      ? await query(
+          `SELECT id, start, "end"
+           FROM events
+           WHERE source = 'email' AND id = ANY($1::text[])`,
+          [sourceEventIds]
+        )
+      : [];
+
+    const eventById = new Map(eventRows.map((row) => [String(row.id || "").trim(), row]));
+
+    const normalizeDateTime = (value) => {
+      if (!value) return "";
+      const str = String(value).trim();
+      if (!str) return "";
+      return str.includes("T") ? str : str.replace(" ", "T");
+    };
+
+    const dedup = new Set();
+    const statusRows = [];
+
+    nudgedEvents.forEach((entry) => {
+      const eventId = String(entry?.id || "").trim();
+      const targetEmail = String(entry?.email || "").trim().toLowerCase();
+      if (!eventId || !targetEmail) return;
+
+      const sourceEventId = normalizeEventId(eventId);
+      const eventRow = eventById.get(sourceEventId);
+      const endCandidate = normalizeDateTime(eventRow?.end || eventRow?.start);
+      const endMs = endCandidate ? Date.parse(endCandidate) : NaN;
+      const hasEnded = !Number.isNaN(endMs) && endMs < Date.now();
+      if (hasEnded) return;
+
+      const dedupKey = `${eventId}::${targetEmail}`;
+      if (dedup.has(dedupKey)) return;
+      dedup.add(dedupKey);
+
+      const targetUser = targetUserByEmail.get(targetEmail);
+      const invitedEvents = targetUser?.invited_events || [];
+      const acceptedNudges = targetUser?.accepted_nudges || [];
+
+      let status = "declined";
+      if (containsEventId(acceptedNudges, eventId)) {
+        status = "accepted";
+      } else if (containsEventId(invitedEvents, eventId)) {
+        status = "pending";
+      }
+
+      statusRows.push({
+        id: eventId,
+        email: targetUser?.email || targetEmail,
+        status,
+      });
+    });
+
+    res.json({ nudgedEventsStatus: statusRows });
+  } catch (error) {
+    console.error("[nudged-events-status] Error:", error);
+    res.status(500).json({ error: "Failed to fetch nudged events status" });
+  }
+});
+
 // --- Sync calendar based on user preferences (called when Apply Filters is clicked) ---
 app.post("/api/user/sync-calendar-by-preferences", ensureAuthed, async (req, res) => {
   try {
@@ -1239,7 +1365,13 @@ app.get("/api/events", ensureAuthed, async (req, res) => {
 
     [...invitedEvents, ...acceptedNudges].forEach((entry) => {
       const id = String(entry?.id || "").trim();
-      if (id) alwaysVisibleNudgedEventIds.add(id);
+      if (!id) return;
+      alwaysVisibleNudgedEventIds.add(id);
+      if (id.startsWith("email:")) {
+        alwaysVisibleNudgedEventIds.add(id.slice("email:".length));
+      } else if (!id.includes(":")) {
+        alwaysVisibleNudgedEventIds.add(`email:${id}`);
+      }
     });
 
     const localEvents = localEventsRaw.map((e) => ({
