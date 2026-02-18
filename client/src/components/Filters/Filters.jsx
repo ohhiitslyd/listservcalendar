@@ -250,13 +250,11 @@ export const Filters = ({
     return result;
   }, [orgHierarchy, orgSearch]);
 
-  // Color mapping for categories
-  const getCategoryColor = (typeKey) => {
-    const colors = {
-      'sports': '#eaa993', // orange/red
-      'music': '#93b3ea',  // blue
-    };
-    return colors[typeKey] || '#d4e9c4'; // default green
+  // Single brand color for org-type pills – match Free Food green
+  const freeFoodGreen = tagColorMap?.["Free Food"] || "#d4e9c4";
+  const getCategoryColor = () => {
+    // All top‑level org types share the same green
+    return freeFoodGreen;
   };
 
   // All organizations under a type (flattened from all subcategories); no "Organizations" subcategory row in UI
@@ -404,26 +402,14 @@ export const Filters = ({
       {/* Header */}
       {showHeader && (
         <div className="filters-header">
-          <div className="filters-header-left">
-            <div className="filters-title-row">
-              <h4 className="filters-title">Filters</h4>
-              {totalSelected > 0 && (
-                <span className="filters-selected-count">
-                  {totalSelected} filters selected
-                </span>
-              )}
-            </div>
-            {statusText && (
-              <div className="filters-status">
-                <span
-                  className={`filters-status-dot ${statusDotClass || ""}`}
-                />
-                <span className="filters-status-text">
-                  {statusText}
-                </span>
-              </div>
-            )}
-          </div>
+          <h4 className="filters-title">Filters</h4>
+          <button
+            onClick={clearAll}
+            className="filters-clear-all-tab"
+            type="button"
+          >
+            Clear all
+          </button>
         </div>
       )}
 
@@ -449,15 +435,6 @@ export const Filters = ({
 
       {/* Content */}
       <div className="filters-content">
-        <div className={`filters-clear-all-row ${activeTab === 'event-types' ? 'filters-clear-all-row-sticky' : ''}`}>
-          <button
-            onClick={clearAll}
-            className="filters-clear-all-tab"
-            type="button"
-          >
-            Clear all filters
-          </button>
-        </div>
         {activeTab === 'organizations' ? (
           <>
             <div className="org-filters-search">
@@ -473,7 +450,7 @@ export const Filters = ({
             <div className="org-filters-list-wrapper">
             <div className="org-filters-list">
             {filteredOrgHierarchy && Object.values(filteredOrgHierarchy).map((type) => {
-              const typeColor = getCategoryColor(type.key);
+              const typeColor = getCategoryColor();
               const typeSelected = selectedOrgCats.has(type.key);
               const typePartiallySelected =
                 !typeSelected && getTypeOrganizations(type).some((org) => selectedOrgCats.has(org.key));
@@ -604,10 +581,6 @@ export const Filters = ({
               const label = cat.label || key;
               const active = selectedCats.has(key);
               const count = categoryCounts[key] || 0;
-              const tagColor = tagColorMap?.[key] || '#e5e7eb'; // Default to light grey for untagged
-              const eventFillColor = excludeMode ? "#f4b4b4" : "#d4e9c4";
-              const eventBorderColor = excludeMode ? "#e07a7a" : "#d4e9c4";
-
               return (
                 <div 
                   key={key} 
@@ -618,19 +591,15 @@ export const Filters = ({
                       type="checkbox"
                       checked={active}
                       onChange={() => toggleEventCategory(key)}
-                      className={`org-filter-checkbox event-type-checkbox ${excludeMode && active ? "exclude-selected" : ""}`}
-                      style={{
-                        borderColor: tagColor,
-                        accentColor: tagColor,
-                      }}
+                      className={`org-filter-checkbox ${excludeMode && active ? "exclude-selected" : ""}`}
                     />
                     <span className="org-filter-name">{label}</span>
                   </label>
                   <span 
                     className={`org-filter-count ${active ? "selected" : ""}`}
                     style={{
-                      backgroundColor: active ? tagColor : "transparent",
-                      borderColor: tagColor,
+                      backgroundColor: active ? freeFoodGreen : "transparent",
+                      borderColor: freeFoodGreen,
                       color: "#000",
                     }}
                   >

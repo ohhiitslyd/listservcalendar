@@ -273,14 +273,18 @@ const InnerApp = () => {
         onLogout={handleLogout}
         onMobileFiltersToggle={() => setMobileFiltersOpen(!mobileFiltersOpen)}
         mobileFiltersOpen={mobileFiltersOpen}
+        statusText={statusText}
+        statusDotClass={
+          !hasEverPublished || hasUnpublishedChanges ? "unsynced" : "synced"
+        }
       />
 
       <div className="app-content">
         <div className="app-left-panel">
           <Filters
             showHeader={true}
-            statusText={statusText}
-            statusDotClass={!hasEverPublished || hasUnpublishedChanges ? "unsynced" : "synced"}
+            statusText={null}
+            statusDotClass={null}
             autoFocusOrgSearch={false}
             onClose={() => setMobileFiltersOpen(false)}
           />

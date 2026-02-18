@@ -13,6 +13,7 @@ export const EventDetails = () => {
     selectedEventInviters,
     setSelectedEventInviters,
     setUserInviteState,
+    tagColorMap,
   } = useContext(AppContext);
   const [showNudgeForm, setShowNudgeForm] = useState(false);
   const [nudgeEmail, setNudgeEmail] = useState("");
@@ -55,12 +56,9 @@ export const EventDetails = () => {
     });
   };
 
-  // Get tag color based on organization type (music = blue, sports = purple, etc.)
-  const getTagColor = () => {
-    // For now, default to blue for music organizations
-    // You can enhance this based on the organization type
-    return "#93b3ea";
-  };
+  // Use the same green as the "Free Food" tag for all pill accents
+  const freeFoodGreen = tagColorMap?.["Free Food"] || "#d4e9c4";
+  const getTagColor = () => freeFoodGreen;
 
   const handleNudgeSubmit = async (e) => {
     e.preventDefault();
@@ -132,7 +130,7 @@ export const EventDetails = () => {
           onClick={closeDetails}
           aria-label="Close"
         >
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#93b3ea" strokeWidth="2">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={freeFoodGreen} strokeWidth="2">
             <line x1="18" y1="6" x2="6" y2="18"></line>
             <line x1="6" y1="6" x2="18" y2="18"></line>
           </svg>

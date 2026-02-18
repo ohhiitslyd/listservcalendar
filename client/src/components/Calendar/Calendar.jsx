@@ -339,11 +339,14 @@ export const Calendar = ({
     const isListServ = ev.classNames.includes("fc-event-listserv");
     const harness = info.el.parentElement; // FullCalendar wraps events in a harness div
 
+    // Use the same green as the "Free Food" tag for all ListServ events
+    const freeFoodGreen = tagColorMap?.["Free Food"] || "#d4e9c4";
+
     if (isNudged) {
       if (harness) harness.style.zIndex = "35";
       info.el.style.zIndex = "35";
       info.el.style.backgroundImage = "none";
-      info.el.style.backgroundColor = "#c4b5fd";
+      info.el.style.backgroundColor = freeFoodGreen;
       info.el.style.color = "#000000";
       info.el.style.borderRadius = "5px";
       return;
@@ -360,47 +363,10 @@ export const Calendar = ({
     if (harness) harness.style.zIndex = "30";
     info.el.style.zIndex = "30";
 
-    const tags = ev.extendedProps?.tags || [];
-    const colors = (tags || [])
-      .map((t) => tagColorMap?.[String(t || "")])
-      .filter(Boolean);
-
-    const uniqColors = Array.from(new Set(colors));
-
-    if (uniqColors.length === 0) {
-      // No event-type tags: use light gray block
-      info.el.style.backgroundImage = "none";
-      info.el.style.backgroundColor = "#e5e7eb";
-      info.el.style.color = "#111827";
-    } else if (uniqColors.length === 1) {
-      const c = uniqColors[0];
-      info.el.style.backgroundImage = "none";
-      info.el.style.backgroundColor = c;
-      info.el.style.color = "#000000";
-    } else {
-      // Even distribution across the whole block:
-      // Base linear gradient ensures no white; radial gradients add organic edges.
-      const baseStep = 100 / uniqColors.length;
-      const baseStops = uniqColors
-        .map((c, i) => {
-          const start = Math.round(i * baseStep);
-          const end = Math.round((i + 1) * baseStep);
-          return `${c} ${start}% ${end}%`;
-        })
-        .join(", ");
-      const base = `linear-gradient(90deg, ${baseStops})`;
-
-      const spots = uniqColors.slice(0, 3);
-      const positions = ["15% 25%", "85% 30%", "50% 80%"];
-      const radials = spots.map((c, i) => {
-        const pos = positions[i] || "50% 50%";
-        return `radial-gradient(circle at ${pos}, ${c} 0 55%, rgba(255,255,255,0) 70%)`;
-      });
-
-      info.el.style.backgroundImage = [base, ...radials].join(", ");
-      info.el.style.backgroundColor = "transparent";
-      info.el.style.color = "#000000";
-    }
+    // All ListServ events (regardless of tags) use the same green as "Free Food"
+    info.el.style.backgroundImage = "none";
+    info.el.style.backgroundColor = freeFoodGreen;
+    info.el.style.color = "#000000";
 
     info.el.style.borderRadius = "5px";
   };
