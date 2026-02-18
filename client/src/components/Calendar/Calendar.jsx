@@ -108,6 +108,9 @@ export const Calendar = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [personalEventInfo]); // Run when popup opens or position changes
 
+  // Check if we're on mobile
+  const isMobile = () => window.innerWidth <= 768;
+
   // Local handler: position overlay next to the clicked event
   const handleEventClickLocal = (clickInfo) => {
     const ev = clickInfo.event;
@@ -127,6 +130,16 @@ export const Calendar = ({
         // Find calendar name
         const calendar = calendars?.find(c => c.id === calendarId);
         const calendarName = calendar?.summary || "Personal Calendar";
+        
+        // On mobile, center the popup
+        if (isMobile()) {
+          setPersonalEventInfo({
+            event: ev,
+            calendarName,
+            position: { top: 0, left: 0 }, // CSS will handle centering
+          });
+          return;
+        }
         
         const elRect = clickInfo.el.getBoundingClientRect();
         const cardWidth = 320;
@@ -185,6 +198,13 @@ export const Calendar = ({
         });
         return;
       }
+    }
+
+    // On mobile, make overlay full-page (centered)
+    if (isMobile()) {
+      setDetailsOverlayPosition({ top: 0, left: 0 }); // CSS will handle full-page
+      setSelectedEvent(ev);
+      return;
     }
 
     const elRect = clickInfo.el.getBoundingClientRect();

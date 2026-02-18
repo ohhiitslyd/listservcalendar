@@ -108,6 +108,9 @@
   color: #000000;
   border: 1px solid #d4e9c4;
   font-weight: 400;
+  padding: 5px 8px;
+  font-size: 14px;
+  white-space: nowrap;
 }
 
 .dropdown-arrow {
@@ -477,4 +480,75 @@
   font-size: 12px;
   color: #6b7280;
   line-height: 1.4;
+}
+
+/* Mobile header adjustments */
+.mobile-menu-button {
+  display: none;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 8px;
+  margin-right: 4px;
+}
+
+.mobile-menu-button svg {
+  width: 22px;
+  height: 22px;
+}
+
+.publish-button-icon {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .app-header {
+    padding: 0 12px;
+    height: 64px;
+  }
+
+  .app-header-left {
+    gap: 8px;
+  }
+
+  .app-header-right {
+    gap: 8px;
+  }
+
+  .mobile-menu-button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .app-header-logo h2 {
+    font-size: 16px;
+  }
+
+  .app-header-button {
+    padding: 6px 8px;
+    font-size: 14px;
+  }
+
+  .publish-button-text {
+    display: none;
+  }
+
+  .publish-button-icon {
+    display: inline-block;
+  }
+
+  .user-name {
+    display: none;
+  }
+
+  .calendars-button {
+    padding: 6px 10px;
+    font-size: 13px;
+  }
+
+  .calendars-button .dropdown-arrow {
+    width: 14px;
+    height: 14px;
+  }
 }

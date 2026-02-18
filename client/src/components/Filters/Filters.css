@@ -83,9 +83,9 @@
 }
 
 .filters-status-text {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  line-height: 1.4;
 }
 
 .filters-selected-count {
@@ -541,4 +541,61 @@
   border-radius: 999px;
   padding: 0 4px;
   font-size: 0.75rem;
+}
+
+/* Responsive styles for tabs and status text */
+@media (max-width: 1200px) {
+  .filter-tab {
+    font-size: 13px;
+    padding: 6px 9px;
+  }
+
+  .filters-status-text {
+    font-size: 11px;
+  }
+}
+
+@media (max-width: 900px) {
+  .filter-tab {
+    font-size: 12px;
+    padding: 5px 8px;
+  }
+
+  .filters-status-text {
+    font-size: 10px;
+  }
+
+  .filters-tabs {
+    padding: 14px 18px;
+  }
+}
+
+@media (max-width: 768px) {
+  .filter-tab {
+    font-size: 11px;
+    padding: 4px 7px;
+  }
+
+  .filters-status-text {
+    font-size: 10px;
+  }
+
+  .filters-tabs {
+    padding: 12px 16px;
+  }
+}
+
+@media (max-width: 600px) {
+  .filter-tab {
+    font-size: 10px;
+    padding: 4px 6px;
+  }
+
+  .filters-status-text {
+    font-size: 9px;
+  }
+
+  .filters-tabs {
+    padding: 10px 14px;
+  }
 }
