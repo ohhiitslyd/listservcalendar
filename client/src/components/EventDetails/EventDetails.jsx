@@ -25,6 +25,7 @@ export const EventDetails = () => {
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [activeSuggestionIndex, setActiveSuggestionIndex] = useState(-1);
   const debounceTimerRef = useRef(null);
+  const searchCounterRef = useRef(0);
   const suggestionsRef = useRef(null);
   const inputRef = useRef(null);
 
@@ -48,12 +49,15 @@ export const EventDetails = () => {
       return;
     }
     debounceTimerRef.current = setTimeout(async () => {
+      const requestId = ++searchCounterRef.current;
       try {
         const data = await api.searchDartmouthPeople(query.trim());
+        if (requestId !== searchCounterRef.current) return;
         setSuggestions(data.results || []);
         setShowSuggestions((data.results || []).length > 0);
         setActiveSuggestionIndex(-1);
       } catch {
+        if (requestId !== searchCounterRef.current) return;
         setSuggestions([]);
         setShowSuggestions(false);
       }
@@ -499,7 +503,7 @@ export const EventDetails = () => {
                 <button
                   type="submit"
                   className="event-action-button"
-                  disabled={nudgeLoading || (nudgeRecipients.length === 0 && !nudgeEmail.trim())}
+                  disabled={nudgeLoading || (nudgeRecipients.length === 0 && !nudgeEmail.trim().includes("@"))}
                 >
                   {nudgeLoading ? "Sending..." : "Submit"}
                 </button>
