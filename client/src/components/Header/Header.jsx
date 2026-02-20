@@ -8,7 +8,9 @@ export const Header = ({
   onMobileFiltersToggle,
   mobileFiltersOpen,
   statusText,
+  statusSubtext,
   statusDotClass,
+  onHelpClick,
 }) => {
   const { 
     user, 
@@ -166,9 +168,16 @@ export const Header = ({
             <span
               className={`filters-status-dot ${statusDotClass || ""}`}
             />
-            <span className="filters-status-text">
-              {statusText}
-            </span>
+            <div className="header-status-text-container">
+              <span className="filters-status-text">
+                {statusText}
+              </span>
+              {statusSubtext && (
+                <span className="filters-status-subtext">
+                  {statusSubtext}
+                </span>
+              )}
+            </div>
           </div>
         </div>
 
@@ -322,6 +331,17 @@ export const Header = ({
             </div>
           )}
         </div>
+        {onHelpClick && (
+          <button
+            className="help-button"
+            onClick={onHelpClick}
+            type="button"
+            aria-label="Help"
+            title="Help"
+          >
+            ?
+          </button>
+        )}
         <div className="dropdown-container" ref={userMenuRef}>
           <button
             className="user-account user-account-button"

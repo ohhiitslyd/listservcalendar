@@ -1,0 +1,361 @@
+/* Onboarding Modal */
+.onboarding-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 3000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.onboarding-modal {
+  background: #ffffff;
+  border-radius: 12px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+  width: 100%;
+  max-width: 900px;
+  max-height: 90vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  font-family: 'Poppins', sans-serif;
+}
+
+.onboarding-layout {
+  display: flex;
+  flex-direction: row;
+  height: 100%;
+  min-height: 500px;
+}
+
+/* Left Panel - Visual Placeholder */
+.onboarding-left-panel {
+  flex: 0 0 40%;
+  background: linear-gradient(135deg, #d4e9c4 0%, #c3dbb2 50%, #b3cd9f 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+}
+
+.onboarding-visual-placeholder {
+  width: 100%;
+  height: 100%;
+  max-width: 300px;
+  max-height: 400px;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px dashed rgba(255, 255, 255, 0.4);
+  overflow: hidden;
+}
+
+/* Image styling for when you add images */
+.onboarding-visual-image {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  border-radius: 12px;
+}
+
+/* Right Panel - Content */
+.onboarding-right-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 32px 40px;
+  overflow-y: auto;
+}
+
+/* Top Bar */
+.onboarding-top-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 32px;
+}
+
+.onboarding-progress-dots {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.onboarding-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #e5e7eb;
+  transition: background-color 0.2s ease;
+}
+
+.onboarding-dot.active {
+  background: #d4e9c4;
+  width: 12px;
+  height: 12px;
+}
+
+.onboarding-skip-button {
+  background: transparent;
+  border: none;
+  color: #6b7280;
+  font-size: 14px;
+  font-family: 'Poppins', sans-serif;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.onboarding-skip-button:hover {
+  background: #f5f9f0;
+  color: #000000;
+}
+
+/* Content */
+.onboarding-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.onboarding-screen {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.onboarding-title {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 600;
+  color: #000000;
+  line-height: 1.3;
+}
+
+.onboarding-body {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 400;
+  color: #4b5563;
+  line-height: 1.6;
+}
+
+/* Disclaimer Box */
+.onboarding-disclaimer-box {
+  background: #f5f9f0;
+  border: 1px solid #d4e9c4;
+  border-radius: 8px;
+  padding: 20px;
+  margin-top: 8px;
+}
+
+.onboarding-disclaimer-title {
+  margin: 0 0 12px 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #000000;
+}
+
+.onboarding-disclaimer-list {
+  margin: 0;
+  padding-left: 20px;
+  font-size: 14px;
+  color: #4b5563;
+  line-height: 1.8;
+}
+
+.onboarding-disclaimer-list li {
+  margin-bottom: 6px;
+}
+
+/* Bullet List */
+.onboarding-bullet-list {
+  margin: 0;
+  padding-left: 20px;
+  font-size: 15px;
+  color: #4b5563;
+  line-height: 1.8;
+}
+
+.onboarding-bullet-list li {
+  margin-bottom: 8px;
+}
+
+/* Footer Notes */
+.onboarding-footer-note {
+  margin: 16px 0 0 0;
+  font-size: 14px;
+  color: #6b7280;
+  font-style: italic;
+}
+
+.onboarding-footer-note-small {
+  margin: 20px 0 0 0;
+  font-size: 12px;
+  color: #9ca3af;
+  text-align: center;
+}
+
+/* FAQ Accordion */
+.onboarding-faq-accordion {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.onboarding-faq-item {
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #ffffff;
+}
+
+.onboarding-faq-question {
+  padding: 14px 16px;
+  font-size: 15px;
+  font-weight: 500;
+  color: #000000;
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  user-select: none;
+  transition: background-color 0.2s ease;
+}
+
+.onboarding-faq-question:hover {
+  background: #f5f9f0;
+}
+
+.onboarding-faq-question::marker {
+  display: none;
+}
+
+.onboarding-faq-question::-webkit-details-marker {
+  display: none;
+}
+
+.onboarding-faq-question::after {
+  content: "+";
+  font-size: 20px;
+  color: #6b7280;
+  transition: transform 0.2s ease;
+}
+
+.onboarding-faq-item[open] .onboarding-faq-question::after {
+  content: "−";
+}
+
+.onboarding-faq-answer {
+  margin: 0;
+  padding: 0 16px 14px 16px;
+  font-size: 14px;
+  color: #4b5563;
+  line-height: 1.6;
+}
+
+/* Navigation */
+.onboarding-navigation {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 32px;
+  padding-top: 24px;
+  border-top: 1px solid #e5e7eb;
+}
+
+.onboarding-back-button,
+.onboarding-next-button,
+.onboarding-login-button {
+  border-radius: 8px;
+  padding: 10px 20px;
+  font-size: 15px;
+  font-family: 'Poppins', sans-serif;
+  font-weight: 500;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: all 0.2s ease;
+}
+
+.onboarding-back-button {
+  background: #ffffff;
+  border-color: #e5e7eb;
+  color: #4b5563;
+}
+
+.onboarding-back-button:hover:not(:disabled) {
+  background: #f9fafb;
+  border-color: #d4e9c4;
+}
+
+.onboarding-back-button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.onboarding-next-button {
+  background: #d4e9c4;
+  color: #000000;
+  border-color: #c3dbb2;
+}
+
+.onboarding-next-button:hover {
+  background: #c3dbb2;
+}
+
+.onboarding-login-button {
+  background: #d4e9c4;
+  color: #000000;
+  border-color: #c3dbb2;
+}
+
+.onboarding-login-button:hover {
+  background: #c3dbb2;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .onboarding-modal {
+    max-width: 100%;
+    max-height: 95vh;
+  }
+
+  .onboarding-layout {
+    flex-direction: column;
+    min-height: auto;
+  }
+
+  .onboarding-left-panel {
+    flex: 0 0 200px;
+    padding: 20px;
+  }
+
+  .onboarding-visual-placeholder {
+    max-width: 100%;
+    max-height: 150px;
+  }
+
+  .onboarding-right-panel {
+    padding: 24px 20px;
+  }
+
+  .onboarding-title {
+    font-size: 20px;
+  }
+
+  .onboarding-body {
+    font-size: 14px;
+  }
+
+  .onboarding-bullet-list {
+    font-size: 14px;
+  }
+}
