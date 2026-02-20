@@ -333,10 +333,15 @@ export const AppProvider = ({ children }) => {
     });
   };
 
-  const requestFocusEvent = (eventId, inviterEmails = []) => {
+  const requestFocusEvent = (
+    eventId,
+    inviterEmails = [],
+    detailsSource = "nudge_received"
+  ) => {
     setFocusEventRequest({
       eventId,
       inviterEmails: Array.isArray(inviterEmails) ? inviterEmails : [],
+      detailsSource,
       requestedAt: Date.now(),
     });
   };
@@ -458,6 +463,7 @@ export const AppProvider = ({ children }) => {
             filter: ev.filter ?? ev.tag ?? null,
             orgCategories: ev.orgCategories ?? [],
             isNudged: !!ev.isNudged,
+            acceptedByEmails: ev.acceptedByEmails ?? [],
           },
         };
       });
@@ -495,6 +501,7 @@ export const AppProvider = ({ children }) => {
           tags: ev.tags ?? [],
           orgCategories: ev.orgCategories ?? [],
           isNudged: !!ev.isNudged,
+          acceptedByEmails: ev.acceptedByEmails ?? [],
         },
       }));
       setEvents(transformed);
@@ -527,6 +534,7 @@ export const AppProvider = ({ children }) => {
         tags: ev.tags ?? [],
         orgCategories: ev.orgCategories ?? [],
         isNudged: !!ev.isNudged,
+        acceptedByEmails: ev.acceptedByEmails ?? [],
       },
     }));
 

@@ -294,7 +294,7 @@ export const Calendar = ({
         const pos = computeOverlayPosition(eventEl.getBoundingClientRect(), 320, 520);
         setPersonalEventInfo(null);
         setDetailsOverlayPosition(pos);
-        setEventDetailsSource("nudge");
+        setEventDetailsSource(focusEventRequest?.detailsSource || "nudge_received");
         setSelectedEventInviters(focusEventRequest?.inviterEmails || []);
         setSelectedEvent(targetEvent);
         clearFocusEventRequest();
@@ -310,7 +310,7 @@ export const Calendar = ({
             left: Math.max(16, rect.right - 340),
           });
         }
-        setEventDetailsSource("nudge");
+        setEventDetailsSource(focusEventRequest?.detailsSource || "nudge_received");
         setSelectedEventInviters(focusEventRequest?.inviterEmails || []);
         setSelectedEvent(targetEvent);
         clearFocusEventRequest();

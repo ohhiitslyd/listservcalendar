@@ -348,10 +348,14 @@ export const Header = ({
                       <button
                         key={eventInfo.id}
                         type="button"
-                        className="nudges-event-bubble"
+                        className="nudges-event-bubble nudges-event-bubble-status"
                         title={eventInfo.id}
                         onClick={() => {
-                          requestFocusEvent(eventInfo.id, eventInfo.inviterEmails);
+                          requestFocusEvent(
+                            eventInfo.id,
+                            eventInfo.inviterEmails,
+                            "nudge_received"
+                          );
                           setNudgesOpen(false);
                         }}
                       >
@@ -389,14 +393,19 @@ export const Header = ({
                     <div className="user-menu-empty">Loading status…</div>
                   ) : nudgedStatusBubbles.length > 0 ? (
                     nudgedStatusBubbles.map((entry, idx) => (
-                      <div
+                      <button
                         key={`${entry.id}-${entry.email}-${idx}`}
+                        type="button"
                         className={`nudges-event-bubble nudges-event-bubble-status nudges-event-bubble-${entry.status}`}
                         title={entry.id}
+                        onClick={() => {
+                          requestFocusEvent(entry.id, [], "nudge_sent");
+                          setNudgesOpen(false);
+                        }}
                       >
                         <div className="nudges-event-title">{entry.title}</div>
                         <div className="nudges-event-org">{entry.email}</div>
-                      </div>
+                      </button>
                     ))
                   ) : (
                     <div className="user-menu-empty">No nudged events yet.</div>

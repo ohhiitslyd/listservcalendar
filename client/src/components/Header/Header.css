@@ -477,7 +477,6 @@
 }
 
 .nudges-event-bubble-status {
-  cursor: default;
   /* Match a single day-column style bubble footprint */
   width: 165px;
   min-width: 165px;
@@ -489,10 +488,6 @@
   flex-direction: column;
   justify-content: flex-start;
   align-self: flex-start;
-}
-
-.nudges-event-bubble-status:hover {
-  border-color: inherit;
 }
 
 .nudges-event-bubble-pending {

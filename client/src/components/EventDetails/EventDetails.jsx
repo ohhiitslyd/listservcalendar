@@ -36,8 +36,20 @@ export const EventDetails = () => {
   const isEmail = selectedEvent.id.startsWith("email:");
   const isListServ =
     selectedEvent.extendedProps?.calendarId === listservCalendarId;
-  const openedFromNudges = eventDetailsSource === "nudge";
-  const canNudge = !!selectedEvent?.id && (isEmail || isListServ || isDraft);
+  const openedFromReceivedNudges = eventDetailsSource === "nudge_received";
+  const parseEventDateTime = (value) => {
+    const raw = String(value || "").trim();
+    if (!raw) return NaN;
+    const normalized = raw.includes("T") ? raw : raw.replace(" ", "T");
+    return Date.parse(normalized);
+  };
+
+  const eventEndMs = parseEventDateTime(selectedEvent?.end || selectedEvent?.start);
+  const hasEnded = !Number.isNaN(eventEndMs) && eventEndMs < Date.now();
+  const canNudge =
+    !!selectedEvent?.id &&
+    (isEmail || isListServ || isDraft) &&
+    !hasEnded;
 
   const normalizeEventId = (id) => {
     const value = String(id || "").trim();
@@ -60,6 +72,17 @@ export const EventDetails = () => {
           return selectedEventIds.has(entryId) || selectedEventIds.has(normalizedEntryId);
         })
         .map((entry) => String(entry?.email || "").trim().toLowerCase())
+        .filter(Boolean)
+    )
+  );
+
+  const acceptedYourNudgeEmails = Array.from(
+    new Set(
+      (Array.isArray(selectedEvent?.extendedProps?.acceptedByEmails)
+        ? selectedEvent.extendedProps.acceptedByEmails
+        : []
+      )
+        .map((email) => String(email || "").trim().toLowerCase())
         .filter(Boolean)
     )
   );
@@ -140,7 +163,7 @@ export const EventDetails = () => {
         invitedEvents: result?.invitedEvents || [],
         acceptedNudges: result?.acceptedNudges || [],
       });
-      if (action === "decline") {
+      if (action === "decline" || action === "accept") {
         closeDetails();
       }
     } catch (error) {
@@ -176,6 +199,13 @@ export const EventDetails = () => {
             {acceptedInviters.length > 0 ? "Accepted nudges from:" : "Invited by:"}
           </span>{" "}
           <span>{displayInviters.join(", ")}</span>
+        </div>
+      )}
+
+      {acceptedYourNudgeEmails.length > 0 && (
+        <div className="event-details-inviters">
+          <span className="event-details-inviters-label">Accepted your nudge:</span>{" "}
+          <span>{acceptedYourNudgeEmails.join(", ")}</span>
         </div>
       )}
 
@@ -279,7 +309,7 @@ export const EventDetails = () => {
         )}
       </div>
 
-      {openedFromNudges ? (
+      {openedFromReceivedNudges ? (
         <div className="event-details-actions event-details-actions-split">
           <button
             type="button"

@@ -550,12 +550,134 @@ app.post("/api/user/invited-events/respond", ensureAuthed, async (req, res) => {
       return res.status(404).json({ error: "Current user not found" });
     }
 
+    let publishStatus = "not_requested";
+    let publishError = null;
+
+    if (normalizedAction === "accept") {
+      try {
+        const toSourceEventId = (value) => {
+          const id = String(value || "").trim();
+          if (!id) return "";
+          if (id.startsWith("email:")) return id.slice("email:".length);
+          return id;
+        };
+        const normalizeDateTime = (value) => {
+          if (!value) return value;
+          if (String(value).includes("T")) return value;
+          return String(value).replace(" ", "T");
+        };
+
+        const sourceEventId = toSourceEventId(eventId);
+        const event = await queryOne(
+          `SELECT * FROM events WHERE id = $1 AND source = 'email'`,
+          [sourceEventId]
+        );
+
+        if (!event) {
+          publishStatus = "source_event_not_found";
+        } else {
+          const oauth2Client = getOAuthClient(req);
+          const calendar = google.calendar({ version: "v3", auth: oauth2Client });
+          const { id: listservCalendarId } = await getOrCreateListServCalendar(
+            req,
+            oauth2Client
+          );
+
+          // Match sync-by-preferences logic: look up source_event_id from current ListServ events
+          const now = new Date();
+          const timeMin = new Date(now.getFullYear() - 1, 0, 1).toISOString();
+          const timeMax = new Date(
+            now.getFullYear() + 2,
+            11,
+            31,
+            23,
+            59,
+            59
+          ).toISOString();
+
+          let nextPageToken = null;
+          const currentGCalEvents = [];
+          do {
+            const response = await calendar.events.list({
+              calendarId: listservCalendarId,
+              timeMin,
+              timeMax,
+              maxResults: 2500,
+              pageToken: nextPageToken,
+              singleEvents: true,
+            });
+            currentGCalEvents.push(...(response.data.items || []));
+            nextPageToken = response.data.nextPageToken;
+          } while (nextPageToken);
+
+          const alreadyExists = currentGCalEvents.some(
+            (gcalEvent) =>
+              gcalEvent.extendedProperties?.shared?.source_event_id === event.id
+          );
+
+          if (alreadyExists) {
+            publishStatus = "already_exists";
+          } else {
+            const tags = event.event_tags ? JSON.parse(event.event_tags) : [];
+            const isAllDay = !!event.all_day;
+            let startDateTime = normalizeDateTime(event.start);
+            let endDateTime = normalizeDateTime(event.end || event.start);
+
+            // Prevent Google `timeRangeEmpty` on malformed/legacy end times.
+            if (!isAllDay && startDateTime) {
+              const startMs = Date.parse(startDateTime);
+              const endMs = endDateTime ? Date.parse(endDateTime) : NaN;
+              if (!Number.isNaN(startMs)) {
+                if (Number.isNaN(endMs) || endMs <= startMs) {
+                  const fixedEnd = new Date(startMs + 60 * 60 * 1000);
+                  endDateTime = fixedEnd.toISOString().split(".")[0];
+                }
+              }
+            }
+
+            const eventData = {
+              summary: event.title || "(No title)",
+              description: event.description || "",
+              location: event.location || "",
+              start: isAllDay
+                ? { date: String(startDateTime).split("T")[0] }
+                : { dateTime: startDateTime, timeZone: "America/New_York" },
+              end: isAllDay
+                ? { date: String(endDateTime).split("T")[0] }
+                : { dateTime: endDateTime, timeZone: "America/New_York" },
+              extendedProperties: {
+                shared: {
+                  organization: event.organization || "",
+                  organization_email: event.organization_email || "",
+                  tags: JSON.stringify(tags),
+                  poster_url: event.poster_url || "",
+                  source_event_id: event.id,
+                },
+              },
+            };
+
+            await calendar.events.insert({
+              calendarId: listservCalendarId,
+              requestBody: eventData,
+            });
+            publishStatus = "published";
+          }
+        }
+      } catch (err) {
+        publishStatus = "publish_failed";
+        publishError = err?.message || "Failed to publish accepted event";
+        console.error("[invited-events/respond] Accept publish error:", err);
+      }
+    }
+
     return res.json({
       success: true,
       action: normalizedAction,
       eventId,
       invitedEvents: updated.invited_events || [],
       acceptedNudges: updated.accepted_nudges || [],
+      publishStatus,
+      publishError,
     });
   } catch (error) {
     console.error("[invited-events/respond] Error:", error);
@@ -1351,17 +1473,41 @@ app.get("/api/events", ensureAuthed, async (req, res) => {
     );
 
     const userNudgesRecord = await queryOne(
-      "SELECT invited_events, accepted_nudges FROM users WHERE id = $1",
+      "SELECT nudged_events, invited_events, accepted_nudges FROM users WHERE id = $1",
       [req.session.user.id]
     );
 
     const alwaysVisibleNudgedEventIds = new Set();
+    const acceptedYourNudgeEventIds = new Set();
+    const acceptedByEmailsByEvent = new Map();
+    const nudgedEvents = Array.isArray(userNudgesRecord?.nudged_events)
+      ? userNudgesRecord.nudged_events
+      : [];
     const invitedEvents = Array.isArray(userNudgesRecord?.invited_events)
       ? userNudgesRecord.invited_events
       : [];
     const acceptedNudges = Array.isArray(userNudgesRecord?.accepted_nudges)
       ? userNudgesRecord.accepted_nudges
       : [];
+
+    const normalizeEventId = (value) => {
+      const id = String(value || "").trim();
+      if (!id) return "";
+      if (id.startsWith("email:")) return id.slice("email:".length);
+      return id;
+    };
+
+    const containsEventId = (entries, targetId) => {
+      if (!Array.isArray(entries)) return false;
+      const normalizedTargetId = normalizeEventId(targetId);
+      return entries.some((entry) => {
+        const entryId = String(entry?.id || "").trim();
+        return (
+          entryId === String(targetId || "").trim() ||
+          normalizeEventId(entryId) === normalizedTargetId
+        );
+      });
+    };
 
     [...invitedEvents, ...acceptedNudges].forEach((entry) => {
       const id = String(entry?.id || "").trim();
@@ -1372,6 +1518,52 @@ app.get("/api/events", ensureAuthed, async (req, res) => {
       } else if (!id.includes(":")) {
         alwaysVisibleNudgedEventIds.add(`email:${id}`);
       }
+    });
+
+    // For events where people accepted *your* nudge, keep them always visible
+    // and attach accepted emails for event-card display.
+    const nudgedTargetEmails = Array.from(
+      new Set(
+        nudgedEvents
+          .map((entry) => String(entry?.email || "").trim().toLowerCase())
+          .filter(Boolean)
+      )
+    );
+
+    const nudgedTargetUsers = nudgedTargetEmails.length
+      ? await query(
+          `SELECT email, accepted_nudges
+           FROM users
+           WHERE LOWER(email) = ANY($1::text[])`,
+          [nudgedTargetEmails]
+        )
+      : [];
+
+    const nudgedTargetUserByEmail = new Map(
+      nudgedTargetUsers.map((u) => [String(u.email || "").trim().toLowerCase(), u])
+    );
+
+    nudgedEvents.forEach((entry) => {
+      const eventId = String(entry?.id || "").trim();
+      const targetEmail = String(entry?.email || "").trim().toLowerCase();
+      if (!eventId || !targetEmail) return;
+
+      const targetUser = nudgedTargetUserByEmail.get(targetEmail);
+      if (!targetUser) return;
+      if (!containsEventId(targetUser.accepted_nudges, eventId)) return;
+
+      const normalizedId = normalizeEventId(eventId);
+      acceptedYourNudgeEventIds.add(eventId);
+      acceptedYourNudgeEventIds.add(normalizedId);
+      acceptedYourNudgeEventIds.add(`email:${normalizedId}`);
+
+      const mapKeys = [eventId, normalizedId, `email:${normalizedId}`];
+      mapKeys.forEach((key) => {
+        if (!acceptedByEmailsByEvent.has(key)) {
+          acceptedByEmailsByEvent.set(key, new Set());
+        }
+        acceptedByEmailsByEvent.get(key).add(targetUser.email || targetEmail);
+      });
     });
 
     const localEvents = localEventsRaw.map((e) => ({
@@ -1390,8 +1582,17 @@ app.get("/api/events", ensureAuthed, async (req, res) => {
       poster_url: e.poster_url || "",
       status: e.status || "pending",
       google_event_id: e.google_event_id || null,
-      isNudged: alwaysVisibleNudgedEventIds.has(
+      isNudged:
+        alwaysVisibleNudgedEventIds.has(
+          e.source === "manual" ? `draft:${e.id}` : `email:${e.id}`
+        ) ||
+        acceptedYourNudgeEventIds.has(
         e.source === "manual" ? `draft:${e.id}` : `email:${e.id}`
+        ),
+      acceptedByEmails: Array.from(
+        acceptedByEmailsByEvent.get(
+          e.source === "manual" ? `draft:${e.id}` : `email:${e.id}`
+        ) || []
       ),
     }));
 
@@ -1400,7 +1601,11 @@ app.get("/api/events", ensureAuthed, async (req, res) => {
       ...ev,
       isNudged:
         !!ev.isNudged ||
-        alwaysVisibleNudgedEventIds.has(String(ev.id || "").trim()),
+        alwaysVisibleNudgedEventIds.has(String(ev.id || "").trim()) ||
+        acceptedYourNudgeEventIds.has(String(ev.id || "").trim()),
+      acceptedByEmails: Array.from(
+        acceptedByEmailsByEvent.get(String(ev.id || "").trim()) || []
+      ),
     }));
 
     // Basic debug counts to help verify primary vs ListServ / email events
@@ -1437,7 +1642,12 @@ app.get("/api/events", ensureAuthed, async (req, res) => {
     if (reqCategories.length > 0 || allowedOrgEmails.size > 0) {
       filtered = combined.filter((ev) => {
         if (!isListServ(ev)) return true;
-        if (alwaysVisibleNudgedEventIds.has(String(ev.id || "").trim())) return true;
+        if (
+          alwaysVisibleNudgedEventIds.has(String(ev.id || "").trim()) ||
+          acceptedYourNudgeEventIds.has(String(ev.id || "").trim())
+        ) {
+          return true;
+        }
 
         const tags = ev.tags || [];
         const evtEmail = String(ev.organization_email || "").trim().toLowerCase();
