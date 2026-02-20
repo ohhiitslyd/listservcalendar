@@ -14,7 +14,7 @@
   height: 100%;
   background: #fff;
   overflow: hidden;
-  padding: 0px 40px 0px 40px;
+  padding: 0px 40px 20px 40px;
 }
 
 /* Floating event details overlay (shown next to clicked event) */
@@ -259,13 +259,32 @@
 .fc-timegrid-slot-label {
   font-family: 'Poppins', sans-serif;
   font-weight: 400;
-  font-size: 12px;
+  font-size: 11px;
   color: #6b7280;
   padding: 0 8px;
+  vertical-align: top !important;
+  position: relative;
 }
 
 .fc-timegrid-slot-label-frame {
   text-align: right;
+  padding: 0 !important;
+  height: 100%;
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-end;
+}
+
+.fc-timegrid-slot-label-cushion {
+  transform: translateY(-50%);
+  background: white;
+  padding: 0 4px;
+  line-height: 1;
+}
+
+/* Hide the first time label (12:00am/midnight) since it hangs off the top */
+.fc-timegrid-slots tbody tr:first-child .fc-timegrid-slot-label-cushion {
+  visibility: hidden;
 }
 
 /* Time grid column styling */
@@ -381,6 +400,15 @@
   border-top: 0;
 }
 
+/* Make hour lines more prominent */
+.fc-timegrid-slot-lane {
+  border-top: 1px solid #d1d5db !important;
+}
+
+.fc-timegrid-slot-lane.fc-timegrid-slot-minor {
+  border-top: 1px dashed #e5e7eb !important;
+}
+
 .fc-scrollgrid-section {
   min-height: 0;
 }
@@ -407,6 +435,28 @@
   background: #9ca3af;
 }
 
+/* Bottom padding and rounded corners to indicate end of scroll */
+.fc-scroller-liquid-absolute {
+  padding-bottom: 40px !important;
+}
+
+.fc-timegrid-slots tbody tr:last-child td {
+  border-bottom-left-radius: 12px;
+  border-bottom-right-radius: 12px;
+}
+
+.fc-view-harness {
+  border-bottom-left-radius: 12px;
+  border-bottom-right-radius: 12px;
+  overflow: hidden;
+}
+
+.fc-scrollgrid {
+  border-bottom-left-radius: 12px !important;
+  border-bottom-right-radius: 12px !important;
+  overflow: hidden;
+}
+
 /* Remove FullCalendar default header */
 .fc-header-toolbar {
   display: none !important;
@@ -431,7 +481,7 @@
 /* Mobile Responsive Styles */
 @media (max-width: 768px) {
   .app-calendar-wrapper {
-    padding: 0px 8px 0px 8px;
+    padding: 0px 8px 16px 8px;
   }
 
   /* Make event details overlay full-page on mobile */
