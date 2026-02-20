@@ -338,18 +338,30 @@ export const Calendar = ({
   const handleEventDidMount = (info) => {
     info.el.setAttribute("data-event-id", info.event.id || "");
     const ev = info.event;
-    const isNudged = !!ev.extendedProps?.isNudged;
+    const nudgeDisplayStatus = ev.extendedProps?.nudgeDisplayStatus || "none";
     const isListServ = ev.classNames.includes("fc-event-listserv");
     const harness = info.el.parentElement; // FullCalendar wraps events in a harness div
     // Base color for untagged regular ListServ events.
     const freeFoodGreen = tagColorMap?.["Free Food"] || "#d4e9c4";
 
-    if (isNudged) {
+    if (nudgeDisplayStatus === "accepted") {
       if (harness) harness.style.zIndex = "35";
       info.el.style.zIndex = "35";
       info.el.style.backgroundImage = "none";
       info.el.style.backgroundColor = "#c4b5fd";
       info.el.style.color = "#000000";
+      info.el.style.border = "1px solid #8b5cf6";
+      info.el.style.borderRadius = "5px";
+      return;
+    }
+
+    if (nudgeDisplayStatus === "pending") {
+      if (harness) harness.style.zIndex = "35";
+      info.el.style.zIndex = "35";
+      info.el.style.backgroundImage = "none";
+      info.el.style.backgroundColor = freeFoodGreen;
+      info.el.style.color = "#000000";
+      info.el.style.border = "3px dotted #6d28d9";
       info.el.style.borderRadius = "5px";
       return;
     }
@@ -358,6 +370,11 @@ export const Calendar = ({
       // Primary / other calendars → intentionally under ListServ events
       if (harness) harness.style.zIndex = "5";
       info.el.style.zIndex = "5";
+      info.el.style.backgroundImage = "none";
+      info.el.style.backgroundColor = freeFoodGreen;
+      info.el.style.color = "#000000";
+      info.el.style.border = "1px solid #9fbe8b";
+      info.el.style.borderRadius = "5px";
       return;
     }
 
@@ -369,6 +386,7 @@ export const Calendar = ({
     info.el.style.backgroundImage = "none";
     info.el.style.backgroundColor = freeFoodGreen;
     info.el.style.color = "#000000";
+    info.el.style.border = "1px solid #9fbe8b";
 
     info.el.style.borderRadius = "5px";
   };

@@ -947,6 +947,9 @@ app.post("/api/user/sync-calendar-by-preferences", ensureAuthed, async (req, res
     const acceptedNudges = Array.isArray(userRecord?.accepted_nudges)
       ? userRecord.accepted_nudges
       : [];
+    const nudgedEvents = Array.isArray(userRecord?.nudged_events)
+      ? userRecord.nudged_events
+      : [];
 
     // If no preferences, publish ALL events (show everything)
     // This means the user wants to see all events, so we sync all email-sourced events
@@ -999,6 +1002,17 @@ app.post("/api/user/sync-calendar-by-preferences", ensureAuthed, async (req, res
       if (id.startsWith("email:")) return id.slice("email:".length);
       return id;
     };
+    const containsEventId = (entries, targetId) => {
+      if (!Array.isArray(entries)) return false;
+      const normalizedTargetId = toSourceEventId(targetId);
+      return entries.some((entry) => {
+        const entryId = String(entry?.id || "").trim();
+        return (
+          entryId === String(targetId || "").trim() ||
+          toSourceEventId(entryId) === normalizedTargetId
+        );
+      });
+    };
 
     const acceptedNudgeSourceIds = new Set(
       acceptedNudges
@@ -1006,11 +1020,49 @@ app.post("/api/user/sync-calendar-by-preferences", ensureAuthed, async (req, res
         .filter(Boolean)
     );
 
-    if (acceptedNudgeSourceIds.size > 0) {
+    // Also always include events you nudged others to, when those users accepted.
+    const nudgedTargetEmails = Array.from(
+      new Set(
+        nudgedEvents
+          .map((entry) => String(entry?.email || "").trim().toLowerCase())
+          .filter(Boolean)
+      )
+    );
+    const nudgedTargetUsers = nudgedTargetEmails.length
+      ? await query(
+          `SELECT email, accepted_nudges
+           FROM users
+           WHERE LOWER(email) = ANY($1::text[])`,
+          [nudgedTargetEmails]
+        )
+      : [];
+    const nudgedTargetUserByEmail = new Map(
+      nudgedTargetUsers.map((u) => [String(u.email || "").trim().toLowerCase(), u])
+    );
+
+    const acceptedByInviteSourceIds = new Set();
+    nudgedEvents.forEach((entry) => {
+      const eventId = String(entry?.id || "").trim();
+      const targetEmail = String(entry?.email || "").trim().toLowerCase();
+      if (!eventId || !targetEmail) return;
+      const targetUser = nudgedTargetUserByEmail.get(targetEmail);
+      if (!targetUser) return;
+      if (containsEventId(targetUser.accepted_nudges, eventId)) {
+        const sourceId = toSourceEventId(eventId);
+        if (sourceId) acceptedByInviteSourceIds.add(sourceId);
+      }
+    });
+
+    const alwaysIncludeSourceIds = new Set([
+      ...acceptedNudgeSourceIds,
+      ...acceptedByInviteSourceIds,
+    ]);
+
+    if (alwaysIncludeSourceIds.size > 0) {
       const matchingIds = new Set(matchingEvents.map((e) => e.id));
       allEmailEvents.forEach((event) => {
         if (
-          acceptedNudgeSourceIds.has(String(event.id || "").trim()) &&
+          alwaysIncludeSourceIds.has(String(event.id || "").trim()) &&
           !matchingIds.has(event.id)
         ) {
           matchingEvents.push(event);
@@ -1590,6 +1642,8 @@ app.get("/api/events", ensureAuthed, async (req, res) => {
     );
 
     const alwaysVisibleNudgedEventIds = new Set();
+    const acceptedDecisionEventIds = new Set();
+    const pendingDecisionEventIds = new Set();
     const acceptedYourNudgeEventIds = new Set();
     const acceptedByEmailsByEvent = new Map();
     const nudgedEvents = Array.isArray(userNudgesRecord?.nudged_events)
@@ -1621,16 +1675,34 @@ app.get("/api/events", ensureAuthed, async (req, res) => {
       });
     };
 
+    const addEventIdVariants = (set, idValue) => {
+      const id = String(idValue || "").trim();
+      if (!id) return;
+      set.add(id);
+      if (id.startsWith("email:")) {
+        const raw = id.slice("email:".length);
+        set.add(raw);
+      } else if (!id.includes(":")) {
+        set.add(`email:${id}`);
+      }
+    };
+
+    const getNudgeDisplayStatus = (idValue) => {
+      const id = String(idValue || "").trim();
+      if (!id) return "none";
+      if (acceptedDecisionEventIds.has(id)) return "accepted";
+      if (pendingDecisionEventIds.has(id)) return "pending";
+      return "none";
+    };
+
     [...invitedEvents, ...acceptedNudges].forEach((entry) => {
       const id = String(entry?.id || "").trim();
       if (!id) return;
-      alwaysVisibleNudgedEventIds.add(id);
-      if (id.startsWith("email:")) {
-        alwaysVisibleNudgedEventIds.add(id.slice("email:".length));
-      } else if (!id.includes(":")) {
-        alwaysVisibleNudgedEventIds.add(`email:${id}`);
-      }
+      addEventIdVariants(alwaysVisibleNudgedEventIds, id);
     });
+
+    invitedEvents.forEach((entry) => addEventIdVariants(pendingDecisionEventIds, entry?.id));
+    acceptedNudges.forEach((entry) => addEventIdVariants(acceptedDecisionEventIds, entry?.id));
 
     // For events where people accepted *your* nudge, keep them always visible
     // and attach accepted emails for event-card display.
@@ -1665,9 +1737,8 @@ app.get("/api/events", ensureAuthed, async (req, res) => {
       if (!containsEventId(targetUser.accepted_nudges, eventId)) return;
 
       const normalizedId = normalizeEventId(eventId);
-      acceptedYourNudgeEventIds.add(eventId);
-      acceptedYourNudgeEventIds.add(normalizedId);
-      acceptedYourNudgeEventIds.add(`email:${normalizedId}`);
+      addEventIdVariants(acceptedYourNudgeEventIds, eventId);
+      addEventIdVariants(acceptedYourNudgeEventIds, normalizedId);
 
       const mapKeys = [eventId, normalizedId, `email:${normalizedId}`];
       mapKeys.forEach((key) => {
@@ -1694,13 +1765,9 @@ app.get("/api/events", ensureAuthed, async (req, res) => {
       poster_url: e.poster_url || "",
       status: e.status || "pending",
       google_event_id: e.google_event_id || null,
-      isNudged:
-        alwaysVisibleNudgedEventIds.has(
-          e.source === "manual" ? `draft:${e.id}` : `email:${e.id}`
-        ) ||
-        acceptedYourNudgeEventIds.has(
+      nudgeDisplayStatus: getNudgeDisplayStatus(
         e.source === "manual" ? `draft:${e.id}` : `email:${e.id}`
-        ),
+      ),
       acceptedByEmails: Array.from(
         acceptedByEmailsByEvent.get(
           e.source === "manual" ? `draft:${e.id}` : `email:${e.id}`
@@ -1711,10 +1778,10 @@ app.get("/api/events", ensureAuthed, async (req, res) => {
     // Combine local + Google events, then apply org + event-type filters (branch logic)
     const combined = [...localEvents, ...allEvents].map((ev) => ({
       ...ev,
-      isNudged:
-        !!ev.isNudged ||
-        alwaysVisibleNudgedEventIds.has(String(ev.id || "").trim()) ||
-        acceptedYourNudgeEventIds.has(String(ev.id || "").trim()),
+      nudgeDisplayStatus:
+        ev.nudgeDisplayStatus && ev.nudgeDisplayStatus !== "none"
+          ? ev.nudgeDisplayStatus
+          : getNudgeDisplayStatus(String(ev.id || "").trim()),
       acceptedByEmails: Array.from(
         acceptedByEmailsByEvent.get(String(ev.id || "").trim()) || []
       ),
