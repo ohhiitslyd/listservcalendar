@@ -520,12 +520,14 @@ async function cleanupOldEvents(pool, oauth2Client, listservCalendarId) {
 
     deletedCount = deleteResults.rowCount || 0;
 
-    // Clean up orphaned scraped_emails (no remaining events reference them)
+    // Clean up old orphaned scraped_emails (7+ days old, no events reference them)
     const orphanedResult = await pool.query(
       `DELETE FROM scraped_emails
-       WHERE NOT EXISTS (
-         SELECT 1 FROM events e WHERE e.email_id = scraped_emails.id
-       )`
+       WHERE received_date < $1
+         AND NOT EXISTS (
+           SELECT 1 FROM events e WHERE e.email_id = scraped_emails.id
+         )`,
+      [cutoffISO]
     );
     const orphanedDeleted = orphanedResult.rowCount || 0;
 
