@@ -321,6 +321,11 @@
   font-family: 'Poppins', sans-serif;
 }
 
+/* Hide mobile filters overlay on desktop by default */
+.mobile-filters-overlay {
+  display: none;
+}
+
 /* Mobile Responsive Styles */
 @media (max-width: 768px) {
   .app-content {

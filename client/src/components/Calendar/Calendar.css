@@ -476,5 +476,16 @@
 
   .fc-col-header-cell {
     font-size: 12px;
+    padding: 6px 0 !important;
+  }
+
+  .fc-col-header-cell-cushion {
+    padding: 2px 0;
+    gap: 2px;
+  }
+
+  .fc-timegrid-col-header .fc-col-header-cell-cushion::after {
+    font-size: 14px;
+    margin-top: 2px;
   }
 }
