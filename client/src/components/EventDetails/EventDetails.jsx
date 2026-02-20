@@ -1,4 +1,4 @@
-import React, { useContext, useEffect, useState } from "react";
+import React, { useContext, useEffect, useState, useRef, useCallback } from "react";
 import { AppContext } from "../../context/AppContext";
 import { api } from "../../api/calendarApi";
 import "./EventDetails.css";
@@ -18,15 +18,129 @@ export const EventDetails = () => {
   } = useContext(AppContext);
   const [showNudgeForm, setShowNudgeForm] = useState(false);
   const [nudgeEmail, setNudgeEmail] = useState("");
+  const [nudgeRecipients, setNudgeRecipients] = useState([]);
   const [nudgeLoading, setNudgeLoading] = useState(false);
   const [inviteResponseLoading, setInviteResponseLoading] = useState(false);
+  const [suggestions, setSuggestions] = useState([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [activeSuggestionIndex, setActiveSuggestionIndex] = useState(-1);
+  const debounceTimerRef = useRef(null);
+  const searchCounterRef = useRef(0);
+  const suggestionsRef = useRef(null);
+  const inputRef = useRef(null);
 
   useEffect(() => {
     setShowNudgeForm(false);
     setNudgeEmail("");
+    setNudgeRecipients([]);
     setNudgeLoading(false);
     setInviteResponseLoading(false);
+    setSuggestions([]);
+    setShowSuggestions(false);
+    setActiveSuggestionIndex(-1);
+    if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
   }, [selectedEvent?.id]);
+
+  const searchPeople = useCallback((query) => {
+    if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+    if (!query || query.trim().length < 2) {
+      setSuggestions([]);
+      setShowSuggestions(false);
+      return;
+    }
+    debounceTimerRef.current = setTimeout(async () => {
+      const requestId = ++searchCounterRef.current;
+      try {
+        const data = await api.searchDartmouthPeople(query.trim());
+        if (requestId !== searchCounterRef.current) return;
+        setSuggestions(data.results || []);
+        setShowSuggestions((data.results || []).length > 0);
+        setActiveSuggestionIndex(-1);
+      } catch {
+        if (requestId !== searchCounterRef.current) return;
+        setSuggestions([]);
+        setShowSuggestions(false);
+      }
+    }, 300);
+  }, []);
+
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (
+        suggestionsRef.current && !suggestionsRef.current.contains(e.target) &&
+        inputRef.current && !inputRef.current.contains(e.target)
+      ) {
+        setShowSuggestions(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const addRecipient = (email, displayName) => {
+    const lower = email.toLowerCase();
+    if (nudgeRecipients.some((r) => r.email.toLowerCase() === lower)) return;
+    setNudgeRecipients((prev) => [...prev, { email, displayName }]);
+  };
+
+  const removeRecipient = (email) => {
+    setNudgeRecipients((prev) => prev.filter((r) => r.email !== email));
+  };
+
+  const handleSuggestionClick = (suggestion) => {
+    addRecipient(suggestion.email, suggestion.displayName);
+    setNudgeEmail("");
+    setShowSuggestions(false);
+    setSuggestions([]);
+    setActiveSuggestionIndex(-1);
+  };
+
+  const tryAddManualEmail = () => {
+    const trimmed = nudgeEmail.trim();
+    if (trimmed && trimmed.includes("@")) {
+      addRecipient(trimmed, trimmed);
+      setNudgeEmail("");
+      setSuggestions([]);
+      setShowSuggestions(false);
+      return true;
+    }
+    return false;
+  };
+
+  const handleInputKeyDown = (e) => {
+    // Backspace on empty input removes last chip
+    if (e.key === "Backspace" && !nudgeEmail && nudgeRecipients.length > 0) {
+      removeRecipient(nudgeRecipients[nudgeRecipients.length - 1].email);
+      return;
+    }
+    // Suggestions navigation
+    if (showSuggestions && suggestions.length > 0) {
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setActiveSuggestionIndex((prev) => (prev < suggestions.length - 1 ? prev + 1 : 0));
+        return;
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setActiveSuggestionIndex((prev) => (prev > 0 ? prev - 1 : suggestions.length - 1));
+        return;
+      } else if (e.key === "Enter" && activeSuggestionIndex >= 0) {
+        e.preventDefault();
+        handleSuggestionClick(suggestions[activeSuggestionIndex]);
+        return;
+      } else if (e.key === "Escape") {
+        setShowSuggestions(false);
+        return;
+      }
+    }
+    // Enter / Tab / Comma with typed email → add as manual chip
+    if (e.key === "Enter" || e.key === "Tab" || e.key === ",") {
+      if (tryAddManualEmail()) {
+        e.preventDefault();
+      } else if (e.key === "Enter") {
+        e.preventDefault(); // prevent form submit from Enter in input
+      }
+    }
+  };
 
   if (!selectedEvent) {
     return null;
@@ -92,22 +206,36 @@ export const EventDetails = () => {
 
   const handleNudgeSubmit = async (e) => {
     e.preventDefault();
-    if (!selectedEvent?.id || !nudgeEmail.trim()) return;
+    // Also add any leftover typed email as a recipient before submitting
+    const finalRecipients = [...nudgeRecipients];
+    const leftover = nudgeEmail.trim();
+    if (leftover && leftover.includes("@")) {
+      const lower = leftover.toLowerCase();
+      if (!finalRecipients.some((r) => r.email.toLowerCase() === lower)) {
+        finalRecipients.push({ email: leftover, displayName: leftover });
+      }
+    }
+    if (!selectedEvent?.id || finalRecipients.length === 0) return;
 
     try {
       setNudgeLoading(true);
-      const result = await api.nudgeEvent({
-        eventId: selectedEvent.id,
-        targetEmail: nudgeEmail.trim(),
-      });
+      const results = await Promise.allSettled(
+        finalRecipients.map((r) =>
+          api.nudgeEvent({ eventId: selectedEvent.id, targetEmail: r.email })
+        )
+      );
+      const succeeded = results.filter(
+        (r) => r.status === "fulfilled" && r.value?.success
+      ).length;
+      const total = finalRecipients.length;
 
-      if (!result?.success) {
-        alert(result?.error || "Failed to nudge event");
-        return;
+      if (succeeded === total) {
+        alert(`Nudge sent to all ${total} recipient${total > 1 ? "s" : ""}`);
+      } else {
+        alert(`Nudge sent to ${succeeded} of ${total} recipients`);
       }
-
-      alert(`Nudge sent to ${result.invitedEmail || nudgeEmail.trim()}`);
       setNudgeEmail("");
+      setNudgeRecipients([]);
       setShowNudgeForm(false);
     } catch (error) {
       alert("Failed to nudge event");
@@ -310,14 +438,55 @@ export const EventDetails = () => {
             </button>
           ) : (
             <form className="event-nudge-form" onSubmit={handleNudgeSubmit}>
-              <input
-                type="email"
-                className="event-nudge-input"
-                placeholder="Enter email"
-                value={nudgeEmail}
-                onChange={(e) => setNudgeEmail(e.target.value)}
-                required
-              />
+              <div className="event-nudge-autocomplete">
+                <div
+                  className="event-nudge-chips-container"
+                  onClick={() => inputRef.current?.focus()}
+                >
+                  {nudgeRecipients.map((r) => (
+                    <span key={r.email} className="event-nudge-chip">
+                      <span className="event-nudge-chip-label">{r.displayName === r.email ? r.email : r.displayName}</span>
+                      <button
+                        type="button"
+                        className="event-nudge-chip-remove"
+                        onClick={(e) => { e.stopPropagation(); removeRecipient(r.email); }}
+                        aria-label={`Remove ${r.displayName}`}
+                      >
+                        &times;
+                      </button>
+                    </span>
+                  ))}
+                  <input
+                    ref={inputRef}
+                    type="text"
+                    className="event-nudge-chip-input"
+                    placeholder={nudgeRecipients.length === 0 ? "Search name or enter email" : ""}
+                    value={nudgeEmail}
+                    onChange={(e) => {
+                      setNudgeEmail(e.target.value);
+                      searchPeople(e.target.value);
+                    }}
+                    onKeyDown={handleInputKeyDown}
+                    onFocus={() => { if (suggestions.length > 0) setShowSuggestions(true); }}
+                    autoComplete="off"
+                  />
+                </div>
+                {showSuggestions && suggestions.length > 0 && (
+                  <ul className="event-nudge-suggestions" ref={suggestionsRef}>
+                    {suggestions.map((s, i) => (
+                      <li
+                        key={s.email}
+                        className={`event-nudge-suggestion-item${i === activeSuggestionIndex ? " active" : ""}`}
+                        onMouseDown={() => handleSuggestionClick(s)}
+                        onMouseEnter={() => setActiveSuggestionIndex(i)}
+                      >
+                        <span className="suggestion-name">{s.displayName}</span>
+                        <span className="suggestion-email">{s.email}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
               <div className="event-nudge-actions">
                 <button
                   type="button"
@@ -325,6 +494,7 @@ export const EventDetails = () => {
                   onClick={() => {
                     setShowNudgeForm(false);
                     setNudgeEmail("");
+                    setNudgeRecipients([]);
                   }}
                   disabled={nudgeLoading}
                 >
@@ -333,7 +503,7 @@ export const EventDetails = () => {
                 <button
                   type="submit"
                   className="event-action-button"
-                  disabled={nudgeLoading}
+                  disabled={nudgeLoading || (nudgeRecipients.length === 0 && !nudgeEmail.trim().includes("@"))}
                 >
                   {nudgeLoading ? "Sending..." : "Submit"}
                 </button>

@@ -61,6 +61,7 @@ const {
   GOOGLE_REDIRECT_URI,
   FRONTEND_URL = "http://localhost:5173",
   SCRAPER_EMAIL,
+  DARTAPI_KEY,
 } = process.env;
 
 if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET || !GOOGLE_REDIRECT_URI) {
@@ -499,6 +500,117 @@ app.post("/api/user/nudge-event", ensureAuthed, async (req, res) => {
     return res.status(500).json({ error: "Failed to nudge event" });
   } finally {
     client.release();
+  }
+});
+
+// --- Dartmouth People directory search (for nudge autocomplete) ---
+let dartapiJwtCache = { token: null, expiresAt: 0 };
+
+async function getDartApiJwt() {
+  const now = Math.floor(Date.now() / 1000);
+  if (dartapiJwtCache.token && dartapiJwtCache.expiresAt > now + 60) {
+    return dartapiJwtCache.token;
+  }
+  const resp = await fetch("https://api.dartmouth.edu/api/jwt", {
+    method: "POST",
+    headers: { Authorization: DARTAPI_KEY },
+  });
+  if (!resp.ok) {
+    throw new Error(`DartAPI JWT request failed: ${resp.status}`);
+  }
+  const data = await resp.json();
+  dartapiJwtCache = {
+    token: data.jwt,
+    expiresAt: data.payload?.exp || now + 3600,
+  };
+  return data.jwt;
+}
+
+app.get("/api/dartmouth/search", ensureAuthed, async (req, res) => {
+  const q = String(req.query.q || "").trim();
+  if (!q || q.length < 2) {
+    return res.json({ results: [] });
+  }
+  if (!DARTAPI_KEY) {
+    return res.status(503).json({ error: "DartAPI not configured" });
+  }
+  try {
+    const jwt = await getDartApiJwt();
+    const headers = { Authorization: `Bearer ${jwt}` };
+    const words = q.split(/\s+/).filter(Boolean);
+    let people = [];
+
+    const api = (params) =>
+      fetch(`https://api.dartmouth.edu/api/people?${params}`, { headers }).then((r) => r.ok ? r.json() : []);
+
+    if (words.length >= 2) {
+      const first = words[0];
+      const last = words[words.length - 1];
+      const remainingWords = words.slice(1).map((w) => w.toLowerCase());
+
+      // 3 strategies in parallel:
+      // 1) standard: first word(s) → first_name, last word → last_name
+      // 2) reversed: last word → first_name, first word → last_name
+      // 3) broad first_name match, then client-side filter for remaining words
+      const [standard, reversed, broad] = await Promise.all([
+        api(`first_name=${encodeURIComponent(words.slice(0, -1).join(" "))}*&last_name=${encodeURIComponent(last)}*&pagesize=10`),
+        api(`first_name=${encodeURIComponent(last)}*&last_name=${encodeURIComponent(first)}*&pagesize=10`),
+        api(`first_name=${encodeURIComponent(first)}*&pagesize=10`),
+      ]);
+
+      const broadFiltered = (Array.isArray(broad) ? broad : []).filter((p) => {
+        const text = `${p.name || ""} ${p.first_name || ""} ${p.last_name || ""} ${p.email || ""}`.toLowerCase();
+        return remainingWords.every((w) => text.includes(w));
+      });
+
+      people = [
+        ...(Array.isArray(standard) ? standard : []),
+        ...(Array.isArray(reversed) ? reversed : []),
+        ...broadFiltered,
+      ];
+    } else {
+      // Single word: search by first_name OR last_name in parallel
+      const [byFirst, byLast] = await Promise.all([
+        api(`first_name=${encodeURIComponent(q)}*&pagesize=5`),
+        api(`last_name=${encodeURIComponent(q)}*&pagesize=5`),
+      ]);
+      people = [...(Array.isArray(byFirst) ? byFirst : []), ...(Array.isArray(byLast) ? byLast : [])];
+    }
+    const seen = new Set();
+    const currentYear = new Date().getFullYear() % 100; // e.g. 26
+    const activeYearMin = currentYear;
+    const activeYearMax = currentYear + 5;
+    const activeSuffixes = /\.(GR|TH|MED|TU\d*)@/i;
+    const tuckDomain = /@tuck\.dartmouth\.edu$/i;
+    const yearPattern = /\.(\d{2})@/;
+
+    const getPriority = (email) => {
+      if (tuckDomain.test(email) || activeSuffixes.test(email)) return 0;
+      const ym = email.match(yearPattern);
+      if (ym) {
+        const yr = parseInt(ym[1], 10);
+        if (yr >= activeYearMin && yr <= activeYearMax) return 0;
+      }
+      return 1;
+    };
+
+    const results = (Array.isArray(people) ? people : [])
+      .filter((p) => {
+        if (!p.email || seen.has(p.email)) return false;
+        seen.add(p.email);
+        return true;
+      })
+      .map((p) => ({
+        email: p.email,
+        displayName: `${(p.first_name || "").split(/\s/)[0]} ${p.last_name || ""}`.trim() || p.name,
+        _priority: getPriority(p.email),
+      }))
+      .sort((a, b) => a._priority - b._priority)
+      .map(({ _priority, ...rest }) => rest);
+    res.json({ results });
+  } catch (error) {
+    console.error("[dartmouth-search] Error:", error.message);
+    res.json({ results: [] });
   }
 });
 
