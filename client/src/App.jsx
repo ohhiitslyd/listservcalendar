@@ -75,6 +75,18 @@ const InnerApp = () => {
   const [hasLoggedInThisSession, setHasLoggedInThisSession] = useState(false);
   const [lastPreferencesSavedAt, setLastPreferencesSavedAt] = useState(null);
 
+  // Close mobile filters when window is resized to desktop view
+  useEffect(() => {
+    const handleResize = () => {
+      if (window.innerWidth > 768 && mobileFiltersOpen) {
+        setMobileFiltersOpen(false);
+      }
+    };
+
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, [mobileFiltersOpen]);
+
   const totalSelectedFilters = (selectedCats?.size || 0) + (selectedOrgCats?.size || 0);
 
   const currentPublishKey = useMemo(() => {
@@ -373,6 +385,9 @@ const InnerApp = () => {
         <Calendar
           onDatesSet={handleDatesSet}
           scrollTime="09:00"
+          statusText={statusText}
+          statusSubtext={statusSubtext}
+          statusDotClass={statusDotClass}
         />
       </div>
 

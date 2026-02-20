@@ -87,7 +87,7 @@
   border-radius: 8px;
   padding: 7px 10px;
   cursor: pointer;
-  font-size: 18px;
+  font-size: 16px;
   font-family: 'Poppins', sans-serif;
   font-weight: 500;
   color: #000000;
@@ -144,8 +144,9 @@
   border: 1px solid #d4e9c4;
   font-weight: 400;
   padding: 5px 8px;
-  font-size: 14px;
+  font-size: 16px;
   white-space: nowrap;
+  gap: 2px;
 }
 
 .dropdown-arrow {
@@ -558,6 +559,48 @@
 
 .publish-button-icon {
   display: none;
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+
+.publish-button-mobile-text {
+  display: none;
+}
+
+/* Responsive styles for smaller screens */
+@media (max-width: 1200px) {
+  .app-header-button {
+    font-size: 15px;
+    padding: 6px 9px;
+  }
+
+  .calendars-button {
+    font-size: 15px;
+    padding: 6px 9px;
+  }
+
+  .publish-button-icon {
+    width: 15px;
+    height: 15px;
+  }
+}
+
+@media (max-width: 900px) {
+  .app-header-button {
+    font-size: 14px;
+    padding: 5px 8px;
+  }
+
+  .calendars-button {
+    font-size: 14px;
+    padding: 5px 8px;
+  }
+
+  .publish-button-icon {
+    width: 14px;
+    height: 14px;
+  }
 }
 
 @media (max-width: 768px) {
@@ -584,9 +627,13 @@
     font-size: 16px;
   }
 
+  .app-header-logo h2.mobile-hidden {
+    display: none;
+  }
+
   .app-header-button {
-    padding: 6px 8px;
-    font-size: 14px;
+    padding: 5px 7px;
+    font-size: 13px;
   }
 
   .publish-button-text {
@@ -595,6 +642,12 @@
 
   .publish-button-icon {
     display: inline-block;
+    width: 13px;
+    height: 13px;
+  }
+
+  .publish-button-mobile-text {
+    display: inline;
   }
 
   .user-name {
@@ -602,12 +655,33 @@
   }
 
   .calendars-button {
-    padding: 6px 10px;
+    padding: 5px 7px;
     font-size: 13px;
   }
 
   .calendars-button .dropdown-arrow {
     width: 14px;
     height: 14px;
+  }
+
+  .header-status {
+    display: none;
+  }
+}
+
+@media (max-width: 600px) {
+  .app-header-button {
+    font-size: 12px;
+    padding: 4px 8px;
+  }
+
+  .calendars-button {
+    font-size: 12px;
+    padding: 4px 6px;
+  }
+
+  .publish-button-icon {
+    width: 12px;
+    height: 12px;
   }
 }
