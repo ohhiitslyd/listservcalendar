@@ -695,37 +695,16 @@ app.post("/api/user/invited-events/respond", ensureAuthed, async (req, res) => {
             oauth2Client
           );
 
-          // Match sync-by-preferences logic: look up source_event_id from current ListServ events
-          const now = new Date();
-          const timeMin = new Date(now.getFullYear() - 1, 0, 1).toISOString();
-          const timeMax = new Date(
-            now.getFullYear() + 2,
-            11,
-            31,
-            23,
-            59,
-            59
-          ).toISOString();
+          // Fast duplicate check: query by shared extended property directly.
+          const existing = await calendar.events.list({
+            calendarId: listservCalendarId,
+            sharedExtendedProperty: [`source_event_id=${event.id}`],
+            maxResults: 1,
+            singleEvents: true,
+            showDeleted: false,
+          });
 
-          let nextPageToken = null;
-          const currentGCalEvents = [];
-          do {
-            const response = await calendar.events.list({
-              calendarId: listservCalendarId,
-              timeMin,
-              timeMax,
-              maxResults: 2500,
-              pageToken: nextPageToken,
-              singleEvents: true,
-            });
-            currentGCalEvents.push(...(response.data.items || []));
-            nextPageToken = response.data.nextPageToken;
-          } while (nextPageToken);
-
-          const alreadyExists = currentGCalEvents.some(
-            (gcalEvent) =>
-              gcalEvent.extendedProperties?.shared?.source_event_id === event.id
-          );
+          const alreadyExists = (existing.data.items || []).length > 0;
 
           if (alreadyExists) {
             publishStatus = "already_exists";
