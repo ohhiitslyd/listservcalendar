@@ -16,6 +16,22 @@ import { api } from "./api/calendarApi";
 import "./App.css";
 
 /* -------------------------------------------------
+   Helper function to format last saved time
+   ------------------------------------------------- */
+function formatLastSaved(timestamp) {
+  if (!timestamp) return "";
+  const diffMs = Date.now() - timestamp;
+  const hours = Math.floor(diffMs / (1000 * 60 * 60));
+
+  if (hours < 24) {
+    return `Last saved ${hours} ${hours === 1 ? "hour" : "hours"} ago`;
+  }
+
+  const days = Math.floor(hours / 24);
+  return `Last saved ${days} ${days === 1 ? "day" : "days"} ago`;
+}
+
+/* -------------------------------------------------
    InnerApp – UI that consumes the context.
    It **does NOT** export anything; it lives only
    this file.
@@ -57,6 +73,7 @@ const InnerApp = () => {
   const [onboardingOpen, setOnboardingOpen] = useState(false);
   const [onboardingClosedThisSession, setOnboardingClosedThisSession] = useState(false);
   const [hasLoggedInThisSession, setHasLoggedInThisSession] = useState(false);
+  const [lastPreferencesSavedAt, setLastPreferencesSavedAt] = useState(null);
 
   const totalSelectedFilters = (selectedCats?.size || 0) + (selectedOrgCats?.size || 0);
 
@@ -70,6 +87,14 @@ const InnerApp = () => {
     });
   }, [selectedCats, selectedOrgCats, excludeMode]);
 
+  // Load last saved timestamp from localStorage on mount
+  useEffect(() => {
+    const stored = localStorage.getItem("listserv_last_saved_at");
+    if (stored) {
+      setLastPreferencesSavedAt(Number(stored));
+    }
+  }, []);
+
   // Compute publishedKey from loaded preferences (what's in the database)
   // This represents what was last published
   useEffect(() => {
@@ -82,6 +107,8 @@ const InnerApp = () => {
     } else if (!user) {
       // Reset when user logs out
       setPublishedKey(null);
+      setLastPreferencesSavedAt(null);
+      localStorage.removeItem("listserv_last_saved_at");
     }
   }, [user, preferencesLoaded, currentPublishKey, publishedKey]);
 
@@ -110,6 +137,11 @@ const InnerApp = () => {
       setPublishResult(syncResult);
       // Update publishedKey to match what we just published
       setPublishedKey(currentPublishKey);
+      
+      // Save timestamp to localStorage
+      const now = Date.now();
+      setLastPreferencesSavedAt(now);
+      localStorage.setItem("listserv_last_saved_at", now.toString());
     } catch (error) {
       console.error("Failed to publish filters:", error);
       alert(`Failed to publish filters: ${error.message || error.error || "Unknown error"}`);
@@ -259,18 +291,27 @@ const InnerApp = () => {
     await fetchEvents(Array.from(visibleCalendars));
   };
 
-
-  const isPublishedUpToDate = useMemo(() => {
+  // Compute if preferences are saved
+  const preferencesSaved = useMemo(() => {
     return publishedKey !== null && !hasUnpublishedChanges;
   }, [publishedKey, hasUnpublishedChanges]);
 
   const statusText = useMemo(() => {
-    return isPublishedUpToDate ? "Published" : "Unpublished Changes";
-  }, [isPublishedUpToDate]);
+    return preferencesSaved ? "Preferences saved" : "Preferences not saved";
+  }, [preferencesSaved]);
+
+  const statusSubtext = useMemo(() => {
+    if (preferencesSaved && lastPreferencesSavedAt) {
+      return formatLastSaved(lastPreferencesSavedAt);
+    } else if (!preferencesSaved) {
+      return "Publish to save your preferences";
+    }
+    return "";
+  }, [preferencesSaved, lastPreferencesSavedAt]);
 
   const statusDotClass = useMemo(() => {
-    return isPublishedUpToDate ? "synced" : "unsynced";
-  }, [isPublishedUpToDate]);
+    return preferencesSaved ? "synced" : "unsynced";
+  }, [preferencesSaved]);
 
   const selectedEventTypeLabels = useMemo(() => {
     const labels = [];
@@ -311,6 +352,7 @@ const InnerApp = () => {
         onMobileFiltersToggle={() => setMobileFiltersOpen(!mobileFiltersOpen)}
         mobileFiltersOpen={mobileFiltersOpen}
         statusText={statusText}
+        statusSubtext={statusSubtext}
         statusDotClass={statusDotClass}
         onHelpClick={user ? () => setOnboardingOpen(true) : undefined}
       />
