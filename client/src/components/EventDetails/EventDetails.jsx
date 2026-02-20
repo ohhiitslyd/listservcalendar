@@ -1,4 +1,10 @@
-import React, { useContext, useEffect, useState, useRef, useCallback } from "react";
+import React, {
+  useContext,
+  useEffect,
+  useState,
+  useRef,
+  useCallback,
+} from "react";
 import { AppContext } from "../../context/AppContext";
 import { api } from "../../api/calendarApi";
 import "./EventDetails.css";
@@ -61,14 +67,16 @@ export const EventDetails = () => {
         setSuggestions([]);
         setShowSuggestions(false);
       }
-    }, 300);
+    }, 10);
   }, []);
 
   useEffect(() => {
     const handleClickOutside = (e) => {
       if (
-        suggestionsRef.current && !suggestionsRef.current.contains(e.target) &&
-        inputRef.current && !inputRef.current.contains(e.target)
+        suggestionsRef.current &&
+        !suggestionsRef.current.contains(e.target) &&
+        inputRef.current &&
+        !inputRef.current.contains(e.target)
       ) {
         setShowSuggestions(false);
       }
@@ -117,11 +125,15 @@ export const EventDetails = () => {
     if (showSuggestions && suggestions.length > 0) {
       if (e.key === "ArrowDown") {
         e.preventDefault();
-        setActiveSuggestionIndex((prev) => (prev < suggestions.length - 1 ? prev + 1 : 0));
+        setActiveSuggestionIndex((prev) =>
+          prev < suggestions.length - 1 ? prev + 1 : 0,
+        );
         return;
       } else if (e.key === "ArrowUp") {
         e.preventDefault();
-        setActiveSuggestionIndex((prev) => (prev > 0 ? prev - 1 : suggestions.length - 1));
+        setActiveSuggestionIndex((prev) =>
+          prev > 0 ? prev - 1 : suggestions.length - 1,
+        );
         return;
       } else if (e.key === "Enter" && activeSuggestionIndex >= 0) {
         e.preventDefault();
@@ -171,24 +183,33 @@ export const EventDetails = () => {
         .filter((entry) => {
           const entryId = String(entry?.id || "").trim();
           const normalizedEntryId = normalizeEventId(entryId);
-          return selectedEventIds.has(entryId) || selectedEventIds.has(normalizedEntryId);
+          return (
+            selectedEventIds.has(entryId) ||
+            selectedEventIds.has(normalizedEntryId)
+          );
         })
-        .map((entry) => String(entry?.email || "").trim().toLowerCase())
-        .filter(Boolean)
-    )
+        .map((entry) =>
+          String(entry?.email || "")
+            .trim()
+            .toLowerCase(),
+        )
+        .filter(Boolean),
+    ),
   );
 
   const displayInviters = Array.from(
-    new Set([...(selectedEventInviters || []), ...acceptedInviters])
+    new Set([...(selectedEventInviters || []), ...acceptedInviters]),
   );
 
   // Format date and time
   const formatTime = (date) => {
-    return new Date(date).toLocaleTimeString("en-US", {
-      hour: "numeric",
-      minute: "2-digit",
-      hour12: true,
-    }).toLowerCase();
+    return new Date(date)
+      .toLocaleTimeString("en-US", {
+        hour: "numeric",
+        minute: "2-digit",
+        hour12: true,
+      })
+      .toLowerCase();
   };
 
   const formatDate = (date) => {
@@ -221,11 +242,11 @@ export const EventDetails = () => {
       setNudgeLoading(true);
       const results = await Promise.allSettled(
         finalRecipients.map((r) =>
-          api.nudgeEvent({ eventId: selectedEvent.id, targetEmail: r.email })
-        )
+          api.nudgeEvent({ eventId: selectedEvent.id, targetEmail: r.email }),
+        ),
       );
       const succeeded = results.filter(
-        (r) => r.status === "fulfilled" && r.value?.success
+        (r) => r.status === "fulfilled" && r.value?.success,
       ).length;
       const total = finalRecipients.length;
 
@@ -282,13 +303,22 @@ export const EventDetails = () => {
     <div className="event-details-card">
       {/* Header with colored background */}
       <div className="event-details-header">
-        <h3 className="event-details-title">{selectedEvent.title || "(No title)"}</h3>
+        <h3 className="event-details-title">
+          {selectedEvent.title || "(No title)"}
+        </h3>
         <button
           className="close-panel-button"
           onClick={closeDetails}
           aria-label="Close"
         >
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={freeFoodGreen} strokeWidth="2">
+          <svg
+            width="20"
+            height="20"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke={freeFoodGreen}
+            strokeWidth="2"
+          >
             <line x1="18" y1="6" x2="6" y2="18"></line>
             <line x1="6" y1="6" x2="18" y2="18"></line>
           </svg>
@@ -301,7 +331,9 @@ export const EventDetails = () => {
       {displayInviters.length > 0 && (
         <div className="event-details-inviters">
           <span className="event-details-inviters-label">
-            {acceptedInviters.length > 0 ? "Accepted nudges from:" : "Invited by:"}
+            {acceptedInviters.length > 0
+              ? "Accepted nudges from:"
+              : "Invited by:"}
           </span>{" "}
           <span>{displayInviters.join(", ")}</span>
         </div>
@@ -311,18 +343,36 @@ export const EventDetails = () => {
       <div className="event-details-content">
         {selectedEvent.extendedProps?.organization && (
           <div className="event-details-row">
-            <svg className="event-details-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#1e1e1e" strokeWidth="2">
+            <svg
+              className="event-details-icon"
+              width="15"
+              height="15"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="#1e1e1e"
+              strokeWidth="2"
+            >
               <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
               <line x1="16" y1="2" x2="16" y2="6"></line>
               <line x1="8" y1="2" x2="8" y2="6"></line>
               <line x1="3" y1="10" x2="21" y2="10"></line>
             </svg>
-            <span className="event-details-text">{selectedEvent.extendedProps.organization}</span>
+            <span className="event-details-text">
+              {selectedEvent.extendedProps.organization}
+            </span>
           </div>
         )}
 
         <div className="event-details-row">
-          <svg className="event-details-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#1e1e1e" strokeWidth="2">
+          <svg
+            className="event-details-icon"
+            width="15"
+            height="15"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="#1e1e1e"
+            strokeWidth="2"
+          >
             <circle cx="12" cy="12" r="10"></circle>
             <polyline points="12 6 12 12 16 14"></polyline>
           </svg>
@@ -331,7 +381,8 @@ export const EventDetails = () => {
               <>
                 {!selectedEvent.allDay && (
                   <div className="event-details-text">
-                    {formatTime(selectedEvent.start)} - {formatTime(selectedEvent.end)}
+                    {formatTime(selectedEvent.start)} -{" "}
+                    {formatTime(selectedEvent.end)}
                   </div>
                 )}
                 <div className="event-details-text">
@@ -344,23 +395,41 @@ export const EventDetails = () => {
 
         {selectedEvent.extendedProps?.location && (
           <div className="event-details-row">
-            <svg className="event-details-icon" width="15" height="15" viewBox="0 0 24 24" fill="#1d1b20">
+            <svg
+              className="event-details-icon"
+              width="15"
+              height="15"
+              viewBox="0 0 24 24"
+              fill="#1d1b20"
+            >
               <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"></path>
             </svg>
-            <span className="event-details-text">{selectedEvent.extendedProps.location}</span>
+            <span className="event-details-text">
+              {selectedEvent.extendedProps.location}
+            </span>
           </div>
         )}
 
         {selectedEvent.extendedProps?.description && (
           <div className="event-details-row">
-            <svg className="event-details-icon" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#1e1e1e" strokeWidth="1.5">
+            <svg
+              className="event-details-icon"
+              width="17"
+              height="17"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="#1e1e1e"
+              strokeWidth="1.5"
+            >
               <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
               <polyline points="14 2 14 8 20 8"></polyline>
               <line x1="16" y1="13" x2="8" y2="13"></line>
               <line x1="16" y1="17" x2="8" y2="17"></line>
               <polyline points="10 9 9 9 8 9"></polyline>
             </svg>
-            <span className="event-details-text">{selectedEvent.extendedProps.description}</span>
+            <span className="event-details-text">
+              {selectedEvent.extendedProps.description}
+            </span>
           </div>
         )}
 
@@ -386,25 +455,36 @@ export const EventDetails = () => {
         )}
 
         {selectedEvent.extendedProps?.tags &&
-        selectedEvent.extendedProps.tags.length > 0 && (
-          <div className="event-details-row event-details-tags-row">
-            <svg className="event-details-icon" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#1e1e1e" strokeWidth="2">
-              <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path>
-              <line x1="7" y1="7" x2="7.01" y2="7"></line>
-            </svg>
-            <div className="event-tags-container">
-              {selectedEvent.extendedProps.tags.map((tag, index) => (
-                <span 
-                  key={index} 
-                  className="event-tag"
-                  style={{ backgroundColor: getTagColor(), borderColor: getTagColor() }}
-                >
-                  {tag}
-                </span>
-              ))}
+          selectedEvent.extendedProps.tags.length > 0 && (
+            <div className="event-details-row event-details-tags-row">
+              <svg
+                className="event-details-icon"
+                width="17"
+                height="17"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="#1e1e1e"
+                strokeWidth="2"
+              >
+                <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path>
+                <line x1="7" y1="7" x2="7.01" y2="7"></line>
+              </svg>
+              <div className="event-tags-container">
+                {selectedEvent.extendedProps.tags.map((tag, index) => (
+                  <span
+                    key={index}
+                    className="event-tag"
+                    style={{
+                      backgroundColor: getTagColor(),
+                      borderColor: getTagColor(),
+                    }}
+                  >
+                    {tag}
+                  </span>
+                ))}
+              </div>
             </div>
-          </div>
-        )}
+          )}
       </div>
 
       {openedFromNudges ? (
@@ -426,93 +506,117 @@ export const EventDetails = () => {
             {inviteResponseLoading ? "Working..." : "Accept"}
           </button>
         </div>
-      ) : canNudge && (
-        <div className="event-details-actions">
-          {!showNudgeForm ? (
-            <button
-              type="button"
-              className="event-action-button"
-              onClick={() => setShowNudgeForm(true)}
-            >
-              Nudge
-            </button>
-          ) : (
-            <form className="event-nudge-form" onSubmit={handleNudgeSubmit}>
-              <div className="event-nudge-autocomplete">
-                <div
-                  className="event-nudge-chips-container"
-                  onClick={() => inputRef.current?.focus()}
-                >
-                  {nudgeRecipients.map((r) => (
-                    <span key={r.email} className="event-nudge-chip">
-                      <span className="event-nudge-chip-label">{r.displayName === r.email ? r.email : r.displayName}</span>
-                      <button
-                        type="button"
-                        className="event-nudge-chip-remove"
-                        onClick={(e) => { e.stopPropagation(); removeRecipient(r.email); }}
-                        aria-label={`Remove ${r.displayName}`}
-                      >
-                        &times;
-                      </button>
-                    </span>
-                  ))}
-                  <input
-                    ref={inputRef}
-                    type="text"
-                    className="event-nudge-chip-input"
-                    placeholder={nudgeRecipients.length === 0 ? "Search name or enter email" : ""}
-                    value={nudgeEmail}
-                    onChange={(e) => {
-                      setNudgeEmail(e.target.value);
-                      searchPeople(e.target.value);
-                    }}
-                    onKeyDown={handleInputKeyDown}
-                    onFocus={() => { if (suggestions.length > 0) setShowSuggestions(true); }}
-                    autoComplete="off"
-                  />
-                </div>
-                {showSuggestions && suggestions.length > 0 && (
-                  <ul className="event-nudge-suggestions" ref={suggestionsRef}>
-                    {suggestions.map((s, i) => (
-                      <li
-                        key={s.email}
-                        className={`event-nudge-suggestion-item${i === activeSuggestionIndex ? " active" : ""}`}
-                        onMouseDown={() => handleSuggestionClick(s)}
-                        onMouseEnter={() => setActiveSuggestionIndex(i)}
-                      >
-                        <span className="suggestion-name">{s.displayName}</span>
-                        <span className="suggestion-email">{s.email}</span>
-                      </li>
+      ) : (
+        canNudge && (
+          <div className="event-details-actions">
+            {!showNudgeForm ? (
+              <button
+                type="button"
+                className="event-action-button"
+                onClick={() => {
+                  setShowNudgeForm(true);
+                  setTimeout(() => inputRef.current?.focus(), 0);
+                }}
+              >
+                Nudge
+              </button>
+            ) : (
+              <form className="event-nudge-form" onSubmit={handleNudgeSubmit}>
+                <div className="event-nudge-autocomplete">
+                  <div
+                    className="event-nudge-chips-container"
+                    onClick={() => inputRef.current?.focus()}
+                  >
+                    {nudgeRecipients.map((r) => (
+                      <span key={r.email} className="event-nudge-chip">
+                        <span className="event-nudge-chip-label">
+                          {r.displayName === r.email ? r.email : r.displayName}
+                        </span>
+                        <button
+                          type="button"
+                          className="event-nudge-chip-remove"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            removeRecipient(r.email);
+                          }}
+                          aria-label={`Remove ${r.displayName}`}
+                        >
+                          &times;
+                        </button>
+                      </span>
                     ))}
-                  </ul>
-                )}
-              </div>
-              <div className="event-nudge-actions">
-                <button
-                  type="button"
-                  className="event-action-button event-action-button-secondary"
-                  onClick={() => {
-                    setShowNudgeForm(false);
-                    setNudgeEmail("");
-                    setNudgeRecipients([]);
-                  }}
-                  disabled={nudgeLoading}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="event-action-button"
-                  disabled={nudgeLoading || (nudgeRecipients.length === 0 && !nudgeEmail.trim().includes("@"))}
-                >
-                  {nudgeLoading ? "Sending..." : "Submit"}
-                </button>
-              </div>
-            </form>
-          )}
-        </div>
+                    <input
+                      ref={inputRef}
+                      type="text"
+                      className="event-nudge-chip-input"
+                      placeholder={
+                        nudgeRecipients.length === 0
+                          ? "Search name or enter email"
+                          : ""
+                      }
+                      value={nudgeEmail}
+                      onChange={(e) => {
+                        setNudgeEmail(e.target.value);
+                        searchPeople(e.target.value);
+                      }}
+                      onKeyDown={handleInputKeyDown}
+                      onFocus={() => {
+                        if (suggestions.length > 0) setShowSuggestions(true);
+                      }}
+                      autoComplete="off"
+                    />
+                  </div>
+                  {showSuggestions && suggestions.length > 0 && (
+                    <ul
+                      className="event-nudge-suggestions"
+                      ref={suggestionsRef}
+                    >
+                      {suggestions.map((s, i) => (
+                        <li
+                          key={s.email}
+                          className={`event-nudge-suggestion-item${i === activeSuggestionIndex ? " active" : ""}`}
+                          onMouseDown={() => handleSuggestionClick(s)}
+                          onMouseEnter={() => setActiveSuggestionIndex(i)}
+                        >
+                          <span className="suggestion-name">
+                            {s.displayName}
+                          </span>
+                          <span className="suggestion-email">{s.email}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+                <div className="event-nudge-actions">
+                  <button
+                    type="button"
+                    className="event-action-button event-action-button-secondary"
+                    onClick={() => {
+                      setShowNudgeForm(false);
+                      setNudgeEmail("");
+                      setNudgeRecipients([]);
+                    }}
+                    disabled={nudgeLoading}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="event-action-button"
+                    disabled={
+                      nudgeLoading ||
+                      (nudgeRecipients.length === 0 &&
+                        !nudgeEmail.trim().includes("@"))
+                    }
+                  >
+                    {nudgeLoading ? "Sending..." : "Submit"}
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+        )
       )}
-
     </div>
   );
 };
