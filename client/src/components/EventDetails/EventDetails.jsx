@@ -20,6 +20,7 @@ export const EventDetails = () => {
   const [nudgeEmail, setNudgeEmail] = useState("");
   const [nudgeRecipients, setNudgeRecipients] = useState([]);
   const [nudgeLoading, setNudgeLoading] = useState(false);
+  const [nudgeSuccess, setNudgeSuccess] = useState(null); // { emails: string[] } when nudge succeeds
   const [inviteResponseLoading, setInviteResponseLoading] = useState(false);
   const [suggestions, setSuggestions] = useState([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -28,12 +29,33 @@ export const EventDetails = () => {
   const searchCounterRef = useRef(0);
   const suggestionsRef = useRef(null);
   const inputRef = useRef(null);
+  
+  // Session-level storage for previously nudged emails
+  const getPreviouslyNudgedEmails = () => {
+    try {
+      const stored = sessionStorage.getItem("previouslyNudgedEmails");
+      return stored ? JSON.parse(stored) : [];
+    } catch {
+      return [];
+    }
+  };
+  
+  const addToPreviouslyNudged = (emails) => {
+    try {
+      const existing = getPreviouslyNudgedEmails();
+      const newSet = new Set([...existing, ...emails.map(e => e.toLowerCase())]);
+      sessionStorage.setItem("previouslyNudgedEmails", JSON.stringify([...newSet]));
+    } catch {
+      // Ignore storage errors
+    }
+  };
 
   useEffect(() => {
     setShowNudgeForm(false);
     setNudgeEmail("");
     setNudgeRecipients([]);
     setNudgeLoading(false);
+    setNudgeSuccess(null);
     setInviteResponseLoading(false);
     setSuggestions([]);
     setShowSuggestions(false);
@@ -44,8 +66,20 @@ export const EventDetails = () => {
   const searchPeople = useCallback((query) => {
     if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
     if (!query || query.trim().length < 2) {
-      setSuggestions([]);
-      setShowSuggestions(false);
+      // Show previously nudged emails when input is empty or very short
+      const previousEmails = getPreviouslyNudgedEmails();
+      if (previousEmails.length > 0 && query.trim().length > 0) {
+        const lowerQuery = query.toLowerCase();
+        const matching = previousEmails
+          .filter(email => email.toLowerCase().includes(lowerQuery))
+          .map(email => ({ email, displayName: email, isPreviouslyNudged: true }));
+        setSuggestions(matching);
+        setShowSuggestions(matching.length > 0);
+        setActiveSuggestionIndex(-1);
+      } else {
+        setSuggestions([]);
+        setShowSuggestions(false);
+      }
       return;
     }
     debounceTimerRef.current = setTimeout(async () => {
@@ -53,13 +87,33 @@ export const EventDetails = () => {
       try {
         const data = await api.searchDartmouthPeople(query.trim());
         if (requestId !== searchCounterRef.current) return;
-        setSuggestions(data.results || []);
-        setShowSuggestions((data.results || []).length > 0);
+        
+        // Merge with previously nudged emails that match
+        const previousEmails = getPreviouslyNudgedEmails();
+        const lowerQuery = query.toLowerCase();
+        const previousMatches = previousEmails
+          .filter(email => email.toLowerCase().includes(lowerQuery))
+          .map(email => ({ email, displayName: email, isPreviouslyNudged: true }));
+        
+        // Combine: previously nudged first (if not already in API results), then API results
+        const apiResults = data.results || [];
+        const apiEmails = new Set(apiResults.map(r => r.email.toLowerCase()));
+        const uniquePrevious = previousMatches.filter(p => !apiEmails.has(p.email.toLowerCase()));
+        const combined = [...uniquePrevious, ...apiResults];
+        
+        setSuggestions(combined);
+        setShowSuggestions(combined.length > 0);
         setActiveSuggestionIndex(-1);
       } catch {
         if (requestId !== searchCounterRef.current) return;
-        setSuggestions([]);
-        setShowSuggestions(false);
+        // Still show previously nudged emails on error
+        const previousEmails = getPreviouslyNudgedEmails();
+        const lowerQuery = query.toLowerCase();
+        const matching = previousEmails
+          .filter(email => email.toLowerCase().includes(lowerQuery))
+          .map(email => ({ email, displayName: email, isPreviouslyNudged: true }));
+        setSuggestions(matching);
+        setShowSuggestions(matching.length > 0);
       }
     }, 300);
   }, []);
@@ -227,18 +281,37 @@ export const EventDetails = () => {
       const succeeded = results.filter(
         (r) => r.status === "fulfilled" && r.value?.success
       ).length;
-      const total = finalRecipients.length;
+      const successfulEmails = finalRecipients
+        .filter((_, i) => results[i].status === "fulfilled" && results[i].value?.success)
+        .map(r => r.email);
+      
+      // Collect error messages for failed nudges
+      const failedResults = results
+        .map((r, i) => ({ result: r, email: finalRecipients[i].email }))
+        .filter(({ result }) => result.status !== "fulfilled" || !result.value?.success);
+      const errorMessages = failedResults.map(({ result, email }) => {
+        const errorMsg = result.status === "fulfilled" && result.value?.error 
+          ? result.value.error 
+          : "Unknown error";
+        return `${email}: ${errorMsg}`;
+      });
 
-      if (succeeded === total) {
-        alert(`Nudge sent to all ${total} recipient${total > 1 ? "s" : ""}`);
-      } else {
-        alert(`Nudge sent to ${succeeded} of ${total} recipients`);
+      // Save successful emails to session storage for autofill
+      if (successfulEmails.length > 0) {
+        addToPreviouslyNudged(successfulEmails);
       }
+
+      // Show inline success message instead of browser alert
+      setNudgeSuccess({ 
+        emails: successfulEmails, 
+        total: finalRecipients.length,
+        errors: errorMessages 
+      });
       setNudgeEmail("");
       setNudgeRecipients([]);
       setShowNudgeForm(false);
     } catch (error) {
-      alert("Failed to nudge event");
+      setNudgeSuccess({ emails: [], total: finalRecipients.length, error: true });
     } finally {
       setNudgeLoading(false);
     }
@@ -428,11 +501,46 @@ export const EventDetails = () => {
         </div>
       ) : canNudge && (
         <div className="event-details-actions">
+          {nudgeSuccess && (
+            <div className={`nudge-success-message ${nudgeSuccess.error || (nudgeSuccess.errors?.length > 0 && nudgeSuccess.emails.length === 0) ? 'nudge-error' : nudgeSuccess.errors?.length > 0 ? 'nudge-partial' : ''}`}>
+              <div className="nudge-message-content">
+                {nudgeSuccess.error ? (
+                  <span>Failed to send nudge. Please try again.</span>
+                ) : nudgeSuccess.emails.length === nudgeSuccess.total ? (
+                  <span>
+                    Nudge successfully sent to{' '}
+                    <strong>{nudgeSuccess.emails.join(', ')}</strong>
+                  </span>
+                ) : nudgeSuccess.emails.length > 0 ? (
+                  <span>
+                    Nudge sent to <strong>{nudgeSuccess.emails.join(', ')}</strong>
+                  </span>
+                ) : nudgeSuccess.errors?.length > 0 ? (
+                  <span className="nudge-error-title">Nudge failed</span>
+                ) : null}
+                {nudgeSuccess.errors?.length > 0 && (
+                  <div className="nudge-error-details">
+                    {nudgeSuccess.errors.map((err, i) => (
+                      <div key={i} className="nudge-error-item">{err}</div>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <button 
+                type="button" 
+                className="nudge-success-dismiss"
+                onClick={() => setNudgeSuccess(null)}
+                aria-label="Dismiss"
+              >
+                ×
+              </button>
+            </div>
+          )}
           {!showNudgeForm ? (
             <button
               type="button"
               className="event-action-button"
-              onClick={() => setShowNudgeForm(true)}
+              onClick={() => { setShowNudgeForm(true); setNudgeSuccess(null); }}
             >
               Nudge
             </button>
@@ -482,6 +590,9 @@ export const EventDetails = () => {
                       >
                         <span className="suggestion-name">{s.displayName}</span>
                         <span className="suggestion-email">{s.email}</span>
+                        {s.isPreviouslyNudged && (
+                          <span className="previously-nudged-badge">Nudged before</span>
+                        )}
                       </li>
                     ))}
                   </ul>
