@@ -66,20 +66,8 @@ export const EventDetails = () => {
   const searchPeople = useCallback((query) => {
     if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
     if (!query || query.trim().length < 2) {
-      // Show previously nudged emails when input is empty or very short
-      const previousEmails = getPreviouslyNudgedEmails();
-      if (previousEmails.length > 0 && query.trim().length > 0) {
-        const lowerQuery = query.toLowerCase();
-        const matching = previousEmails
-          .filter(email => email.toLowerCase().includes(lowerQuery))
-          .map(email => ({ email, displayName: email, isPreviouslyNudged: true }));
-        setSuggestions(matching);
-        setShowSuggestions(matching.length > 0);
-        setActiveSuggestionIndex(-1);
-      } else {
-        setSuggestions([]);
-        setShowSuggestions(false);
-      }
+      setSuggestions([]);
+      setShowSuggestions(false);
       return;
     }
     debounceTimerRef.current = setTimeout(async () => {
@@ -88,32 +76,24 @@ export const EventDetails = () => {
         const data = await api.searchDartmouthPeople(query.trim());
         if (requestId !== searchCounterRef.current) return;
         
-        // Merge with previously nudged emails that match
-        const previousEmails = getPreviouslyNudgedEmails();
-        const lowerQuery = query.toLowerCase();
-        const previousMatches = previousEmails
-          .filter(email => email.toLowerCase().includes(lowerQuery))
-          .map(email => ({ email, displayName: email, isPreviouslyNudged: true }));
+        // Get previously nudged emails to mark directory results
+        const previousEmails = new Set(
+          getPreviouslyNudgedEmails().map(e => e.toLowerCase())
+        );
         
-        // Combine: previously nudged first (if not already in API results), then API results
-        const apiResults = data.results || [];
-        const apiEmails = new Set(apiResults.map(r => r.email.toLowerCase()));
-        const uniquePrevious = previousMatches.filter(p => !apiEmails.has(p.email.toLowerCase()));
-        const combined = [...uniquePrevious, ...apiResults];
+        // Mark API results that have been previously nudged
+        const apiResults = (data.results || []).map(r => ({
+          ...r,
+          isPreviouslyNudged: previousEmails.has(r.email.toLowerCase())
+        }));
         
-        setSuggestions(combined);
-        setShowSuggestions(combined.length > 0);
+        setSuggestions(apiResults);
+        setShowSuggestions(apiResults.length > 0);
         setActiveSuggestionIndex(-1);
       } catch {
         if (requestId !== searchCounterRef.current) return;
-        // Still show previously nudged emails on error
-        const previousEmails = getPreviouslyNudgedEmails();
-        const lowerQuery = query.toLowerCase();
-        const matching = previousEmails
-          .filter(email => email.toLowerCase().includes(lowerQuery))
-          .map(email => ({ email, displayName: email, isPreviouslyNudged: true }));
-        setSuggestions(matching);
-        setShowSuggestions(matching.length > 0);
+        setSuggestions([]);
+        setShowSuggestions(false);
       }
     }, 300);
   }, []);
