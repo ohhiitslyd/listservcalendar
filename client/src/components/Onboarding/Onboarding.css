@@ -217,6 +217,21 @@
   background: #ffffff;
 }
 
+/* Smooth animation for FAQ accordion using grid */
+.onboarding-faq-item .onboarding-faq-answer-wrapper {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.25s ease-out;
+}
+
+.onboarding-faq-item[open] .onboarding-faq-answer-wrapper {
+  grid-template-rows: 1fr;
+}
+
+.onboarding-faq-item .onboarding-faq-answer-wrapper > div {
+  overflow: hidden;
+}
+
 .onboarding-faq-question {
   padding: 14px 16px;
   font-size: 15px;

@@ -498,10 +498,19 @@
     z-index: 1500;
     display: flex;
     flex-direction: column;
+    overflow: hidden;
   }
 
   .event-details-content {
     flex: 1;
     overflow-y: auto;
+    min-height: 0;
+  }
+
+  .event-poster-image {
+    max-height: none;
+    height: auto;
+    object-fit: contain;
+    width: 100%;
   }
 }
