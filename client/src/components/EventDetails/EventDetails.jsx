@@ -101,7 +101,7 @@ export const EventDetails = () => {
         setSuggestions([]);
         setShowSuggestions(false);
       }
-    }, 10);
+    }, 300);
   }, []);
 
   useEffect(() => {
@@ -559,21 +559,56 @@ export const EventDetails = () => {
             {inviteResponseLoading ? "Working..." : "Accept"}
           </button>
         </div>
-      ) : (
-        canNudge && (
-          <div className="event-details-actions">
-            {!showNudgeForm ? (
-              <button
-                type="button"
-                className="event-action-button"
-                onClick={() => {
-                  setShowNudgeForm(true);
-                  setTimeout(() => inputRef.current?.focus(), 0);
-                }}
+      ) : canNudge && (
+        <div className="event-details-actions">
+          {nudgeSuccess && (
+            <div className={`nudge-success-message ${nudgeSuccess.error || (nudgeSuccess.errors?.length > 0 && nudgeSuccess.emails.length === 0) ? 'nudge-error' : nudgeSuccess.errors?.length > 0 ? 'nudge-partial' : ''}`}>
+              <div className="nudge-message-content">
+                {nudgeSuccess.error ? (
+                  <span>Failed to send nudge. Please try again.</span>
+                ) : nudgeSuccess.emails.length === nudgeSuccess.total ? (
+                  <span>
+                    Nudge successfully sent to{' '}
+                    <strong>{nudgeSuccess.emails.join(', ')}</strong>
+                  </span>
+                ) : nudgeSuccess.emails.length > 0 ? (
+                  <span>
+                    Nudge sent to <strong>{nudgeSuccess.emails.join(', ')}</strong>
+                  </span>
+                ) : nudgeSuccess.errors?.length > 0 ? (
+                  <span className="nudge-error-title">Nudge failed</span>
+                ) : null}
+                {nudgeSuccess.errors?.length > 0 && (
+                  <div className="nudge-error-details">
+                    {nudgeSuccess.errors.map((err, i) => (
+                      <div key={i} className="nudge-error-item">{err}</div>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <button 
+                type="button" 
+                className="nudge-success-dismiss"
+                onClick={() => setNudgeSuccess(null)}
+                aria-label="Dismiss"
               >
-                Nudge
+                ×
               </button>
-            ) : (
+            </div>
+          )}
+          {!showNudgeForm ? (
+            <button
+              type="button"
+              className="event-action-button"
+              onClick={() => {
+                setShowNudgeForm(true);
+                setNudgeSuccess(null);
+                setTimeout(() => inputRef.current?.focus(), 0);
+              }}
+            >
+              Nudge
+            </button>
+          ) : (
               <form className="event-nudge-form" onSubmit={handleNudgeSubmit}>
                 <div className="event-nudge-autocomplete">
                   <div
@@ -635,6 +670,9 @@ export const EventDetails = () => {
                             {s.displayName}
                           </span>
                           <span className="suggestion-email">{s.email}</span>
+                          {s.isPreviouslyNudged && (
+                            <span className="previously-nudged-badge">Nudged before</span>
+                          )}
                         </li>
                       ))}
                     </ul>
@@ -668,7 +706,6 @@ export const EventDetails = () => {
               </form>
             )}
           </div>
-        )
       )}
     </div>
   );
