@@ -339,7 +339,7 @@ export const Header = ({
                 type="button"
                 onClick={() => setInvitedEventsExpanded((prev) => !prev)}
               >
-                <span>Recieved</span>
+                <span>Received</span>
                 <svg
                   className={`dropdown-arrow ${invitedEventsExpanded ? "open" : ""}`}
                   width="16"
