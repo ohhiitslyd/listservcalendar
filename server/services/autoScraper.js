@@ -520,13 +520,25 @@ async function cleanupOldEvents(pool, oauth2Client, listservCalendarId) {
 
     deletedCount = deleteResults.rowCount || 0;
 
+    // Clean up old orphaned scraped_emails (7+ days old, no events reference them)
+    const orphanedResult = await pool.query(
+      `DELETE FROM scraped_emails
+       WHERE received_date < $1
+         AND NOT EXISTS (
+           SELECT 1 FROM events e WHERE e.email_id = scraped_emails.id
+         )`,
+      [cutoffISO]
+    );
+    const orphanedDeleted = orphanedResult.rowCount || 0;
+
     console.log(
-      `[autoScraper] Cleanup complete: ${deletedCount} events deleted from database, ${calendarDeletedCount} deleted from Google Calendar`
+      `[autoScraper] Cleanup complete: ${deletedCount} events deleted, ${calendarDeletedCount} from GCal, ${orphanedDeleted} orphaned emails deleted`
     );
 
     return {
       deleted: deletedCount,
       calendarDeleted: calendarDeletedCount,
+      orphanedEmailsDeleted: orphanedDeleted,
       errors: errors.length > 0 ? errors : undefined,
     };
   } catch (error) {

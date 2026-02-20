@@ -14,7 +14,7 @@
   height: 100%;
   background: #fff;
   overflow: hidden;
-  padding: 0px 40px 0px 40px;
+  padding: 0px 40px 20px 40px;
 }
 
 /* Floating event details overlay (shown next to clicked event) */
@@ -259,13 +259,32 @@
 .fc-timegrid-slot-label {
   font-family: 'Poppins', sans-serif;
   font-weight: 400;
-  font-size: 12px;
+  font-size: 11px;
   color: #6b7280;
   padding: 0 8px;
+  vertical-align: top !important;
+  position: relative;
 }
 
 .fc-timegrid-slot-label-frame {
   text-align: right;
+  padding: 0 !important;
+  height: 100%;
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-end;
+}
+
+.fc-timegrid-slot-label-cushion {
+  transform: translateY(-50%);
+  background: white;
+  padding: 0 4px;
+  line-height: 1;
+}
+
+/* Hide the first time label (12:00am/midnight) since it hangs off the top */
+.fc-timegrid-slots tbody tr:first-child .fc-timegrid-slot-label-cushion {
+  visibility: hidden;
 }
 
 /* Time grid column styling */
@@ -381,6 +400,41 @@
   border-top: 0;
 }
 
+/* Current time indicator line */
+.fc-timegrid-now-indicator-line {
+  border-color: #ef4444 !important;
+  border-width: 1px !important;
+}
+
+.fc-timegrid-now-indicator-arrow {
+  display: none !important;
+}
+
+/* Now indicator dot/circle on the left */
+.fc-timegrid-now-indicator-container {
+  overflow: visible !important;
+}
+
+.fc-timegrid-now-indicator-line::before {
+  content: "";
+  position: absolute;
+  left: -4px;
+  top: -3px;
+  width: 6px;
+  height: 6px;
+  background-color: #ef4444;
+  border-radius: 50%;
+}
+
+/* Make hour lines more prominent */
+.fc-timegrid-slot-lane {
+  border-top: 1px solid #d1d5db !important;
+}
+
+.fc-timegrid-slot-lane.fc-timegrid-slot-minor {
+  border-top: 1px dashed #e5e7eb !important;
+}
+
 .fc-scrollgrid-section {
   min-height: 0;
 }
@@ -407,6 +461,12 @@
   background: #9ca3af;
 }
 
+.fc-scrollgrid {
+  border-bottom-left-radius: 12px !important;
+  border-bottom-right-radius: 12px !important;
+  overflow: hidden;
+}
+
 /* Remove FullCalendar default header */
 .fc-header-toolbar {
   display: none !important;
@@ -431,7 +491,7 @@
 /* Mobile Responsive Styles */
 @media (max-width: 768px) {
   .app-calendar-wrapper {
-    padding: 0px 8px 0px 8px;
+    padding: 0px 8px 16px 8px;
   }
 
   /* Make event details overlay full-page on mobile */
@@ -476,5 +536,16 @@
 
   .fc-col-header-cell {
     font-size: 12px;
+    padding: 6px 0 !important;
+  }
+
+  .fc-col-header-cell-cushion {
+    padding: 2px 0;
+    gap: 2px;
+  }
+
+  .fc-timegrid-col-header .fc-col-header-cell-cushion::after {
+    font-size: 14px;
+    margin-top: 2px;
   }
 }

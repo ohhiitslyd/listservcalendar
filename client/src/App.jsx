@@ -74,6 +74,21 @@ const InnerApp = () => {
   const [onboardingClosedThisSession, setOnboardingClosedThisSession] = useState(false);
   const [hasLoggedInThisSession, setHasLoggedInThisSession] = useState(false);
   const [lastPreferencesSavedAt, setLastPreferencesSavedAt] = useState(null);
+  const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
+
+  // Close mobile filters when window is resized to desktop view
+  useEffect(() => {
+    const handleResize = () => {
+      const isMobileView = window.innerWidth <= 768;
+      setIsMobile(isMobileView);
+      if (!isMobileView && mobileFiltersOpen) {
+        setMobileFiltersOpen(false);
+      }
+    };
+
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, [mobileFiltersOpen]);
 
   const totalSelectedFilters = (selectedCats?.size || 0) + (selectedOrgCats?.size || 0);
 
@@ -341,6 +356,21 @@ const InnerApp = () => {
   /* -------------------------------------------------
      Render the UI layout
      ------------------------------------------------- */
+  
+  // If not logged in, only show the onboarding modal
+  if (!user) {
+    return (
+      <div className="app-container app-container-login">
+        <Onboarding
+          isOpen={true}
+          onClose={() => {}}
+          onLogin={login}
+          isSignedIn={false}
+        />
+      </div>
+    );
+  }
+  
   return (
     <div className="app-container">
       <Header
@@ -354,7 +384,7 @@ const InnerApp = () => {
         statusText={statusText}
         statusSubtext={statusSubtext}
         statusDotClass={statusDotClass}
-        onHelpClick={user ? () => setOnboardingOpen(true) : undefined}
+        onHelpClick={() => setOnboardingOpen(true)}
       />
 
       <div className="app-content">
@@ -372,7 +402,10 @@ const InnerApp = () => {
           {/* MAIN CALENDAR – we forward the handlers with the names FullCalendar expects */}
         <Calendar
           onDatesSet={handleDatesSet}
-          scrollTime="09:00"
+          scrollTime={isMobile ? "23:59" : "09:00"}
+          statusText={statusText}
+          statusSubtext={statusSubtext}
+          statusDotClass={statusDotClass}
         />
       </div>
 

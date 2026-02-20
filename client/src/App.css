@@ -6,6 +6,12 @@
   overflow: hidden;
 }
 
+.app-container-login {
+  background: linear-gradient(135deg, #f5f9f0 0%, #e8f5e0 100%);
+  justify-content: center;
+  align-items: center;
+}
+
 /* Fixed Header - styles moved to Header.css */
 
 /* Main Content Area */
@@ -319,6 +325,11 @@
 .app-footer p {
   margin: 0;
   font-family: 'Poppins', sans-serif;
+}
+
+/* Hide mobile filters overlay on desktop by default */
+.mobile-filters-overlay {
+  display: none;
 }
 
 /* Mobile Responsive Styles */

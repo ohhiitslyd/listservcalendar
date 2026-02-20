@@ -87,7 +87,7 @@
   border-radius: 8px;
   padding: 7px 10px;
   cursor: pointer;
-  font-size: 18px;
+  font-size: 16px;
   font-family: 'Poppins', sans-serif;
   font-weight: 500;
   color: #000000;
@@ -144,8 +144,9 @@
   border: 1px solid #d4e9c4;
   font-weight: 400;
   padding: 5px 8px;
-  font-size: 14px;
+  font-size: 16px;
   white-space: nowrap;
+  gap: 2px;
 }
 
 .dropdown-arrow {
@@ -558,6 +559,48 @@
 
 .publish-button-icon {
   display: none;
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+
+.publish-button-mobile-text {
+  display: none;
+}
+
+/* Responsive styles for smaller screens */
+@media (max-width: 1200px) {
+  .app-header-button {
+    font-size: 15px;
+    padding: 6px 9px;
+  }
+
+  .calendars-button {
+    font-size: 15px;
+    padding: 6px 9px;
+  }
+
+  .publish-button-icon {
+    width: 15px;
+    height: 15px;
+  }
+}
+
+@media (max-width: 900px) {
+  .app-header-button {
+    font-size: 14px;
+    padding: 5px 8px;
+  }
+
+  .calendars-button {
+    font-size: 14px;
+    padding: 5px 8px;
+  }
+
+  .publish-button-icon {
+    width: 14px;
+    height: 14px;
+  }
 }
 
 @media (max-width: 768px) {
@@ -584,9 +627,13 @@
     font-size: 16px;
   }
 
+  .app-header-logo h2.mobile-hidden {
+    display: none;
+  }
+
   .app-header-button {
-    padding: 6px 8px;
-    font-size: 14px;
+    padding: 5px 7px;
+    font-size: 13px;
   }
 
   .publish-button-text {
@@ -595,6 +642,12 @@
 
   .publish-button-icon {
     display: inline-block;
+    width: 13px;
+    height: 13px;
+  }
+
+  .publish-button-mobile-text {
+    display: inline;
   }
 
   .user-name {
@@ -602,12 +655,118 @@
   }
 
   .calendars-button {
-    padding: 6px 10px;
+    padding: 5px 7px;
     font-size: 13px;
   }
 
   .calendars-button .dropdown-arrow {
     width: 14px;
     height: 14px;
+  }
+
+  .header-status {
+    display: none;
+  }
+
+  /* Mobile dropdown adjustments */
+  .dropdown-content {
+    min-width: 250px;
+    max-width: calc(100vw - 24px);
+    max-height: 70vh;
+  }
+
+  .calendars-dropdown {
+    left: 50%;
+    right: auto;
+    transform: translateX(-50%);
+  }
+
+  .nudges-dropdown {
+    left: auto;
+    right: 0;
+    transform: translateX(0);
+  }
+
+  .user-menu-dropdown {
+    right: 0;
+    min-width: 250px;
+    max-width: calc(100vw - 24px);
+  }
+
+  .calendars-dropdown-header {
+    padding: 12px;
+  }
+
+  .calendars-dropdown-header h4 {
+    font-size: 13px;
+  }
+
+  .calendars-list {
+    padding: 6px;
+    max-height: 250px;
+  }
+
+  .calendar-item {
+    padding: 6px 10px;
+  }
+
+  .calendar-name {
+    font-size: 12px;
+  }
+
+  .calendar-badge {
+    font-size: 10px;
+    padding: 1px 4px;
+  }
+
+  .user-menu-item {
+    padding: 8px 12px;
+    font-size: 12px;
+  }
+
+  .user-menu-empty {
+    padding: 10px 8px;
+    font-size: 11px;
+  }
+
+  .nudges-events-list {
+    max-height: 200px;
+    padding: 0 6px;
+    gap: 6px;
+  }
+
+  .nudges-event-bubble {
+    height: 44px;
+    padding: 3px 5px;
+  }
+
+  .nudges-event-title {
+    font-size: 9px;
+  }
+
+  .nudges-event-org {
+    font-size: 8px;
+  }
+
+  .user-menu-accordion {
+    padding: 10px 12px;
+    font-size: 12px;
+  }
+}
+
+@media (max-width: 600px) {
+  .app-header-button {
+    font-size: 12px;
+    padding: 4px 8px;
+  }
+
+  .calendars-button {
+    font-size: 12px;
+    padding: 4px 6px;
+  }
+
+  .publish-button-icon {
+    width: 12px;
+    height: 12px;
   }
 }

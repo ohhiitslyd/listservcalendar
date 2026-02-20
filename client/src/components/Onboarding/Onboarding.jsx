@@ -9,7 +9,8 @@ import welcomeImage from "../../assets/onboarding/Q&A.png"; // same image
 
 export const Onboarding = ({ isOpen, onClose, onLogin, isSignedIn = false }) => {
   const [currentScreen, setCurrentScreen] = useState(1);
-  const totalScreens = 6;
+  // 7 screens when not signed in (last one is login), 6 when signed in
+  const totalScreens = isSignedIn ? 6 : 7;
 
   // Reset to first screen when modal opens
   useEffect(() => {
@@ -18,9 +19,9 @@ export const Onboarding = ({ isOpen, onClose, onLogin, isSignedIn = false }) => 
     }
   }, [isOpen]);
 
-  // Handle ESC key
+  // Handle ESC key - only allow closing if signed in
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen || !isSignedIn) return;
     const handleEsc = (e) => {
       if (e.key === "Escape") {
         onClose();
@@ -28,7 +29,7 @@ export const Onboarding = ({ isOpen, onClose, onLogin, isSignedIn = false }) => 
     };
     window.addEventListener("keydown", handleEsc);
     return () => window.removeEventListener("keydown", handleEsc);
-  }, [isOpen, onClose]);
+  }, [isOpen, onClose, isSignedIn]);
 
   if (!isOpen) return null;
 
@@ -45,7 +46,13 @@ export const Onboarding = ({ isOpen, onClose, onLogin, isSignedIn = false }) => 
   };
 
   const handleSkip = () => {
-    setCurrentScreen(totalScreens);
+    if (isSignedIn) {
+      // If signed in, close the modal
+      onClose();
+    } else {
+      // If not signed in, go to login screen (screen 7)
+      setCurrentScreen(7);
+    }
   };
 
   const handleLoginClick = () => {
@@ -153,38 +160,69 @@ export const Onboarding = ({ isOpen, onClose, onLogin, isSignedIn = false }) => 
                 <summary className="onboarding-faq-question">
                   Will this affect my personal calendar?
                 </summary>
-                <p className="onboarding-faq-answer">
-                  No. We create a separate 'ListServ Calendar' that you can toggle on/off or delete anytime.
-                </p>
+                <div className="onboarding-faq-answer-wrapper">
+                  <div>
+                    <p className="onboarding-faq-answer">
+                      No. We create a separate 'ListServ Calendar' that you can toggle on/off or delete anytime.
+                    </p>
+                  </div>
+                </div>
               </details>
               <details className="onboarding-faq-item">
                 <summary className="onboarding-faq-question">
                   Can I delete the ListServ calendar later?
                 </summary>
-                <p className="onboarding-faq-answer">
-                  Yes. It's a normal Google Calendar you control.
-                </p>
+                <div className="onboarding-faq-answer-wrapper">
+                  <div>
+                    <p className="onboarding-faq-answer">
+                      Yes. It's a normal Google Calendar you control.
+                    </p>
+                  </div>
+                </div>
               </details>
               <details className="onboarding-faq-item">
                 <summary className="onboarding-faq-question">
                   Why is this in testing mode?
                 </summary>
-                <p className="onboarding-faq-answer">
-                  We're piloting the product. Your filter preferences may be visible to our team for research so we can improve the experience.
-                </p>
+                <div className="onboarding-faq-answer-wrapper">
+                  <div>
+                    <p className="onboarding-faq-answer">
+                      We're piloting the product. Your filter preferences may be visible to our team for research so we can improve the experience.
+                    </p>
+                  </div>
+                </div>
               </details>
               <details className="onboarding-faq-item">
                 <summary className="onboarding-faq-question">
                   Does this work on mobile?
                 </summary>
-                <p className="onboarding-faq-answer">
-                  It works best on desktop right now.
-                </p>
+                <div className="onboarding-faq-answer-wrapper">
+                  <div>
+                    <p className="onboarding-faq-answer">
+                      It works best on desktop right now.
+                    </p>
+                  </div>
+                </div>
               </details>
             </div>
             <p className="onboarding-footer-note-small">
               Testing mode · Desktop recommended · Separate calendar created
             </p>
+          </div>
+        );
+
+      case 7:
+        return (
+          <div className="onboarding-screen onboarding-login-screen">
+            <h2 className="onboarding-title">Ready to get started?</h2>
+            <p className="onboarding-body">
+              Sign in with your school Google account to create your personalized ListServ Calendar.
+            </p>
+            <ul className="onboarding-bullet-list">
+              <li>We'll create a separate calendar just for ListServ events</li>
+              <li>Your personal calendar stays untouched</li>
+              <li>You can delete it anytime</li>
+            </ul>
           </div>
         );
 
@@ -194,7 +232,7 @@ export const Onboarding = ({ isOpen, onClose, onLogin, isSignedIn = false }) => 
   };
 
   return (
-    <div className="onboarding-overlay" onClick={onClose}>
+    <div className="onboarding-overlay" onClick={isSignedIn ? onClose : undefined}>
       <div className="onboarding-modal" onClick={(e) => e.stopPropagation()}>
         <div className="onboarding-layout">
           {/* Left panel - visual placeholder */}
@@ -206,6 +244,7 @@ export const Onboarding = ({ isOpen, onClose, onLogin, isSignedIn = false }) => 
                 {currentScreen === 4 && <img src={publishImage} alt="Publish" className="onboarding-visual-image" />}
                 {currentScreen === 5 && <img src={nudgesImage} alt="Nudges" className="onboarding-visual-image" />}
                 {currentScreen === 6 && <img src={qaImage} alt="FAQ" className="onboarding-visual-image" />}
+                {currentScreen === 7 && <img src={loginImage} alt="Login" className="onboarding-visual-image" />}
               {/* 
                 ============================================
                 HOW TO ADD IMAGES TO THE VISUAL PLACEHOLDER
@@ -256,13 +295,15 @@ export const Onboarding = ({ isOpen, onClose, onLogin, isSignedIn = false }) => 
                   />
                 ))}
               </div>
-              <button
-                className="onboarding-skip-button"
-                onClick={handleSkip}
-                type="button"
-              >
-                Skip intro
-              </button>
+              {currentScreen !== 7 && (
+                <button
+                  className="onboarding-skip-button"
+                  onClick={handleSkip}
+                  type="button"
+                >
+                  Skip intro
+                </button>
+              )}
             </div>
 
             {/* Content */}
