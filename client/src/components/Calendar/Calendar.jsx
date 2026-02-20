@@ -499,6 +499,8 @@ export const Calendar = ({
           datesSet={onDatesSet}
           scrollTime={scrollTime}
           eventDidMount={handleEventDidMount}
+          nowIndicator={true}
+          slotMaxTime="24:00:00"
         />
         {selectedEvent && detailsOverlayPosition && (
           <div

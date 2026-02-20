@@ -400,6 +400,34 @@
   border-top: 0;
 }
 
+/* Current time indicator line */
+.fc-timegrid-now-indicator-line {
+  border-color: #ef4444 !important;
+  border-width: 2px !important;
+}
+
+.fc-timegrid-now-indicator-arrow {
+  border-color: #ef4444 !important;
+  border-top-color: transparent !important;
+  border-bottom-color: transparent !important;
+}
+
+/* Now indicator dot/circle on the left */
+.fc-timegrid-now-indicator-container {
+  overflow: visible !important;
+}
+
+.fc-timegrid-now-indicator-line::before {
+  content: "";
+  position: absolute;
+  left: -5px;
+  top: -4px;
+  width: 10px;
+  height: 10px;
+  background-color: #ef4444;
+  border-radius: 50%;
+}
+
 /* Make hour lines more prominent */
 .fc-timegrid-slot-lane {
   border-top: 1px solid #d1d5db !important;
@@ -433,22 +461,6 @@
 
 .fc-scroller::-webkit-scrollbar-thumb:hover {
   background: #9ca3af;
-}
-
-/* Bottom padding and rounded corners to indicate end of scroll */
-.fc-scroller-liquid-absolute {
-  padding-bottom: 40px !important;
-}
-
-.fc-timegrid-slots tbody tr:last-child td {
-  border-bottom-left-radius: 12px;
-  border-bottom-right-radius: 12px;
-}
-
-.fc-view-harness {
-  border-bottom-left-radius: 12px;
-  border-bottom-right-radius: 12px;
-  overflow: hidden;
 }
 
 .fc-scrollgrid {

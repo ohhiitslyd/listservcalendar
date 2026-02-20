@@ -341,6 +341,21 @@ const InnerApp = () => {
   /* -------------------------------------------------
      Render the UI layout
      ------------------------------------------------- */
+  
+  // If not logged in, only show the onboarding modal
+  if (!user) {
+    return (
+      <div className="app-container app-container-login">
+        <Onboarding
+          isOpen={true}
+          onClose={() => {}}
+          onLogin={login}
+          isSignedIn={false}
+        />
+      </div>
+    );
+  }
+  
   return (
     <div className="app-container">
       <Header
@@ -354,7 +369,7 @@ const InnerApp = () => {
         statusText={statusText}
         statusSubtext={statusSubtext}
         statusDotClass={statusDotClass}
-        onHelpClick={user ? () => setOnboardingOpen(true) : undefined}
+        onHelpClick={() => setOnboardingOpen(true)}
       />
 
       <div className="app-content">
