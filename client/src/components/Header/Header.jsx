@@ -9,6 +9,7 @@ export const Header = ({
   mobileFiltersOpen,
   statusText,
   statusDotClass,
+  onHelpClick,
 }) => {
   const { 
     user, 
@@ -322,6 +323,17 @@ export const Header = ({
             </div>
           )}
         </div>
+        {onHelpClick && (
+          <button
+            className="help-button"
+            onClick={onHelpClick}
+            type="button"
+            aria-label="Help"
+            title="Help"
+          >
+            ?
+          </button>
+        )}
         <div className="dropdown-container" ref={userMenuRef}>
           <button
             className="user-account user-account-button"

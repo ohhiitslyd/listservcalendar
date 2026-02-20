@@ -10,6 +10,7 @@ import { Calendar } from "./components/Calendar/Calendar";
 import { EventDetails } from "./components/EventDetails/EventDetails";
 import { CreateEventModal } from "./components/CreateEventModal/CreateEventModal";
 import { Filters } from "./components/Filters/Filters";
+import { Onboarding } from "./components/Onboarding/Onboarding";
 import { api } from "./api/calendarApi";
 
 import "./App.css";
@@ -42,6 +43,7 @@ const InnerApp = () => {
     tagColorMap,
     listservCalendarId,
     logout,
+    login,
     preferencesLoaded,
     // **NOTE:** we *do not* destructure `onSelect` or `onEventClick`
     // because we will define them locally (see below).
@@ -52,6 +54,9 @@ const InnerApp = () => {
   const [publishedKey, setPublishedKey] = useState(null); // Key computed from database preferences
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
   const [showPublishConfirm, setShowPublishConfirm] = useState(false);
+  const [onboardingOpen, setOnboardingOpen] = useState(false);
+  const [onboardingClosedThisSession, setOnboardingClosedThisSession] = useState(false);
+  const [hasLoggedInThisSession, setHasLoggedInThisSession] = useState(false);
 
   const totalSelectedFilters = (selectedCats?.size || 0) + (selectedOrgCats?.size || 0);
 
@@ -132,6 +137,28 @@ const InnerApp = () => {
     }, 5000);
     return () => clearTimeout(timer);
   }, [publishResult]);
+
+  // Auto-open onboarding for signed-out users (testing mode - only if they haven't logged in yet)
+  useEffect(() => {
+    if (!user && !onboardingClosedThisSession && !hasLoggedInThisSession) {
+      // Auto-open onboarding when user is signed out, hasn't closed it, and hasn't logged in this session
+      setOnboardingOpen(true);
+    }
+  }, [user, onboardingClosedThisSession, hasLoggedInThisSession]);
+
+  // Track when user logs in - once logged in, never auto-open again (only via "?" button)
+  useEffect(() => {
+    if (user) {
+      setHasLoggedInThisSession(true);
+      // Close onboarding if it's open when user logs in
+      setOnboardingOpen(false);
+    }
+  }, [user]);
+
+  const handleOnboardingClose = () => {
+    setOnboardingOpen(false);
+    setOnboardingClosedThisSession(true);
+  };
 
   const handleLogout = () => {
     if (hasUnpublishedChanges) {
@@ -285,6 +312,7 @@ const InnerApp = () => {
         mobileFiltersOpen={mobileFiltersOpen}
         statusText={statusText}
         statusDotClass={statusDotClass}
+        onHelpClick={user ? () => setOnboardingOpen(true) : undefined}
       />
 
       <div className="app-content">
@@ -444,6 +472,14 @@ const InnerApp = () => {
           </div>
         </div>
       )}
+
+      {/* Onboarding Modal */}
+      <Onboarding
+        isOpen={onboardingOpen}
+        onClose={handleOnboardingClose}
+        onLogin={login}
+        isSignedIn={!!user}
+      />
     </div>
   );
 };
