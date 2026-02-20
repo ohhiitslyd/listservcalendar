@@ -667,6 +667,91 @@
   .header-status {
     display: none;
   }
+
+  /* Mobile dropdown adjustments */
+  .dropdown-content {
+    min-width: 250px;
+    max-width: calc(100vw - 24px);
+    max-height: 70vh;
+  }
+
+  .calendars-dropdown {
+    left: 50%;
+    right: auto;
+    transform: translateX(-50%);
+  }
+
+  .nudges-dropdown {
+    left: auto;
+    right: 0;
+    transform: translateX(0);
+  }
+
+  .user-menu-dropdown {
+    right: 0;
+    min-width: 250px;
+    max-width: calc(100vw - 24px);
+  }
+
+  .calendars-dropdown-header {
+    padding: 12px;
+  }
+
+  .calendars-dropdown-header h4 {
+    font-size: 13px;
+  }
+
+  .calendars-list {
+    padding: 6px;
+    max-height: 250px;
+  }
+
+  .calendar-item {
+    padding: 6px 10px;
+  }
+
+  .calendar-name {
+    font-size: 12px;
+  }
+
+  .calendar-badge {
+    font-size: 10px;
+    padding: 1px 4px;
+  }
+
+  .user-menu-item {
+    padding: 8px 12px;
+    font-size: 12px;
+  }
+
+  .user-menu-empty {
+    padding: 10px 8px;
+    font-size: 11px;
+  }
+
+  .nudges-events-list {
+    max-height: 200px;
+    padding: 0 6px;
+    gap: 6px;
+  }
+
+  .nudges-event-bubble {
+    height: 44px;
+    padding: 3px 5px;
+  }
+
+  .nudges-event-title {
+    font-size: 9px;
+  }
+
+  .nudges-event-org {
+    font-size: 8px;
+  }
+
+  .user-menu-accordion {
+    padding: 10px 12px;
+    font-size: 12px;
+  }
 }
 
 @media (max-width: 600px) {
