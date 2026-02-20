@@ -38,6 +38,9 @@ export const Calendar = ({
   onSelect,
   onDatesSet,
   scrollTime,
+  statusText,
+  statusSubtext,
+  statusDotClass,
 }) => {
   // We need events, calendarRef, and selectedEvent to drive the overlay details card.
   const {
@@ -372,7 +375,11 @@ export const Calendar = ({
 
   return (
     <div className="app-calendar-container">
-      <DateBar />
+      <DateBar 
+        statusText={statusText}
+        statusSubtext={statusSubtext}
+        statusDotClass={statusDotClass}
+      />
       <div className="app-calendar-wrapper">
         <FullCalendar
           ref={calendarRef}

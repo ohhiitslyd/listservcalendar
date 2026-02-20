@@ -3,7 +3,11 @@ import React, { useContext, useState, useEffect } from "react";
 import { AppContext } from "../../context/AppContext";
 import "./DateBar.css";
 
-export const DateBar = () => {
+export const DateBar = ({
+  statusText,
+  statusSubtext,
+  statusDotClass,
+}) => {
   const { calendarRef, currentViewRange } = useContext(AppContext);
   const [currentView, setCurrentView] = useState("timeGridWeek");
   const [dateRange, setDateRange] = useState("");
@@ -30,10 +34,10 @@ export const DateBar = () => {
       const end = view.activeEnd;
       
       if (isSmallScreen) {
-        // Short format: "Feb '26" (month and 2-digit year)
+        // Short format: "Feb 2026" (month and full year)
         const month = start.toLocaleDateString("en-US", { month: "short" });
-        const year = start.getFullYear().toString().slice(-2);
-        setDateRange(`${month} '${year}`);
+        const year = start.getFullYear();
+        setDateRange(`${month} ${year}`);
       } else {
         // Full format
         if (view.type === "timeGridWeek") {
@@ -144,6 +148,23 @@ export const DateBar = () => {
         <button className="date-bar-date-range" onClick={handleToday}>
           {dateRange}
         </button>
+        {isSmallScreen && statusText && (
+          <div className="date-bar-status-mobile">
+            <span
+              className={`filters-status-dot ${statusDotClass || ""}`}
+            />
+            <div className="date-bar-status-text-container">
+              <span className="filters-status-text">
+                {statusText}
+              </span>
+              {statusSubtext && (
+                <span className="filters-status-subtext">
+                  {statusSubtext}
+                </span>
+              )}
+            </div>
+          </div>
+        )}
       </div>
       <div className="date-bar-right">
         <div className="date-bar-view-toggle">

@@ -9,7 +9,9 @@ export const Header = ({
   onMobileFiltersToggle,
   mobileFiltersOpen,
   statusText,
+  statusSubtext,
   statusDotClass,
+  onHelpClick,
 }) => {
   const { 
     user, 
@@ -192,7 +194,7 @@ export const Header = ({
             <line x1="8" y1="2" x2="8" y2="6" stroke="#d4e9c4" strokeWidth="2" strokeLinecap="round"/>
             <line x1="3" y1="10" x2="21" y2="10" stroke="#d4e9c4" strokeWidth="2"/>
           </svg>
-          <h2 className="app-header-title">ListServCalendar</h2>
+          <h2 className="app-header-title mobile-hidden">ListServCalendar</h2>
         </div>
         
         <div className="app-header-publish-group">
@@ -201,19 +203,27 @@ export const Header = ({
             onClick={onPublish}
           >
             <span className="publish-button-text">Publish to Google Calendar</span>
-            <svg className="publish-button-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <svg className="publish-button-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
               <polyline points="17 8 12 3 7 8"></polyline>
               <line x1="12" y1="3" x2="12" y2="15"></line>
             </svg>
+            <span className="publish-button-mobile-text">Publish</span>
           </button>
           <div className="header-status">
             <span
               className={`filters-status-dot ${statusDotClass || ""}`}
             />
-            <span className="filters-status-text">
-              {statusText}
-            </span>
+            <div className="header-status-text-container">
+              <span className="filters-status-text">
+                {statusText}
+              </span>
+              {statusSubtext && (
+                <span className="filters-status-subtext">
+                  {statusSubtext}
+                </span>
+              )}
+            </div>
           </div>
         </div>
 
@@ -229,7 +239,7 @@ export const Header = ({
             }}
             type="button"
           >
-            My Calendars
+            Calendars
             <svg 
               className={`dropdown-arrow ${userCalendarsOpen ? 'open' : ''}`} 
               width="16" 
@@ -238,7 +248,7 @@ export const Header = ({
               fill="none" 
               stroke="currentColor" 
               strokeWidth="2"
-              style={{ marginLeft: '6px' }}
+              style={{ marginLeft: '2px' }}
             >
               <polyline points="6 9 12 15 18 9"></polyline>
             </svg>
@@ -246,7 +256,7 @@ export const Header = ({
           {userCalendarsOpen && (
             <div className="dropdown-content calendars-dropdown">
               <div className="calendars-dropdown-header">
-                <h4>My Calendars</h4>
+                <h4>Calendars</h4>
               </div>
               <div className="calendars-list">
                 {calendars.length > 0 ? (
@@ -314,6 +324,10 @@ export const Header = ({
               fill="none"
               stroke="currentColor"
               strokeWidth="2"
+<<<<<<< nudge-fixes
+=======
+              style={{ marginLeft: "2px" }}
+>>>>>>> main
             >
               <polyline points="6 9 12 15 18 9"></polyline>
             </svg>
@@ -415,6 +429,17 @@ export const Header = ({
             </div>
           )}
         </div>
+        {onHelpClick && (
+          <button
+            className="help-button"
+            onClick={onHelpClick}
+            type="button"
+            aria-label="Help"
+            title="Help"
+          >
+            ?
+          </button>
+        )}
         <div className="dropdown-container" ref={userMenuRef}>
           <button
             className="user-account user-account-button"

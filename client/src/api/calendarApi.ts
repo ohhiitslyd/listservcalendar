@@ -218,6 +218,15 @@ export const api = {
       headers: { "Content-Type": "application/json" },
     }).then((r) => r.json()),
 
+  searchDartmouthPeople: async (
+    query: string
+  ): Promise<{
+    results: Array<{ email: string; displayName: string }>;
+  }> =>
+    fetch(`/api/dartmouth/search?q=${encodeURIComponent(query)}`, {
+      credentials: "include",
+    }).then((r) => r.json()),
+
   nudgeEvent: async ({
     eventId,
     targetEmail,

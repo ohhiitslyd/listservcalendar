@@ -431,6 +431,15 @@ export const Filters = ({
             Organizations
           </button>
         </div>
+        {!showHeader && (
+          <button
+            onClick={clearAll}
+            className="filters-clear-all-tab"
+            type="button"
+          >
+            Clear all
+          </button>
+        )}
       </div>
 
       {/* Content */}
