@@ -150,18 +150,22 @@
 }
 
 .nudges-count-badge {
-  width: 20px;
-  height: 20px;
-  border-radius: 999px;
+  min-width: 24px;
+  padding: 3px 10px;
+  border-radius: 15px;
   background: #d4e9c4;
+  border: 1px solid #d4e9c4;
   color: #000000;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 500;
   font-family: 'Poppins', sans-serif;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  box-shadow: inset 2px 2px 4px 0px rgba(0, 0, 0, 0.15);
+  text-align: center;
+  line-height: 1;
+  box-shadow: none;
+  margin-left: 6px;
 }
 
 .dropdown-arrow {
@@ -507,10 +511,10 @@
 .nudges-event-bubble {
   height: 52px; /* match a compact one-hour calendar event block */
   background: #d4e9c4;
-  border-radius: 5px;
-  padding: 4px 6px;
+  border-radius: 4px;
+  padding: 6px 12px;
   box-sizing: border-box;
-  border: 1px solid #9fbe8b;
+  border: none;
   overflow: hidden;
   width: 100%;
   text-align: left;
@@ -518,21 +522,21 @@
 }
 
 .nudges-event-bubble:hover {
-  border-color: #7fa56a;
+  border: none;
 }
 
 .nudges-event-bubble-status {
-  /* Match a single day-column style bubble footprint */
-  width: 165px;
-  min-width: 165px;
-  max-width: 165px;
+  /* Fill the nudges dropdown content width */
+  width: 100%;
+  min-width: 100%;
+  max-width: 100%;
   height: 52px;
   min-height: 52px;
   max-height: 52px;
   display: flex;
   flex-direction: column;
   justify-content: flex-start;
-  align-self: flex-start;
+  align-self: stretch;
 }
 
 .nudges-event-bubble-pending {
@@ -542,12 +546,10 @@
 
 .nudges-event-bubble-accepted {
   background: #c4b5fd;
-  border-color: #8b5cf6;
 }
 
 .nudges-event-bubble-declined {
   background: transparent;
-  border-color: #8b5cf6;
 }
 
 .nudges-event-bubble-declined .nudges-event-title,
@@ -786,7 +788,7 @@
 
   .nudges-event-bubble {
     height: 44px;
-    padding: 3px 5px;
+    padding: 5px 10px;
   }
 
   .nudges-event-title {

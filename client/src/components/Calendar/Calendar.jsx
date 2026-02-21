@@ -350,8 +350,8 @@ export const Calendar = ({
       info.el.style.backgroundImage = "none";
       info.el.style.backgroundColor = "#c4b5fd";
       info.el.style.color = "#000000";
-      info.el.style.border = "1px solid #8b5cf6";
-      info.el.style.borderRadius = "5px";
+      info.el.style.border = "none";
+      info.el.style.borderRadius = "4px";
       return;
     }
 
@@ -362,7 +362,7 @@ export const Calendar = ({
       info.el.style.backgroundColor = freeFoodGreen;
       info.el.style.color = "#000000";
       info.el.style.border = "3px dotted #6d28d9";
-      info.el.style.borderRadius = "5px";
+      info.el.style.borderRadius = "4px";
       return;
     }
 
@@ -373,8 +373,8 @@ export const Calendar = ({
       info.el.style.backgroundImage = "none";
       info.el.style.backgroundColor = freeFoodGreen;
       info.el.style.color = "#000000";
-      info.el.style.border = "1px solid #9fbe8b";
-      info.el.style.borderRadius = "5px";
+      info.el.style.border = "none";
+      info.el.style.borderRadius = "4px";
       return;
     }
 
@@ -386,9 +386,9 @@ export const Calendar = ({
     info.el.style.backgroundImage = "none";
     info.el.style.backgroundColor = freeFoodGreen;
     info.el.style.color = "#000000";
-    info.el.style.border = "1px solid #9fbe8b";
+    info.el.style.border = "none";
 
-    info.el.style.borderRadius = "5px";
+    info.el.style.borderRadius = "4px";
   };
 
   return (
