@@ -2410,7 +2410,7 @@ app.get("/api/posters/:eventId", async (req, res) => {
     const match = event.poster_url.match(
       /\/api\/scraped-emails\/([^/]+)\/attachments\/([^/]+)/
     );
-    if (!match) return res.redirect(event.poster_url);
+    if (!match) return res.status(404).send("Not found");
 
     const [, emailId, contentId] = match;
     const email = await queryOne(

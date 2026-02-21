@@ -75,9 +75,10 @@ function buildEmailHtml({ senderName, event, frontendUrl }) {
   const org = escapeHtml(event.organization || "");
   const location = escapeHtml(event.location || "");
   const description = escapeHtml(event.description || "");
+  const isAllDay = !!event.all_day;
   const startDate = event.start ? formatDate(event.start) : "";
-  const startTime = event.start ? formatTime(event.start) : "";
-  const endTime = event.end ? formatTime(event.end) : "";
+  const startTime = !isAllDay && event.start ? formatTime(event.start) : "";
+  const endTime = !isAllDay && event.end ? formatTime(event.end) : "";
   const timeDisplay = endTime && endTime !== startTime
     ? `${startTime} &ndash; ${endTime}`
     : startTime;
