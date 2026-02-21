@@ -138,7 +138,7 @@
   border-bottom: 1px solid #e5e7eb !important;
 }
 
-.fc-col-header-cell-cushion {
+.fc-col-header-cell-cushion { /* Day of the week on top of the calendar like Mon*/
   font-family: 'Poppins', sans-serif;
   font-weight: 400;
   font-size: 14px;
@@ -547,5 +547,43 @@
   .fc-timegrid-col-header .fc-col-header-cell-cushion::after {
     font-size: 14px;
     margin-top: 2px;
+  }
+}
+
+@media (max-width: 375px) {
+  .app-calendar-wrapper {
+    padding: 0px 6px 12px 6px;
+  }
+
+  .fc-event-title {
+    font-size: 10px;
+  }
+
+  .fc-timegrid-slot {
+    font-size: 10px;
+  }
+
+  .fc-col-header-cell {
+    font-size: 11px;
+    padding: 5px 0 !important;
+  }
+
+  .fc-col-header-cell-cushion {
+    padding: 1px 0;
+    gap: 1px;
+  }
+
+  .fc-timegrid-col-header .fc-col-header-cell-cushion::after {
+    font-size: 13px;
+    margin-top: 1px;
+  }
+
+  .fc-timegrid-slot-label { /* Time on the left side of calendar like 10:00am */
+    font-size: 10px;
+    padding: 0 6px;
+  }
+
+  .fc-timegrid-slot-label-cushion {
+    padding: 0 3px;
   }
 }

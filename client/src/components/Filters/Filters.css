@@ -566,3 +566,58 @@
     padding: 10px 14px;
   }
 }
+
+@media (max-width: 375px) {
+  .filters-header {
+    padding: 16px 16px 12px 16px;
+  }
+
+  .filters-title {
+    font-size: 15px;
+  }
+
+  .filters-clear-all-tab {
+    font-size: 13px;
+  }
+
+  .filters-tabs {
+    padding: 10px 12px;
+  }
+
+  .filter-tab {
+    font-size: 13px;
+    padding: 5px 8px;
+  }
+
+  .filters-content {
+    padding: 5px 16px 16px 16px;
+  }
+
+  .org-filters-search {
+    padding: 4px 0 8px 0;
+  }
+
+  .org-filters-search-input {
+    font-size: 13px;
+    padding: 7px 9px;
+  }
+
+  .org-filter-item {
+    min-height: 30px;
+    padding: 3px 0;
+  }
+
+  .org-filter-name {
+    font-size: 13px;
+  }
+
+  .org-filter-count {
+    font-size: 11px;
+    padding: 2px 8px;
+    min-width: 20px;
+  }
+
+  .filters-footer {
+    padding: 12px 16px;
+  }
+}

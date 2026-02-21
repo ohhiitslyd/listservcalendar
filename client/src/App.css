@@ -415,6 +415,22 @@
   }
 }
 
+@media (max-width: 375px) {
+  .mobile-filters-header {
+    padding: 12px 16px;
+  }
+
+  .mobile-filters-header h3 {
+    font-size: 16px;
+  }
+
+  .publish-toast {
+    right: 12px;
+    bottom: 20px;
+    left: 12px;
+  }
+}
+
 /* Publish confirmation modal extra styles */
 .publish-modal-caption {
   margin: 8px 0 0 0;
