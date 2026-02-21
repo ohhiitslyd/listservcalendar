@@ -82,16 +82,43 @@ export const EventDetails = () => {
         const data = await api.searchDartmouthPeople(query.trim());
         if (requestId !== searchCounterRef.current) return;
         
-        // Get previously nudged emails to mark directory results
-        const previousEmails = new Set(
-          getPreviouslyNudgedEmails().map(e => e.toLowerCase())
-        );
+        // Check if each person has been nudged for THIS specific event
+        const normalizeEventId = (id) => {
+          const value = String(id || "").trim();
+          if (!value) return "";
+          if (value.startsWith("email:")) return value.slice("email:".length);
+          return value;
+        };
         
-        // Mark API results that have been previously nudged
-        const apiResults = (data.results || []).map(r => ({
-          ...r,
-          isPreviouslyNudged: previousEmails.has(r.email.toLowerCase())
-        }));
+        const currentEventId = String(selectedEvent?.id || "").trim();
+        const normalizedCurrentEventId = normalizeEventId(currentEventId);
+        const userNudgedEvents = Array.isArray(user?.nudgedEvents) ? user.nudgedEvents : [];
+        
+        // Mark API results that have been nudged for this specific event
+        const apiResults = (data.results || []).map(r => {
+          const emailLower = r.email.toLowerCase();
+          const hasBeenNudgedForThisEvent = userNudgedEvents.some((entry) => {
+            const entryId = String(entry?.id || "").trim();
+            const normalizedEntryId = normalizeEventId(entryId);
+            const entryEmail = String(entry?.email || "").trim().toLowerCase();
+            
+            // Check if this entry matches both the event ID and the email
+            const eventMatches = 
+              entryId === currentEventId || 
+              normalizedEntryId === normalizedCurrentEventId ||
+              entryId === normalizedCurrentEventId ||
+              normalizedEntryId === currentEventId;
+            
+            const emailMatches = entryEmail === emailLower;
+            
+            return eventMatches && emailMatches;
+          });
+          
+          return {
+            ...r,
+            isPreviouslyNudged: hasBeenNudgedForThisEvent
+          };
+        });
         
         setSuggestions(apiResults);
         setShowSuggestions(apiResults.length > 0);
@@ -102,7 +129,7 @@ export const EventDetails = () => {
         setShowSuggestions(false);
       }
     }, 300);
-  }, []);
+  }, [selectedEvent?.id, user?.nudgedEvents]);
 
   useEffect(() => {
     const handleClickOutside = (e) => {
