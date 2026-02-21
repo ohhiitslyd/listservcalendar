@@ -521,7 +521,16 @@ app.post("/api/user/nudge-event", ensureAuthed, async (req, res) => {
   } catch (error) {
     await client.query("ROLLBACK");
     console.error("[nudge-event] Error:", error);
-    return res.status(500).json({ error: "Failed to nudge event" });
+    // Extract meaningful error message
+    let errorMessage = "Failed to nudge event";
+    if (error?.message) {
+      if (error.message.includes("size limit")) {
+        errorMessage = "Database storage limit exceeded. Please contact support.";
+      } else {
+        errorMessage = error.message;
+      }
+    }
+    return res.status(500).json({ error: errorMessage });
   } finally {
     client.release();
   }
