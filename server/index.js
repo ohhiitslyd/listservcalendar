@@ -17,6 +17,7 @@ import {
   getOrCreateListServCalendar as getOrCreateListServCalendarShared,
 } from "./services/calendarPublisher.js";
 import { initializeSchema, query, queryOne, execute, pool } from "./db.js";
+import { sendNudgeEmail } from "./services/nudgeMailer.js";
 
 dotenv.config();
 
@@ -154,6 +155,7 @@ app.get("/auth/google", (req, res) => {
     "profile",
     "https://www.googleapis.com/auth/calendar",
     "https://www.googleapis.com/auth/gmail.readonly",
+    "https://www.googleapis.com/auth/gmail.send",
   ];
   const url = oauth2Client.generateAuthUrl({
     access_type: "offline",
@@ -488,6 +490,28 @@ app.post("/api/user/nudge-event", ensureAuthed, async (req, res) => {
     );
 
     await client.query("COMMIT");
+
+    // Fire-and-forget email notification
+    try {
+      const oauth2Client = getOAuthClient(req);
+      const rawId = eventId.replace(/^(email:|draft:)/, "");
+      const event = await queryOne("SELECT * FROM events WHERE id = $1", [rawId]);
+      if (event) {
+        sendNudgeEmail({
+          oauth2Client,
+          senderName: req.session.user.name || req.session.user.email,
+          senderEmail: req.session.user.email,
+          targetEmail: normalizedTargetEmail,
+          event,
+          frontendUrl: FRONTEND_URL,
+        }).catch((err) =>
+          console.error("[nudge-email] Failed to send:", err.message)
+        );
+      }
+    } catch (emailErr) {
+      console.error("[nudge-email] Error:", emailErr.message);
+    }
+
     return res.json({
       success: true,
       eventId,
@@ -2372,6 +2396,48 @@ app.get(
     }
   }
 );
+
+// Public poster image endpoint (no auth — used in nudge emails)
+app.get("/api/posters/:eventId", async (req, res) => {
+  try {
+    const rawId = req.params.eventId.replace(/^(email:|draft:)/, "");
+    const event = await queryOne(
+      "SELECT poster_url, email_id FROM events WHERE id = $1",
+      [rawId]
+    );
+    if (!event?.poster_url) return res.status(404).send("Not found");
+
+    const match = event.poster_url.match(
+      /\/api\/scraped-emails\/([^/]+)\/attachments\/([^/]+)/
+    );
+    if (!match) return res.status(404).send("Not found");
+
+    const [, emailId, contentId] = match;
+    const email = await queryOne(
+      "SELECT attachments FROM scraped_emails WHERE id = $1",
+      [emailId]
+    );
+    if (!email?.attachments) return res.status(404).send("Not found");
+
+    const attachments = JSON.parse(email.attachments);
+    const att = attachments.find((a) => {
+      if (!a.contentId) return false;
+      const aId = a.contentId.toLowerCase();
+      const sId = contentId.toLowerCase();
+      return aId === sId || aId.includes(sId) || sId.includes(aId);
+    });
+    if (!att?.data) return res.status(404).send("Not found");
+
+    const buf = Buffer.from(att.data, "base64");
+    res.setHeader("Content-Type", att.mimeType || "image/jpeg");
+    res.setHeader("Content-Length", buf.length);
+    res.setHeader("Cache-Control", "public, max-age=86400");
+    res.send(buf);
+  } catch (e) {
+    console.error("[posters] Error:", e);
+    res.status(500).send("Error");
+  }
+});
 
 // Update email event poster_url
 app.post("/api/email-events/:eventId/to-draft", ensureAuthed, async (req, res) => {
