@@ -616,6 +616,7 @@
   .fc-event-body > div > div:first-child,
   .fc-event > div > div:first-child {
     font-size: 8px !important;
+    font-weight: 400 !important;
     line-height: 1.1 !important;
     white-space: normal !important;
     overflow: hidden !important;
@@ -657,6 +658,7 @@
 
   .fc-event-listserv .fc-event-title {
     font-size: 8px !important;
+    font-weight: 400 !important;
     white-space: normal !important;
     overflow: hidden !important;
     word-break: break-all !important;
@@ -674,6 +676,7 @@
 
   .fc-event-other .fc-event-title {
     font-size: 8px !important;
+    font-weight: 400 !important;
     white-space: normal !important;
     overflow: hidden !important;
     word-break: break-all !important;
@@ -684,5 +687,10 @@
   /* HIDING ALL DAY EVENTS ON MOBILE */
   .fc-daygrid-day {
     display: none !important;
+  }
+
+  /* Make red time indicator bar thinner on mobile */
+  .fc-timegrid-now-indicator-line {
+    border-width: 0.5px !important;
   }
 }

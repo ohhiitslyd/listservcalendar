@@ -20,6 +20,12 @@
   overflow: hidden;
   display: flex;
   flex-direction: row;
+  min-height: 0;
+}
+
+/* Footer - hidden on desktop, visible on mobile */
+.app-footer {
+  display: none;
 }
 
 .app-main-panel {
@@ -413,6 +419,13 @@
     min-width: auto;
     max-width: none;
   }
+
+  /* Publish modal - constrain width on mobile */
+  .publish-modal {
+    width: calc(100% - 48px) !important;
+    max-width: 420px !important;
+    margin: 0 16px;
+  }
 }
 
 @media (max-width: 375px) {
@@ -428,6 +441,20 @@
     right: 12px;
     bottom: 20px;
     left: 12px;
+  }
+  .app-footer {
+    display: block;
+    height: 24px;
+    flex-shrink: 0;
+    background: #ffffff;
+    border-top: 1px solid #e5e7eb;
+  }
+
+  /* Publish modal - constrain width on very small mobile */
+  .publish-modal {
+    width: calc(100% - 48px) !important;
+    max-width: 375px !important;
+    margin: 0 12px;
   }
 }
 
