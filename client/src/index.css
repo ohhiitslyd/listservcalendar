@@ -11,6 +11,14 @@ body {
 }
 
 #root {
+  /* Base fallback */
   height: 100vh;
   overflow: hidden;
+}
+
+/* Prefer dynamic viewport on modern browsers (especially iOS Safari) */
+@supports (height: 100dvh) {
+  #root {
+    height: 100dvh;
+  }
 }

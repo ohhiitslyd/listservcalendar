@@ -2,8 +2,18 @@
 .app-container {
   display: flex;
   flex-direction: column;
+  /* Base fallback for browsers without dynamic viewport units */
+  min-height: 100vh;
   height: 100vh;
   overflow: hidden;
+}
+
+/* Prefer dynamic viewport height on modern browsers (fixes iOS Safari bottom bar issues) */
+@supports (height: 100dvh) {
+  .app-container {
+    min-height: 100dvh;
+    height: 100dvh;
+  }
 }
 
 .app-container-login {
@@ -33,6 +43,19 @@
   display: flex;
   flex-direction: column;
   min-width: 0;
+}
+
+/* Respect iOS safe area at the bottom so content / footer aren't hidden under the Safari bar */
+@supports (padding-bottom: env(safe-area-inset-bottom)) {
+  @media (max-width: 768px) {
+    .app-main-panel {
+      padding-bottom: env(safe-area-inset-bottom);
+    }
+
+    .app-footer {
+      padding-bottom: env(safe-area-inset-bottom);
+    }
+  }
 }
 
 /* Right Panel – reused for the Event Type Colors legend */
@@ -360,11 +383,34 @@
     left: 0;
     right: 0;
     bottom: 0;
-    background: rgba(0, 0, 0, 0.5);
+    background: rgba(0, 0, 0, 0);
     z-index: 2000;
     display: flex;
     align-items: flex-start;
     justify-content: flex-start;
+    animation: fadeInOverlay 0.3s ease-in-out forwards;
+  }
+
+  @keyframes fadeInOverlay {
+    from {
+      background: rgba(0, 0, 0, 0);
+    }
+    to {
+      background: rgba(0, 0, 0, 0.5);
+    }
+  }
+
+  .mobile-filters-overlay-closing {
+    animation: fadeOutOverlay 0.3s ease-in-out forwards;
+  }
+
+  @keyframes fadeOutOverlay {
+    from {
+      background: rgba(0, 0, 0, 0.5);
+    }
+    to {
+      background: rgba(0, 0, 0, 0);
+    }
   }
 
   .mobile-filters-drawer {
@@ -374,6 +420,30 @@
     display: flex;
     flex-direction: column;
     overflow: hidden;
+    transform: translateX(-100%);
+    animation: slideInFromLeft 0.3s ease-in-out forwards;
+  }
+
+  @keyframes slideInFromLeft {
+    from {
+      transform: translateX(-100%);
+    }
+    to {
+      transform: translateX(0);
+    }
+  }
+
+  .mobile-filters-drawer-closing {
+    animation: slideOutToLeft 0.3s ease-in-out forwards;
+  }
+
+  @keyframes slideOutToLeft {
+    from {
+      transform: translateX(0);
+    }
+    to {
+      transform: translateX(-100%);
+    }
   }
 
   .mobile-filters-header {
@@ -450,7 +520,7 @@
     margin: 0 20px;
   }
   .app-footer {
-    display: block;
+    display: none; /* Hide footer on medium mobile */
     height: 24px;
     flex-shrink: 0;
     background: #ffffff;
@@ -473,7 +543,7 @@
     left: 12px;
   }
   .app-footer {
-    display: block;
+    display: none; /* Hide footer on small mobile */
     height: 24px;
     flex-shrink: 0;
     background: #ffffff;
