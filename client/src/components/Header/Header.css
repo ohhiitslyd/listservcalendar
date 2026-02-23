@@ -170,7 +170,7 @@
   background: transparent;
   border: 1px solid transparent;
   border-radius: 8px;
-  padding: 6px 8px;
+  padding: 6px 6px;
   cursor: pointer;
   transition: background-color 0.2s ease, border-color 0.2s ease;
 }
@@ -196,8 +196,7 @@
   font-family: 'Poppins', sans-serif;
   color: #000000;
   transition: background-color 0.2s ease, border-color 0.2s ease;
-  margin-right: 8px;
-}
+  }
 
 .help-button:hover {
   background: #f5f9f0;
@@ -548,8 +547,7 @@
   background: transparent;
   border: none;
   cursor: pointer;
-  padding: 8px;
-  margin-right: 4px;
+  padding: 6px 6px;
 }
 
 .mobile-menu-button svg {
@@ -611,6 +609,7 @@
 
   .app-header-left {
     gap: 8px;
+    margin-right: 8px;
   }
 
   .app-header-right {
@@ -779,6 +778,7 @@
 
   .app-header-left {
     gap: 4px;
+    margin-right: 4px;
   }
 
   .app-header-right {
@@ -896,6 +896,7 @@
 
   .app-header-left {
     gap: 2px;
+    margin-right: 2px;
   }
 
   .app-header-right {

@@ -615,7 +615,7 @@
   .fc-event-main > div > div:first-child,
   .fc-event-body > div > div:first-child,
   .fc-event > div > div:first-child {
-    font-size: 8.5px !important;
+    font-size: 8px !important;
     font-weight: 400 !important;
     line-height: 1.1 !important;
     white-space: normal !important;
