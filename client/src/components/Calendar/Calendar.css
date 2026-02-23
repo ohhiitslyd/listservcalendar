@@ -527,6 +527,14 @@
     justify-content: center;
     background: rgba(0, 0, 0, 0.5);
     z-index: 1500;
+    /* Smooth fade + zoom-in animation when opening */
+    animation: eventDetailsOverlayFadeIn 0.25s ease-out forwards;
+  }
+
+  /* Zoom the event card itself */
+  .event-details-overlay .event-details-card {
+    transform-origin: center center;
+    animation: eventDetailsCardZoomIn 0.25s ease-out forwards;
   }
 
   .personal-event-overlay {
@@ -542,6 +550,32 @@
     justify-content: center;
     background: rgba(0, 0, 0, 0.5);
     z-index: 1500;
+    animation: eventDetailsOverlayFadeIn 0.25s ease-out forwards;
+  }
+
+  .personal-event-overlay .personal-event-card {
+    transform-origin: center center;
+    animation: eventDetailsCardZoomIn 0.25s ease-out forwards;
+  }
+
+  @keyframes eventDetailsOverlayFadeIn {
+    from {
+      background: rgba(0, 0, 0, 0);
+    }
+    to {
+      background: rgba(0, 0, 0, 0.5);
+    }
+  }
+
+  @keyframes eventDetailsCardZoomIn {
+    from {
+      transform: scale(0.5) translateY(0);
+      opacity: 0;
+    }
+    to {
+      transform: scale(1) translateY(0);
+      opacity: 1;
+    }
   }
 
   /* Adjust calendar font sizes for mobile */
