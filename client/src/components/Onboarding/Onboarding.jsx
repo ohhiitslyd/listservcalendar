@@ -80,7 +80,6 @@ export const Onboarding = ({ isOpen, onClose, onLogin, isSignedIn = false }) => 
                 <li>This is an early test version.</li>
                 <li>Your filter preferences may be visible to our team for research purposes.</li>
                 <li>By signing up, you're helping us improve the experience.</li>
-                <li>Best viewed on desktop.</li>
               </ul>
             </div>
           </div>
@@ -199,14 +198,14 @@ export const Onboarding = ({ isOpen, onClose, onLogin, isSignedIn = false }) => 
                 <div className="onboarding-faq-answer-wrapper">
                   <div>
                     <p className="onboarding-faq-answer">
-                      It works best on desktop right now.
+                      Yes, it works on mobile browsers.
                     </p>
                   </div>
                 </div>
               </details>
             </div>
             <p className="onboarding-footer-note-small">
-              Testing mode · Desktop recommended · Separate calendar created
+              Testing mode · Separate calendar created
             </p>
           </div>
         );

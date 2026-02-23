@@ -390,7 +390,8 @@
   }
 
   .onboarding-modal {
-    max-height: 88vh;
+    /* Match the tighter 375px behavior to prevent overflow on small-height phones (e.g. ~402px wide) */
+    max-height: 85vh;
     border-radius: 10px;
   }
 
@@ -405,7 +406,18 @@
 
   .onboarding-right-panel {
     padding: 20px 18px;
-    max-height: calc(88vh - 175px);
+    max-height: calc(85vh - 175px);
+  }
+
+  /* Prefer dynamic viewport height on iOS Safari */
+  @supports (height: 100dvh) {
+    .onboarding-modal {
+      max-height: 85dvh;
+    }
+
+    .onboarding-right-panel {
+      max-height: calc(85dvh - 285px);
+    }
   }
 
   .onboarding-top-bar {
