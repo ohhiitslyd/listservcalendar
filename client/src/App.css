@@ -520,7 +520,7 @@
     margin: 0 20px;
   }
   .app-footer {
-    display: block;
+    display: none; /* Hide footer on medium mobile */
     height: 24px;
     flex-shrink: 0;
     background: #ffffff;
@@ -543,7 +543,7 @@
     left: 12px;
   }
   .app-footer {
-    display: block;
+    display: none; /* Hide footer on small mobile */
     height: 24px;
     flex-shrink: 0;
     background: #ffffff;
