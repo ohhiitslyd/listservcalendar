@@ -14,6 +14,8 @@ export const EventDetails = () => {
     user,
     selectedEvent,
     setSelectedEvent,
+    setEvents,
+    calendarRef,
     listservCalendarId,
     eventDetailsSource,
     setEventDetailsSource,
@@ -223,8 +225,20 @@ export const EventDetails = () => {
   const isEmail = selectedEvent.id.startsWith("email:");
   const isListServ =
     selectedEvent.extendedProps?.calendarId === listservCalendarId;
-  const openedFromNudges = eventDetailsSource === "nudge";
-  const canNudge = !!selectedEvent?.id && (isEmail || isListServ || isDraft);
+  const openedFromReceivedNudges = eventDetailsSource === "nudge_received";
+  const parseEventDateTime = (value) => {
+    const raw = String(value || "").trim();
+    if (!raw) return NaN;
+    const normalized = raw.includes("T") ? raw : raw.replace(" ", "T");
+    return Date.parse(normalized);
+  };
+
+  const eventEndMs = parseEventDateTime(selectedEvent?.end || selectedEvent?.start);
+  const hasEnded = !Number.isNaN(eventEndMs) && eventEndMs < Date.now();
+  const canNudge =
+    !!selectedEvent?.id &&
+    (isEmail || isListServ || isDraft) &&
+    !hasEnded;
 
   const normalizeEventId = (id) => {
     const value = String(id || "").trim();
@@ -237,6 +251,61 @@ export const EventDetails = () => {
     String(selectedEvent?.id || "").trim(),
     normalizeEventId(selectedEvent?.id),
   ]);
+
+  const updateEventNudgeStatus = (eventId, nextStatus) => {
+    const targetId = String(eventId || "").trim();
+    const normalizedTargetId = normalizeEventId(targetId);
+    if (!targetId) return;
+
+    setEvents((prev) =>
+      (prev || []).map((ev) => {
+        const currentId = String(ev?.id || "").trim();
+        const normalizedCurrentId = normalizeEventId(currentId);
+        const matches =
+          currentId === targetId ||
+          normalizedCurrentId === normalizedTargetId;
+        if (!matches) return ev;
+
+        return {
+          ...ev,
+          extendedProps: {
+            ...(ev.extendedProps || {}),
+            nudgeDisplayStatus: nextStatus,
+          },
+        };
+      })
+    );
+
+    setSelectedEvent((prev) => {
+      if (!prev) return prev;
+      const currentId = String(prev?.id || "").trim();
+      const normalizedCurrentId = normalizeEventId(currentId);
+      const matches =
+        currentId === targetId ||
+        normalizedCurrentId === normalizedTargetId;
+      if (!matches) return prev;
+
+      return {
+        ...prev,
+        extendedProps: {
+          ...(prev.extendedProps || {}),
+          nudgeDisplayStatus: nextStatus,
+        },
+      };
+    });
+
+    const api = calendarRef?.current?.getApi?.();
+    if (!api) return;
+    const candidates = Array.from(
+      new Set([targetId, normalizedTargetId].filter(Boolean))
+    );
+    candidates.forEach((id) => {
+      const fcEvent = api.getEventById(id);
+      if (fcEvent) {
+        fcEvent.setExtendedProp("nudgeDisplayStatus", nextStatus);
+      }
+    });
+  };
 
   const acceptedInviters = Array.from(
     new Set(
@@ -258,8 +327,36 @@ export const EventDetails = () => {
     ),
   );
 
+  const pendingInviters = Array.from(
+    new Set(
+      (Array.isArray(user?.invitedEvents) ? user.invitedEvents : [])
+        .filter((entry) => {
+          const entryId = String(entry?.id || "").trim();
+          const normalizedEntryId = normalizeEventId(entryId);
+          return selectedEventIds.has(entryId) || selectedEventIds.has(normalizedEntryId);
+        })
+        .map((entry) => String(entry?.email || "").trim().toLowerCase())
+        .filter(Boolean)
+    )
+  );
+
+  const acceptedYourNudgeEmails = Array.from(
+    new Set(
+      (Array.isArray(selectedEvent?.extendedProps?.acceptedByEmails)
+        ? selectedEvent.extendedProps.acceptedByEmails
+        : []
+      )
+        .map((email) => String(email || "").trim().toLowerCase())
+        .filter(Boolean)
+    )
+  );
+
   const displayInviters = Array.from(
-    new Set([...(selectedEventInviters || []), ...acceptedInviters]),
+    new Set([
+      ...(selectedEventInviters || []),
+      ...pendingInviters,
+      ...acceptedInviters,
+    ]),
   );
 
   // Format date and time
@@ -353,14 +450,26 @@ export const EventDetails = () => {
 
   const respondToInvite = async (action) => {
     if (!selectedEvent?.id) return;
+    const eventId = selectedEvent.id;
+    const previousStatus = selectedEvent?.extendedProps?.nudgeDisplayStatus || "none";
+    const optimisticStatus =
+      action === "accept" ? "accepted" : action === "decline" ? "none" : previousStatus;
+
+    if (optimisticStatus !== previousStatus) {
+      updateEventNudgeStatus(eventId, optimisticStatus);
+    }
+
     try {
       setInviteResponseLoading(true);
       const result = await api.respondToInvite({
-        eventId: selectedEvent.id,
+        eventId,
         action,
       });
 
       if (!result?.success) {
+        if (optimisticStatus !== previousStatus) {
+          updateEventNudgeStatus(eventId, previousStatus);
+        }
         alert(result?.error || "Failed to update invited event");
         return;
       }
@@ -369,10 +478,13 @@ export const EventDetails = () => {
         invitedEvents: result?.invitedEvents || [],
         acceptedNudges: result?.acceptedNudges || [],
       });
-      if (action === "decline") {
+      if (action === "decline" || action === "accept") {
         closeDetails();
       }
     } catch (error) {
+      if (optimisticStatus !== previousStatus) {
+        updateEventNudgeStatus(eventId, previousStatus);
+      }
       alert("Failed to update invited event");
     } finally {
       setInviteResponseLoading(false);
@@ -416,6 +528,13 @@ export const EventDetails = () => {
               : "Invited by:"}
           </span>{" "}
           <span>{displayInviters.join(", ")}</span>
+        </div>
+      )}
+
+      {acceptedYourNudgeEmails.length > 0 && (
+        <div className="event-details-inviters">
+          <span className="event-details-inviters-label">Accepted your nudge:</span>{" "}
+          <span>{acceptedYourNudgeEmails.join(", ")}</span>
         </div>
       )}
 
@@ -567,7 +686,7 @@ export const EventDetails = () => {
           )}
       </div>
 
-      {openedFromNudges ? (
+      {openedFromReceivedNudges ? (
         <div className="event-details-actions event-details-actions-split">
           <button
             type="button"

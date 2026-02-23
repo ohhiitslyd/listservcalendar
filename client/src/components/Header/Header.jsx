@@ -1,5 +1,6 @@
-import React, { useContext, useState, useRef, useEffect } from "react";
+import React, { useContext, useState, useRef, useEffect, useCallback } from "react";
 import { AppContext } from "../../context/AppContext";
+import { api } from "../../api/calendarApi";
 import "./Header.css";
 
 export const Header = ({
@@ -29,13 +30,20 @@ export const Header = ({
   const [userCalendarsOpen, setUserCalendarsOpen] = useState(false);
   const [nudgesOpen, setNudgesOpen] = useState(false);
   const [invitedEventsExpanded, setInvitedEventsExpanded] = useState(true);
+  const [nudgedStatusExpanded, setNudgedStatusExpanded] = useState(false);
+  const [nudgedEventsStatus, setNudgedEventsStatus] = useState([]);
+  const [nudgedStatusLoading, setNudgedStatusLoading] = useState(false);
+  const [nudgesDropdownStyle, setNudgesDropdownStyle] = useState({});
   const userMenuRef = useRef(null);
   const calendarsMenuRef = useRef(null);
   const nudgesMenuRef = useRef(null);
+  const nudgesButtonRef = useRef(null);
+  const nudgesDropdownRef = useRef(null);
 
   const invitedEventsRaw = Array.isArray(user?.invitedEvents)
     ? user.invitedEvents
     : [];
+  const invitedEventsCount = invitedEventsRaw.length;
 
   const invitedEventMap = new Map();
   invitedEventsRaw.forEach((entry) => {
@@ -52,9 +60,23 @@ export const Header = ({
 
   const invitedEventIds = Array.from(invitedEventMap.keys());
 
-  const eventsById = new Map((events || []).map((ev) => [String(ev?.id || ""), ev]));
+  const normalizeEventId = (value) => {
+    const id = String(value || "").trim();
+    if (!id) return "";
+    if (id.startsWith("email:")) return id.slice("email:".length);
+    return id;
+  };
+
+  const eventsById = new Map();
+  (events || []).forEach((ev) => {
+    const fullId = String(ev?.id || "").trim();
+    if (!fullId) return;
+    eventsById.set(fullId, ev);
+    eventsById.set(normalizeEventId(fullId), ev);
+  });
+
   const invitedEventBubbles = invitedEventIds.map((eventId) => {
-    const ev = eventsById.get(eventId);
+    const ev = eventsById.get(eventId) || eventsById.get(normalizeEventId(eventId));
     const inviterEmails = Array.from(invitedEventMap.get(eventId) || []);
     return {
       id: eventId,
@@ -66,6 +88,32 @@ export const Header = ({
       inviterEmails,
     };
   });
+
+  const nudgedStatusBubbles = nudgedEventsStatus.map((entry) => {
+    const ev =
+      eventsById.get(entry.id) || eventsById.get(normalizeEventId(entry.id));
+    return {
+      ...entry,
+      title: ev?.title || "(Event unavailable)",
+    };
+  });
+
+  useEffect(() => {
+    const loadNudgedStatus = async () => {
+      if (!nudgesOpen) return;
+      setNudgedStatusLoading(true);
+      try {
+        const data = await api.fetchNudgedEventsStatus();
+        setNudgedEventsStatus(Array.isArray(data?.nudgedEventsStatus) ? data.nudgedEventsStatus : []);
+      } catch (error) {
+        setNudgedEventsStatus([]);
+      } finally {
+        setNudgedStatusLoading(false);
+      }
+    };
+
+    loadNudgedStatus();
+  }, [nudgesOpen, user?.nudgedEvents]);
 
   // Close dropdowns when clicking outside
   useEffect(() => {
@@ -84,6 +132,51 @@ export const Header = ({
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
+
+  const updateNudgesDropdownPosition = useCallback(() => {
+    if (!nudgesOpen || !nudgesButtonRef.current || !nudgesDropdownRef.current) return;
+
+    const margin = 8;
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+    const buttonRect = nudgesButtonRef.current.getBoundingClientRect();
+
+    const maxWidth = Math.max(220, viewportWidth - margin * 2);
+    const targetWidth = Math.min(320, maxWidth);
+    let left = buttonRect.right - targetWidth;
+    if (left < margin) left = margin;
+    if (left + targetWidth > viewportWidth - margin) {
+      left = viewportWidth - margin - targetWidth;
+    }
+
+    const top = Math.min(buttonRect.bottom + 8, viewportHeight - 120);
+    const maxHeight = Math.max(180, viewportHeight - top - margin);
+
+    setNudgesDropdownStyle({
+      position: "fixed",
+      left: `${left}px`,
+      top: `${top}px`,
+      width: `${targetWidth}px`,
+      maxWidth: `${maxWidth}px`,
+      maxHeight: `${maxHeight}px`,
+    });
+  }, [nudgesOpen]);
+
+  useEffect(() => {
+    if (!nudgesOpen) {
+      setNudgesDropdownStyle({});
+      return;
+    }
+
+    updateNudgesDropdownPosition();
+    window.addEventListener("resize", updateNudgesDropdownPosition);
+    window.addEventListener("scroll", updateNudgesDropdownPosition, true);
+
+    return () => {
+      window.removeEventListener("resize", updateNudgesDropdownPosition);
+      window.removeEventListener("scroll", updateNudgesDropdownPosition, true);
+    };
+  }, [nudgesOpen, updateNudgesDropdownPosition]);
 
 
   // Get user initials for avatar
@@ -263,6 +356,7 @@ export const Header = ({
         <div className="dropdown-container" ref={nudgesMenuRef}>
           <button
             className="app-header-button calendars-button"
+            ref={nudgesButtonRef}
             onClick={() => {
               setNudgesOpen(!nudgesOpen);
               setUserCalendarsOpen(false);
@@ -270,6 +364,7 @@ export const Header = ({
             type="button"
           >
             Nudges
+            <span className="nudges-count-badge">{invitedEventsCount}</span>
             <svg
               className={`dropdown-arrow ${nudgesOpen ? "open" : ""}`}
               width="16"
@@ -284,7 +379,7 @@ export const Header = ({
             </svg>
           </button>
           {nudgesOpen && (
-            <div className="dropdown-content nudges-dropdown">
+            <div className="dropdown-content nudges-dropdown" ref={nudgesDropdownRef} style={nudgesDropdownStyle}>
               <div className="calendars-dropdown-header">
                 <h4>Nudges</h4>
               </div>
@@ -293,7 +388,7 @@ export const Header = ({
                 type="button"
                 onClick={() => setInvitedEventsExpanded((prev) => !prev)}
               >
-                <span>Invited Events</span>
+                <span>Received</span>
                 <svg
                   className={`dropdown-arrow ${invitedEventsExpanded ? "open" : ""}`}
                   width="16"
@@ -313,10 +408,14 @@ export const Header = ({
                       <button
                         key={eventInfo.id}
                         type="button"
-                        className="nudges-event-bubble"
+                        className="nudges-event-bubble nudges-event-bubble-status"
                         title={eventInfo.id}
                         onClick={() => {
-                          requestFocusEvent(eventInfo.id, eventInfo.inviterEmails);
+                          requestFocusEvent(
+                            eventInfo.id,
+                            eventInfo.inviterEmails,
+                            "nudge_received"
+                          );
                           setNudgesOpen(false);
                         }}
                       >
@@ -326,6 +425,50 @@ export const Header = ({
                     ))
                   ) : (
                     <div className="user-menu-empty">No invited events yet.</div>
+                  )}
+                </div>
+              )}
+
+              <button
+                className="user-menu-accordion"
+                type="button"
+                onClick={() => setNudgedStatusExpanded((prev) => !prev)}
+              >
+                <span>Sent</span>
+                <svg
+                  className={`dropdown-arrow ${nudgedStatusExpanded ? "open" : ""}`}
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                >
+                  <polyline points="6 9 12 15 18 9"></polyline>
+                </svg>
+              </button>
+              {nudgedStatusExpanded && (
+                <div className="nudges-events-list">
+                  {nudgedStatusLoading ? (
+                    <div className="user-menu-empty">Loading status…</div>
+                  ) : nudgedStatusBubbles.length > 0 ? (
+                    nudgedStatusBubbles.map((entry, idx) => (
+                      <button
+                        key={`${entry.id}-${entry.email}-${idx}`}
+                        type="button"
+                        className={`nudges-event-bubble nudges-event-bubble-status nudges-event-bubble-${entry.status}`}
+                        title={entry.id}
+                        onClick={() => {
+                          requestFocusEvent(entry.id, [], "nudge_sent");
+                          setNudgesOpen(false);
+                        }}
+                      >
+                        <div className="nudges-event-title">{entry.title}</div>
+                        <div className="nudges-event-org">{entry.email}</div>
+                      </button>
+                    ))
+                  ) : (
+                    <div className="user-menu-empty">No nudged events yet.</div>
                   )}
                 </div>
               )}
