@@ -159,7 +159,7 @@ export const Header = ({
               <line x1="8" y1="2" x2="8" y2="6" stroke="#d4e9c4" strokeWidth="2" strokeLinecap="round"/>
               <line x1="3" y1="10" x2="21" y2="10" stroke="#d4e9c4" strokeWidth="2"/>
             </svg>
-            <h2>CalendarSync</h2>
+            <h2>ListServCalendar</h2>
           </div>
         </div>
         <div className="app-header-right">

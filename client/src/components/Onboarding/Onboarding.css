@@ -21,13 +21,15 @@
   display: flex;
   flex-direction: column;
   font-family: 'Poppins', sans-serif;
+  min-height: 0;
 }
 
 .onboarding-layout {
   display: flex;
   flex-direction: row;
   height: 100%;
-  min-height: 500px;
+  min-height: 0;
+  overflow: hidden;
 }
 
 /* Left Panel - Visual Placeholder */
@@ -69,6 +71,9 @@
   flex-direction: column;
   padding: 32px 40px;
   overflow-y: auto;
+  overflow-x: hidden;
+  min-height: 0;
+  max-height: 100%;
 }
 
 /* Top Bar */
@@ -122,6 +127,8 @@
   display: flex;
   flex-direction: column;
   min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .onboarding-screen {
@@ -215,6 +222,21 @@
   border-radius: 8px;
   overflow: hidden;
   background: #ffffff;
+}
+
+/* Smooth animation for FAQ accordion using grid */
+.onboarding-faq-item .onboarding-faq-answer-wrapper {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.25s ease-out;
+}
+
+.onboarding-faq-item[open] .onboarding-faq-answer-wrapper {
+  grid-template-rows: 1fr;
+}
+
+.onboarding-faq-item .onboarding-faq-answer-wrapper > div {
+  overflow: hidden;
 }
 
 .onboarding-faq-question {
@@ -331,6 +353,7 @@
   .onboarding-layout {
     flex-direction: column;
     min-height: auto;
+    overflow: visible;
   }
 
   .onboarding-left-panel {
@@ -345,6 +368,7 @@
 
   .onboarding-right-panel {
     padding: 24px 20px;
+    max-height: calc(95vh - 200px);
   }
 
   .onboarding-title {
@@ -357,5 +381,227 @@
 
   .onboarding-bullet-list {
     font-size: 14px;
+  }
+}
+
+@media (max-width: 640px) {
+  .onboarding-overlay {
+    padding: 16px;
+  }
+
+  .onboarding-modal {
+    max-height: 88vh;
+    border-radius: 10px;
+  }
+
+  .onboarding-left-panel {
+    flex: 0 0 175px;
+    padding: 16px;
+  }
+
+  .onboarding-visual-placeholder {
+    max-height: 135px;
+  }
+
+  .onboarding-right-panel {
+    padding: 20px 18px;
+    max-height: calc(88vh - 175px);
+  }
+
+  .onboarding-top-bar {
+    margin-bottom: 20px;
+  }
+
+  .onboarding-progress-dots {
+    gap: 7px;
+  }
+
+  .onboarding-dot {
+    width: 9px;
+    height: 9px;
+  }
+
+  .onboarding-dot.active {
+    width: 11px;
+    height: 11px;
+  }
+
+  .onboarding-skip-button {
+    font-size: 12.5px;
+    padding: 3.5px 7px;
+  }
+
+  .onboarding-screen {
+    gap: 16px;
+  }
+
+  .onboarding-title {
+    font-size: 18px;
+  }
+
+  .onboarding-body {
+    font-size: 13px;
+  }
+
+  .onboarding-disclaimer-box {
+    padding: 16px;
+  }
+
+  .onboarding-disclaimer-title {
+    font-size: 13px;
+  }
+
+  .onboarding-disclaimer-list {
+    font-size: 11px;
+    padding-left: 16px;
+  }
+
+  .onboarding-bullet-list {
+    font-size: 11px;
+    padding-left: 16px;
+  }
+
+  .onboarding-footer-note {
+    font-size: 11px;
+    margin: 8px 0 0 0;
+  }
+
+  .onboarding-footer-note-small {
+    font-size: 11px;
+    margin: 12px 0 0 0;
+  }
+
+  .onboarding-faq-question {
+    padding: 10px 14px;
+    font-size: 13px;
+  }
+
+  .onboarding-faq-answer {
+    padding: 8px 14px 10px 14px;
+    font-size: 13px;
+  }
+
+  .onboarding-navigation {
+    margin-top: 20px;
+    padding-top: 16px;
+  }
+
+  .onboarding-back-button,
+  .onboarding-next-button,
+  .onboarding-login-button {
+    padding: 7px 18px;
+    font-size: 13px;
+  }
+}
+
+@media (max-width: 375px) {
+  .onboarding-overlay {
+    padding: 12px;
+  }
+
+  .onboarding-modal {
+    max-height: 85vh;
+    border-radius: 8px;
+  }
+
+  .onboarding-left-panel {
+    flex: 0 0 150px;
+    padding: 12px;
+  }
+
+  .onboarding-visual-placeholder {
+    max-height: 120px;
+  }
+
+  .onboarding-right-panel {
+    padding: 12px 16px;
+    max-height: calc(85vh - 150px);
+  }
+
+  .onboarding-top-bar {
+    margin-bottom: 10px;
+  }
+
+  .onboarding-progress-dots {
+    gap: 6px;
+  }
+
+  .onboarding-dot {
+    width: 8px;
+    height: 8px;
+  }
+
+  .onboarding-dot.active {
+    width: 10px;
+    height: 10px;
+  }
+
+  .onboarding-skip-button {
+    font-size: 12px;
+    padding: 3px 6px;
+  }
+
+  .onboarding-screen {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .onboarding-title {
+    font-size: 16px; /* Welcome to ListServ Calendar */
+  }
+
+  .onboarding-body {
+    font-size: 12px; /* Filter campus events and publish them to your own ListServ calendar. */
+  }
+
+  .onboarding-disclaimer-box { /* Testing Mode BOX */
+    padding: 12px;
+  }
+
+  .onboarding-disclaimer-title { /* Testing Mode Notice */
+    font-size: 12px;
+  }
+
+  .onboarding-disclaimer-list { /* This is an early test version. */
+    font-size: 10px;
+    padding-left: 12px;
+  }
+
+  .onboarding-bullet-list { /* It will NOT modify your personal calendar. */
+    font-size: 10px;
+    padding-left: 12px;
+  }
+
+  .onboarding-footer-note { /* You can change filters anytime. */
+    font-size: 10px;
+    margin: 0px 0 0 0;
+  }
+
+  .onboarding-footer-note-small {
+    font-size: 10px;
+    margin: 0px 0 0 0;
+  }
+
+  .onboarding-faq-question { /* Will this affect my personal calendar? */
+    padding: 6px 12px;
+    font-size: 12px;
+  }
+
+  .onboarding-faq-answer { /* No. We create a separate 'ListServ Calendar' that you can toggle on/off or delete anytime. */
+    padding: 6px 12px 6px 12px;
+    font-size: 12px;
+  }
+
+  .onboarding-navigation { /* The bar above Back and Next buttons */
+    margin-top: 6px;
+    padding-top: 6px;
+  }
+
+  .onboarding-back-button,
+  .onboarding-next-button,
+  .onboarding-login-button {
+    padding: 6px 20px;
+    font-size: 12px;
   }
 }
