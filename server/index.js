@@ -125,6 +125,42 @@ function getOAuthClient(req) {
   return oauth2Client;
 }
 
+async function enrichInviteEntriesWithNames(entries) {
+  const source = Array.isArray(entries) ? entries : [];
+  const normalizedEmails = Array.from(
+    new Set(
+      source
+        .map((entry) => String(entry?.email || "").trim().toLowerCase())
+        .filter(Boolean)
+    )
+  );
+
+  if (normalizedEmails.length === 0) return source;
+
+  const rows = await query(
+    `SELECT LOWER(email) AS email, name
+     FROM users
+     WHERE LOWER(email) = ANY($1::text[])`,
+    [normalizedEmails]
+  );
+  const nameByEmail = new Map(
+    (rows || []).map((row) => [
+      String(row?.email || "").trim().toLowerCase(),
+      String(row?.name || "").trim(),
+    ])
+  );
+
+  return source.map((entry) => {
+    const email = String(entry?.email || "").trim().toLowerCase();
+    const existingName = String(entry?.name || "").trim();
+    const lookedUpName = email ? String(nameByEmail.get(email) || "").trim() : "";
+    return {
+      ...entry,
+      name: existingName || lookedUpName || "",
+    };
+  });
+}
+
 // --- Helper: Ensure ListServ calendar exists (with session caching) ---
 async function getOrCreateListServCalendar(req, oauth2Client) {
   if (req.session.listservCalendarId) {
@@ -271,6 +307,8 @@ app.get("/api/me", async (req, res) => {
       "SELECT organization_preference, event_type_preference, preferences, nudged_events, invited_events, accepted_nudges FROM users WHERE id = $1",
       [req.session.user.id]
     );
+    const invitedEvents = await enrichInviteEntriesWithNames(userRecord?.invited_events || []);
+    const acceptedNudges = await enrichInviteEntriesWithNames(userRecord?.accepted_nudges || []);
     res.json({
       user: {
         ...req.session.user,
@@ -278,8 +316,8 @@ app.get("/api/me", async (req, res) => {
         organizationPreference: userRecord?.organization_preference || [],
         eventTypePreference: userRecord?.event_type_preference || [],
         nudgedEvents: userRecord?.nudged_events || [],
-        invitedEvents: userRecord?.invited_events || [],
-        acceptedNudges: userRecord?.accepted_nudges || [],
+        invitedEvents,
+        acceptedNudges,
       },
     });
   } catch (error) {
@@ -295,13 +333,15 @@ app.get("/api/user/preferences", ensureAuthed, async (req, res) => {
       "SELECT organization_preference, event_type_preference, preferences, nudged_events, invited_events, accepted_nudges FROM users WHERE id = $1",
       [req.session.user.id]
     );
+    const invitedEvents = await enrichInviteEntriesWithNames(userRecord?.invited_events || []);
+    const acceptedNudges = await enrichInviteEntriesWithNames(userRecord?.accepted_nudges || []);
     res.json({ 
       preferences: userRecord?.preferences || {},
       organizationPreference: userRecord?.organization_preference || [],
       eventTypePreference: userRecord?.event_type_preference || [],
       nudgedEvents: userRecord?.nudged_events || [],
-      invitedEvents: userRecord?.invited_events || [],
-      acceptedNudges: userRecord?.accepted_nudges || [],
+      invitedEvents,
+      acceptedNudges,
     });
   } catch (error) {
     console.error("[preferences] Error fetching:", error);
@@ -387,6 +427,8 @@ app.put("/api/user/preferences", ensureAuthed, async (req, res) => {
       "SELECT organization_preference, event_type_preference, preferences, nudged_events, invited_events, accepted_nudges FROM users WHERE id = $1",
       [userId]
     );
+    const invitedEvents = await enrichInviteEntriesWithNames(updatedUser?.invited_events || []);
+    const acceptedNudges = await enrichInviteEntriesWithNames(updatedUser?.accepted_nudges || []);
 
     console.log("[preferences] Updated user preferences:", {
       organizationPreferenceCount: updatedUser?.organization_preference?.length || 0,
@@ -399,8 +441,8 @@ app.put("/api/user/preferences", ensureAuthed, async (req, res) => {
       organizationPreference: updatedUser?.organization_preference || [],
       eventTypePreference: updatedUser?.event_type_preference || [],
       nudgedEvents: updatedUser?.nudged_events || [],
-      invitedEvents: updatedUser?.invited_events || [],
-      acceptedNudges: updatedUser?.accepted_nudges || [],
+      invitedEvents,
+      acceptedNudges,
     });
   } catch (error) {
     console.error("[preferences] Error updating:", error);
@@ -651,11 +693,22 @@ app.get("/api/dartmouth/search", ensureAuthed, async (req, res) => {
 
 // --- Respond to Invited Event ---
 app.post("/api/user/invited-events/respond", ensureAuthed, async (req, res) => {
-  const { eventId, action } = req.body || {};
+  const { eventId, action, inviterEmail } = req.body || {};
   const normalizedAction = String(action || "").toLowerCase();
+  const normalizedInviterEmail = String(inviterEmail || "").trim().toLowerCase();
+  const normalizeEventId = (value) => {
+    const id = String(value || "").trim();
+    if (!id) return "";
+    if (id.startsWith("email:")) return id.slice("email:".length);
+    return id;
+  };
+  const normalizedEventId = normalizeEventId(eventId);
 
   if (!eventId || typeof eventId !== "string") {
     return res.status(400).json({ error: "eventId is required" });
+  }
+  if (!normalizedInviterEmail) {
+    return res.status(400).json({ error: "inviterEmail is required" });
   }
   if (!["accept", "decline"].includes(normalizedAction)) {
     return res.status(400).json({ error: "action must be 'accept' or 'decline'" });
@@ -670,7 +723,11 @@ app.post("/api/user/invited-events/respond", ensureAuthed, async (req, res) => {
              (
                SELECT jsonb_agg(elem)
                FROM jsonb_array_elements(COALESCE(invited_events, '[]'::jsonb)) AS elem
-               WHERE elem->>'id' = $1::text
+               WHERE (
+                 (elem->>'id') = $1::text
+                 OR (elem->>'id') = $5::text
+               )
+                 AND lower(elem->>'email') = $4::text
              ),
              '[]'::jsonb
            )
@@ -681,7 +738,13 @@ app.post("/api/user/invited-events/respond", ensureAuthed, async (req, res) => {
            (
              SELECT jsonb_agg(elem)
              FROM jsonb_array_elements(COALESCE(invited_events, '[]'::jsonb)) AS elem
-             WHERE elem->>'id' <> $1::text
+             WHERE NOT (
+               (
+                 (elem->>'id') = $1::text
+                 OR (elem->>'id') = $5::text
+               )
+               AND lower(elem->>'email') = $4::text
+             )
            ),
            '[]'::jsonb
          )
@@ -690,7 +753,13 @@ app.post("/api/user/invited-events/respond", ensureAuthed, async (req, res) => {
        updated_at = CURRENT_TIMESTAMP
        WHERE id = $3
        RETURNING invited_events, accepted_nudges`,
-      [eventId, normalizedAction, req.session.user.id]
+      [
+        eventId,
+        normalizedAction,
+        req.session.user.id,
+        normalizedInviterEmail,
+        normalizedEventId,
+      ]
     );
 
     if (!updated) {
@@ -800,8 +869,9 @@ app.post("/api/user/invited-events/respond", ensureAuthed, async (req, res) => {
       success: true,
       action: normalizedAction,
       eventId,
-      invitedEvents: updated.invited_events || [],
-      acceptedNudges: updated.accepted_nudges || [],
+      inviterEmail: normalizedInviterEmail || undefined,
+      invitedEvents: await enrichInviteEntriesWithNames(updated.invited_events || []),
+      acceptedNudges: await enrichInviteEntriesWithNames(updated.accepted_nudges || []),
       publishStatus,
       publishError,
     });
@@ -856,7 +926,7 @@ app.get("/api/user/nudged-events-status", ensureAuthed, async (req, res) => {
 
     const targetUsers = targetEmails.length
       ? await query(
-          `SELECT email, invited_events, accepted_nudges
+          `SELECT email, name, invited_events, accepted_nudges
            FROM users
            WHERE LOWER(email) = ANY($1::text[])`,
           [targetEmails]
@@ -926,6 +996,7 @@ app.get("/api/user/nudged-events-status", ensureAuthed, async (req, res) => {
       statusRows.push({
         id: eventId,
         email: targetUser?.email || targetEmail,
+        name: String(targetUser?.name || "").trim() || undefined,
         status,
       });
     });
@@ -1660,6 +1731,7 @@ app.get("/api/events", ensureAuthed, async (req, res) => {
     const pendingDecisionEventIds = new Set();
     const acceptedYourNudgeEventIds = new Set();
     const acceptedByEmailsByEvent = new Map();
+    const acceptedByNamesByEvent = new Map();
     const nudgedEvents = Array.isArray(userNudgesRecord?.nudged_events)
       ? userNudgesRecord.nudged_events
       : [];
@@ -1730,7 +1802,7 @@ app.get("/api/events", ensureAuthed, async (req, res) => {
 
     const nudgedTargetUsers = nudgedTargetEmails.length
       ? await query(
-          `SELECT email, accepted_nudges
+          `SELECT email, name, accepted_nudges
            FROM users
            WHERE LOWER(email) = ANY($1::text[])`,
           [nudgedTargetEmails]
@@ -1759,7 +1831,12 @@ app.get("/api/events", ensureAuthed, async (req, res) => {
         if (!acceptedByEmailsByEvent.has(key)) {
           acceptedByEmailsByEvent.set(key, new Set());
         }
+        if (!acceptedByNamesByEvent.has(key)) {
+          acceptedByNamesByEvent.set(key, new Set());
+        }
         acceptedByEmailsByEvent.get(key).add(targetUser.email || targetEmail);
+        const acceptedName = String(targetUser.name || "").trim() || (targetUser.email || targetEmail);
+        acceptedByNamesByEvent.get(key).add(acceptedName);
       });
     });
 
@@ -1787,6 +1864,11 @@ app.get("/api/events", ensureAuthed, async (req, res) => {
           e.source === "manual" ? `draft:${e.id}` : `email:${e.id}`
         ) || []
       ),
+      acceptedByNames: Array.from(
+        acceptedByNamesByEvent.get(
+          e.source === "manual" ? `draft:${e.id}` : `email:${e.id}`
+        ) || []
+      ),
     }));
 
     // Combine local + Google events, then apply org + event-type filters (branch logic)
@@ -1798,6 +1880,9 @@ app.get("/api/events", ensureAuthed, async (req, res) => {
           : getNudgeDisplayStatus(String(ev.id || "").trim()),
       acceptedByEmails: Array.from(
         acceptedByEmailsByEvent.get(String(ev.id || "").trim()) || []
+      ),
+      acceptedByNames: Array.from(
+        acceptedByNamesByEvent.get(String(ev.id || "").trim()) || []
       ),
     }));
 

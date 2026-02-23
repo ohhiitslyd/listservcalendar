@@ -74,6 +74,71 @@
   font-weight: 600;
 }
 
+.event-details-inviters-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.event-details-inviter-entry {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  gap: 8px;
+  max-width: 100%;
+}
+
+.event-details-inviter-email {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.event-details-inline-invite-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 0;
+  vertical-align: middle;
+  flex-shrink: 0;
+}
+
+.event-inline-invite-button {
+  width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  background: transparent;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+}
+
+.event-inline-invite-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.event-inline-invite-button-decline {
+  color: #dc2626;
+  border-color: #fca5a5;
+  background: #fff1f2;
+}
+
+.event-inline-invite-button-accept {
+  color: #15803d;
+  border-color: #86efac;
+  background: #f0fdf4;
+}
+
 /* Event details content */
 .event-details-content {
   padding: 15px 17px;

@@ -464,6 +464,7 @@ export const AppProvider = ({ children }) => {
             orgCategories: ev.orgCategories ?? [],
             nudgeDisplayStatus: ev.nudgeDisplayStatus || "none",
             acceptedByEmails: ev.acceptedByEmails ?? [],
+            acceptedByNames: ev.acceptedByNames ?? [],
           },
         };
       });
@@ -502,6 +503,7 @@ export const AppProvider = ({ children }) => {
           orgCategories: ev.orgCategories ?? [],
           nudgeDisplayStatus: ev.nudgeDisplayStatus || "none",
           acceptedByEmails: ev.acceptedByEmails ?? [],
+          acceptedByNames: ev.acceptedByNames ?? [],
         },
       }));
       setEvents(transformed);
@@ -535,6 +537,7 @@ export const AppProvider = ({ children }) => {
         orgCategories: ev.orgCategories ?? [],
         nudgeDisplayStatus: ev.nudgeDisplayStatus || "none",
         acceptedByEmails: ev.acceptedByEmails ?? [],
+        acceptedByNames: ev.acceptedByNames ?? [],
       },
     }));
 

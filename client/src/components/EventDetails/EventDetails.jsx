@@ -17,7 +17,6 @@ export const EventDetails = () => {
     setEvents,
     calendarRef,
     listservCalendarId,
-    eventDetailsSource,
     setEventDetailsSource,
     selectedEventInviters,
     setSelectedEventInviters,
@@ -30,6 +29,7 @@ export const EventDetails = () => {
   const [nudgeLoading, setNudgeLoading] = useState(false);
   const [nudgeSuccess, setNudgeSuccess] = useState(null); // { emails: string[] } when nudge succeeds
   const [inviteResponseLoading, setInviteResponseLoading] = useState(false);
+  const [optimisticallyRemovedInviters, setOptimisticallyRemovedInviters] = useState(new Set());
   const [suggestions, setSuggestions] = useState([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [activeSuggestionIndex, setActiveSuggestionIndex] = useState(-1);
@@ -68,6 +68,7 @@ export const EventDetails = () => {
     setSuggestions([]);
     setShowSuggestions(false);
     setActiveSuggestionIndex(-1);
+    setOptimisticallyRemovedInviters(new Set());
     if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
   }, [selectedEvent?.id]);
 
@@ -225,7 +226,6 @@ export const EventDetails = () => {
   const isEmail = selectedEvent.id.startsWith("email:");
   const isListServ =
     selectedEvent.extendedProps?.calendarId === listservCalendarId;
-  const openedFromReceivedNudges = eventDetailsSource === "nudge_received";
   const parseEventDateTime = (value) => {
     const raw = String(value || "").trim();
     if (!raw) return NaN;
@@ -285,6 +285,12 @@ export const EventDetails = () => {
         normalizedCurrentId === normalizedTargetId;
       if (!matches) return prev;
 
+      // Preserve FullCalendar EventApi instances; spreading them strips prototype getters.
+      if (typeof prev.setExtendedProp === "function") {
+        prev.setExtendedProp("nudgeDisplayStatus", nextStatus);
+        return prev;
+      }
+
       return {
         ...prev,
         extendedProps: {
@@ -304,11 +310,32 @@ export const EventDetails = () => {
       if (fcEvent) {
         fcEvent.setExtendedProp("nudgeDisplayStatus", nextStatus);
       }
+
+      // eventDidMount applies inline styles for pending/accepted.
+      // Clear/apply those inline styles immediately so status changes
+      // are visible without waiting for a full remount.
+      const safeId = String(id).replace(/"/g, '\\"');
+      const eventEls = document.querySelectorAll(
+        `.fc-event[data-event-id="${safeId}"]`
+      );
+      eventEls.forEach((el) => {
+        if (!(el instanceof HTMLElement)) return;
+        if (nextStatus === "pending") {
+          el.style.border = "1px dashed #6d28d9";
+          return;
+        }
+        if (nextStatus === "accepted") {
+          el.style.border = "none";
+          return;
+        }
+        // "none" (or any fallback) should drop the pending dotted outline.
+        el.style.border = "none";
+      });
     });
   };
 
-  const acceptedInviters = Array.from(
-    new Set(
+  const acceptedInviterEntries = Array.from(
+    new Map(
       (Array.isArray(user?.acceptedNudges) ? user.acceptedNudges : [])
         .filter((entry) => {
           const entryId = String(entry?.id || "").trim();
@@ -318,45 +345,86 @@ export const EventDetails = () => {
             selectedEventIds.has(normalizedEntryId)
           );
         })
-        .map((entry) =>
-          String(entry?.email || "")
-            .trim()
-            .toLowerCase(),
-        )
-        .filter(Boolean),
-    ),
+        .map((entry) => {
+          const email = String(entry?.email || "").trim().toLowerCase();
+          const name = String(entry?.name || "").trim();
+          return [email, { email, name }];
+        })
+        .filter(([email]) => Boolean(email)),
+    ).values()
   );
 
-  const pendingInviters = Array.from(
-    new Set(
+  const pendingInviterEntries = Array.from(
+    new Map(
       (Array.isArray(user?.invitedEvents) ? user.invitedEvents : [])
         .filter((entry) => {
           const entryId = String(entry?.id || "").trim();
           const normalizedEntryId = normalizeEventId(entryId);
           return selectedEventIds.has(entryId) || selectedEventIds.has(normalizedEntryId);
         })
-        .map((entry) => String(entry?.email || "").trim().toLowerCase())
-        .filter(Boolean)
-    )
+        .map((entry) => {
+          const email = String(entry?.email || "").trim().toLowerCase();
+          const name = String(entry?.name || "").trim();
+          return [email, { email, name }];
+        })
+        .filter(([email]) => Boolean(email)),
+    ).values()
   );
 
-  const acceptedYourNudgeEmails = Array.from(
+  const acceptedYourNudgePeople = Array.from(
     new Set(
-      (Array.isArray(selectedEvent?.extendedProps?.acceptedByEmails)
-        ? selectedEvent.extendedProps.acceptedByEmails
+      (Array.isArray(selectedEvent?.extendedProps?.acceptedByNames) &&
+      selectedEvent.extendedProps.acceptedByNames.length > 0
+        ? selectedEvent.extendedProps.acceptedByNames
+        : Array.isArray(selectedEvent?.extendedProps?.acceptedByEmails)
+          ? selectedEvent.extendedProps.acceptedByEmails
         : []
       )
-        .map((email) => String(email || "").trim().toLowerCase())
+        .map((value) => String(value || "").trim())
         .filter(Boolean)
     )
   );
 
-  const displayInviters = Array.from(
-    new Set([
-      ...(selectedEventInviters || []),
-      ...pendingInviters,
-      ...acceptedInviters,
-    ]),
+  const pendingInviterEmails = new Set(
+    pendingInviterEntries.map((entry) => entry.email)
+  );
+  const hasPendingInviters = pendingInviterEntries.length > 0;
+  const canRespondInline = hasPendingInviters;
+  const acceptedInviterEmails = new Set(
+    acceptedInviterEntries.map((entry) => entry.email)
+  );
+
+  const inviterByEmail = new Map();
+  const addInviter = (email, name = "") => {
+    const normalizedEmail = String(email || "").trim().toLowerCase();
+    if (!normalizedEmail) return;
+    const cleanedName = String(name || "").trim();
+    const existing = inviterByEmail.get(normalizedEmail);
+    if (!existing) {
+      inviterByEmail.set(normalizedEmail, {
+        email: normalizedEmail,
+        name: cleanedName,
+      });
+      return;
+    }
+    if (!existing.name && cleanedName) {
+      inviterByEmail.set(normalizedEmail, {
+        ...existing,
+        name: cleanedName,
+      });
+    }
+  };
+
+  (selectedEventInviters || []).forEach((email) => addInviter(email, ""));
+  pendingInviterEntries.forEach((entry) => addInviter(entry.email, entry.name));
+  acceptedInviterEntries.forEach((entry) => addInviter(entry.email, entry.name));
+  const displayInviters = Array.from(inviterByEmail.values()).filter(
+    (inviter) => !optimisticallyRemovedInviters.has(inviter.email)
+  );
+  const visiblePendingInviterEmails = new Set(
+    Array.from(pendingInviterEmails).filter(
+      (email) => !optimisticallyRemovedInviters.has(email)
+    )
   );
 
   // Format date and time
@@ -448,12 +516,38 @@ export const EventDetails = () => {
     setSelectedEventInviters([]);
   };
 
-  const respondToInvite = async (action) => {
+  const respondToInvite = async (action, inviterEmail = "") => {
     if (!selectedEvent?.id) return;
     const eventId = selectedEvent.id;
     const previousStatus = selectedEvent?.extendedProps?.nudgeDisplayStatus || "none";
+    const normalizedInviterEmail = String(inviterEmail || "").trim().toLowerCase();
+    if (!normalizedInviterEmail) {
+      alert("Please respond to a specific inviter email.");
+      return;
+    }
+    const decliningSingleInviter = action === "decline" && !!normalizedInviterEmail;
+    const declinedInviterWasPending = visiblePendingInviterEmails.has(normalizedInviterEmail);
+    const shouldOptimisticallyRemove = decliningSingleInviter && declinedInviterWasPending;
+    if (shouldOptimisticallyRemove) {
+      setOptimisticallyRemovedInviters((prev) => {
+        const next = new Set(prev);
+        next.add(normalizedInviterEmail);
+        return next;
+      });
+    }
+    const remainingPendingAfterDecline = decliningSingleInviter
+      ? Math.max(0, visiblePendingInviterEmails.size - (declinedInviterWasPending ? 1 : 0))
+      : 0;
     const optimisticStatus =
-      action === "accept" ? "accepted" : action === "decline" ? "none" : previousStatus;
+      action === "accept"
+        ? "accepted"
+        : action === "decline"
+          ? remainingPendingAfterDecline > 0
+            ? "pending"
+            : acceptedInviterEmails.size > 0
+              ? "accepted"
+              : "none"
+          : previousStatus;
 
     if (optimisticStatus !== previousStatus) {
       updateEventNudgeStatus(eventId, optimisticStatus);
@@ -464,9 +558,17 @@ export const EventDetails = () => {
       const result = await api.respondToInvite({
         eventId,
         action,
+        inviterEmail: normalizedInviterEmail || undefined,
       });
 
       if (!result?.success) {
+        if (shouldOptimisticallyRemove) {
+          setOptimisticallyRemovedInviters((prev) => {
+            const next = new Set(prev);
+            next.delete(normalizedInviterEmail);
+            return next;
+          });
+        }
         if (optimisticStatus !== previousStatus) {
           updateEventNudgeStatus(eventId, previousStatus);
         }
@@ -478,10 +580,19 @@ export const EventDetails = () => {
         invitedEvents: result?.invitedEvents || [],
         acceptedNudges: result?.acceptedNudges || [],
       });
-      if (action === "decline" || action === "accept") {
+      // Keep the card open for inviter-specific responses so users can
+      // accept/decline multiple inviters in one pass.
+      if (!normalizedInviterEmail && (action === "decline" || action === "accept")) {
         closeDetails();
       }
     } catch (error) {
+      if (shouldOptimisticallyRemove) {
+        setOptimisticallyRemovedInviters((prev) => {
+          const next = new Set(prev);
+          next.delete(normalizedInviterEmail);
+          return next;
+        });
+      }
       if (optimisticStatus !== previousStatus) {
         updateEventNudgeStatus(eventId, previousStatus);
       }
@@ -522,19 +633,56 @@ export const EventDetails = () => {
 
       {displayInviters.length > 0 && (
         <div className="event-details-inviters">
-          <span className="event-details-inviters-label">
-            {acceptedInviters.length > 0
-              ? "Accepted nudges from:"
-              : "Invited by:"}
-          </span>{" "}
-          <span>{displayInviters.join(", ")}</span>
+          <div className="event-details-inviters-label">
+            {hasPendingInviters
+              ? "Invited by:"
+            : acceptedInviterEmails.size > 0
+                ? "Accepted nudges from:"
+                : "Invited by:"}
+          </div>
+          <div className="event-details-inviters-list">
+            {displayInviters.map((inviter) => {
+              const email = inviter.email;
+              const displayName = inviter.name || email;
+              const isPending = visiblePendingInviterEmails.has(email);
+              return (
+                <span key={email} className="event-details-inviter-entry">
+                  <span className="event-details-inviter-email">{displayName}</span>
+                  {canRespondInline && isPending && (
+                    <span className="event-details-inline-invite-actions">
+                      <button
+                        type="button"
+                        className="event-inline-invite-button event-inline-invite-button-decline"
+                        aria-label={`Decline invite from ${displayName}`}
+                        title={`Decline invite from ${displayName}`}
+                        onClick={() => respondToInvite("decline", email)}
+                        disabled={inviteResponseLoading}
+                      >
+                        X
+                      </button>
+                      <button
+                        type="button"
+                        className="event-inline-invite-button event-inline-invite-button-accept"
+                        aria-label={`Accept invite from ${displayName}`}
+                        title={`Accept invite from ${displayName}`}
+                        onClick={() => respondToInvite("accept", email)}
+                        disabled={inviteResponseLoading}
+                      >
+                        ✓
+                      </button>
+                    </span>
+                  )}
+                </span>
+              );
+            })}
+          </div>
         </div>
       )}
 
-      {acceptedYourNudgeEmails.length > 0 && (
+      {acceptedYourNudgePeople.length > 0 && (
         <div className="event-details-inviters">
           <span className="event-details-inviters-label">Accepted your nudge:</span>{" "}
-          <span>{acceptedYourNudgeEmails.join(", ")}</span>
+          <span>{acceptedYourNudgePeople.join(", ")}</span>
         </div>
       )}
 
@@ -686,26 +834,7 @@ export const EventDetails = () => {
           )}
       </div>
 
-      {openedFromReceivedNudges ? (
-        <div className="event-details-actions event-details-actions-split">
-          <button
-            type="button"
-            className="event-action-button event-action-button-secondary"
-            onClick={() => respondToInvite("decline")}
-            disabled={inviteResponseLoading}
-          >
-            {inviteResponseLoading ? "Working..." : "Decline"}
-          </button>
-          <button
-            type="button"
-            className="event-action-button"
-            onClick={() => respondToInvite("accept")}
-            disabled={inviteResponseLoading}
-          >
-            {inviteResponseLoading ? "Working..." : "Accept"}
-          </button>
-        </div>
-      ) : canNudge && (
+      {canNudge && (
         <div className="event-details-actions">
           {nudgeSuccess && (
             <div className={`nudge-success-message ${nudgeSuccess.error || (nudgeSuccess.errors?.length > 0 && nudgeSuccess.emails.length === 0) ? 'nudge-error' : nudgeSuccess.errors?.length > 0 ? 'nudge-partial' : ''}`}>

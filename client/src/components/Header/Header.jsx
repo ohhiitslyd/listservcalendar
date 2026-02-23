@@ -481,7 +481,7 @@ export const Header = ({
                         }}
                       >
                         <div className="nudges-event-title">{entry.title}</div>
-                        <div className="nudges-event-org">{entry.email}</div>
+                        <div className="nudges-event-org">{entry.name || entry.email}</div>
                       </button>
                     ))
                   ) : (

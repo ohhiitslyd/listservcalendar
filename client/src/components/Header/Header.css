@@ -545,7 +545,11 @@
 
 .nudges-event-bubble-pending {
   background: transparent;
-  border: 3px dotted #6d28d9;
+  border: 1px dashed #6d28d9 !important;
+}
+
+.nudges-event-bubble.nudges-event-bubble-pending:hover {
+  border: 1px dashed #6d28d9 !important;
 }
 
 .nudges-event-bubble-accepted {

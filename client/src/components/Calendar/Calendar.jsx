@@ -62,10 +62,13 @@ export const Calendar = ({
 
   // Position of the floating EventDetails overlay (in viewport coordinates)
   const [detailsOverlayPosition, setDetailsOverlayPosition] = useState(null);
+  const detailsOverlayRef = useRef(null);
   // State for personal calendar event popup
   const [personalEventInfo, setPersonalEventInfo] = useState(null);
   const personalEventCardRef = useRef(null);
 
+  const escapeAttrValue = (value) =>
+    String(value).replace(/\\/g, "\\\\").replace(/"/g, '\\"');
   // Container used for mobile swipe gestures
   const swipeContainerRef = useRef(null);
   const touchStartXRef = useRef(null);
@@ -92,6 +95,39 @@ export const Calendar = ({
       setDetailsOverlayPosition(null);
     }
   }, [selectedEvent]);
+
+  // Close event details when clicking outside the card, except when clicking
+  // the currently selected calendar event bubble itself.
+  useEffect(() => {
+    if (!selectedEvent || !detailsOverlayPosition) return;
+
+    const handleOutsideClick = (event) => {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+
+      if (detailsOverlayRef.current?.contains(target)) return;
+
+      const selectedId = String(selectedEvent?.id || "").trim();
+      if (selectedId) {
+        const selector = `.fc-event[data-event-id="${escapeAttrValue(selectedId)}"]`;
+        if (target.closest(selector)) return;
+      }
+
+      setSelectedEvent(null);
+      setEventDetailsSource("calendar");
+      setSelectedEventInviters([]);
+      setDetailsOverlayPosition(null);
+    };
+
+    document.addEventListener("mousedown", handleOutsideClick);
+    return () => document.removeEventListener("mousedown", handleOutsideClick);
+  }, [
+    selectedEvent,
+    detailsOverlayPosition,
+    setSelectedEvent,
+    setEventDetailsSource,
+    setSelectedEventInviters,
+  ]);
 
   // Adjust personal event popup position after render to ensure it fits on screen
   useEffect(() => {
@@ -412,9 +448,6 @@ export const Calendar = ({
       api.gotoDate(targetEvent.start);
     }
 
-    const escapeAttrValue = (value) =>
-      String(value).replace(/\\/g, "\\\\").replace(/"/g, '\\"');
-
     const openNearCalendarEvent = (attempt = 0) => {
       const selector = `.fc-event[data-event-id="${escapeAttrValue(requestedId)}"]`;
       const eventEl = document.querySelector(selector);
@@ -487,7 +520,7 @@ export const Calendar = ({
       info.el.style.backgroundImage = "none";
       info.el.style.backgroundColor = freeFoodGreen;
       info.el.style.color = "#000000";
-      info.el.style.border = "3px dotted #6d28d9";
+      info.el.style.border = "1px dashed #6d28d9";
       info.el.style.borderRadius = "4px";
       return;
     }
@@ -662,6 +695,7 @@ export const Calendar = ({
         />
         {selectedEvent && detailsOverlayPosition && (
           <div
+            ref={detailsOverlayRef}
             className="event-details-overlay"
             style={{
               position: "fixed",
