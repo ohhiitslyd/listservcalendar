@@ -1,4 +1,4 @@
-import React, { useContext, useState, useRef, useEffect } from "react";
+import React, { useContext, useState, useRef, useEffect, useCallback } from "react";
 import { AppContext } from "../../context/AppContext";
 import { api } from "../../api/calendarApi";
 import "./Header.css";
@@ -33,9 +33,12 @@ export const Header = ({
   const [nudgedStatusExpanded, setNudgedStatusExpanded] = useState(false);
   const [nudgedEventsStatus, setNudgedEventsStatus] = useState([]);
   const [nudgedStatusLoading, setNudgedStatusLoading] = useState(false);
+  const [nudgesDropdownStyle, setNudgesDropdownStyle] = useState({});
   const userMenuRef = useRef(null);
   const calendarsMenuRef = useRef(null);
   const nudgesMenuRef = useRef(null);
+  const nudgesButtonRef = useRef(null);
+  const nudgesDropdownRef = useRef(null);
 
   const invitedEventsRaw = Array.isArray(user?.invitedEvents)
     ? user.invitedEvents
@@ -129,6 +132,51 @@ export const Header = ({
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
+
+  const updateNudgesDropdownPosition = useCallback(() => {
+    if (!nudgesOpen || !nudgesButtonRef.current || !nudgesDropdownRef.current) return;
+
+    const margin = 8;
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+    const buttonRect = nudgesButtonRef.current.getBoundingClientRect();
+
+    const maxWidth = Math.max(220, viewportWidth - margin * 2);
+    const targetWidth = Math.min(320, maxWidth);
+    let left = buttonRect.right - targetWidth;
+    if (left < margin) left = margin;
+    if (left + targetWidth > viewportWidth - margin) {
+      left = viewportWidth - margin - targetWidth;
+    }
+
+    const top = Math.min(buttonRect.bottom + 8, viewportHeight - 120);
+    const maxHeight = Math.max(180, viewportHeight - top - margin);
+
+    setNudgesDropdownStyle({
+      position: "fixed",
+      left: `${left}px`,
+      top: `${top}px`,
+      width: `${targetWidth}px`,
+      maxWidth: `${maxWidth}px`,
+      maxHeight: `${maxHeight}px`,
+    });
+  }, [nudgesOpen]);
+
+  useEffect(() => {
+    if (!nudgesOpen) {
+      setNudgesDropdownStyle({});
+      return;
+    }
+
+    updateNudgesDropdownPosition();
+    window.addEventListener("resize", updateNudgesDropdownPosition);
+    window.addEventListener("scroll", updateNudgesDropdownPosition, true);
+
+    return () => {
+      window.removeEventListener("resize", updateNudgesDropdownPosition);
+      window.removeEventListener("scroll", updateNudgesDropdownPosition, true);
+    };
+  }, [nudgesOpen, updateNudgesDropdownPosition]);
 
 
   // Get user initials for avatar
@@ -308,6 +356,7 @@ export const Header = ({
         <div className="dropdown-container" ref={nudgesMenuRef}>
           <button
             className="app-header-button calendars-button"
+            ref={nudgesButtonRef}
             onClick={() => {
               setNudgesOpen(!nudgesOpen);
               setUserCalendarsOpen(false);
@@ -330,7 +379,7 @@ export const Header = ({
             </svg>
           </button>
           {nudgesOpen && (
-            <div className="dropdown-content nudges-dropdown">
+            <div className="dropdown-content nudges-dropdown" ref={nudgesDropdownRef} style={nudgesDropdownStyle}>
               <div className="calendars-dropdown-header">
                 <h4>Nudges</h4>
               </div>
