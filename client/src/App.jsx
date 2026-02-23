@@ -69,12 +69,27 @@ const InnerApp = () => {
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
   const [publishedKey, setPublishedKey] = useState(null); // Key computed from database preferences
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
+  const [mobileFiltersClosing, setMobileFiltersClosing] = useState(false);
   const [showPublishConfirm, setShowPublishConfirm] = useState(false);
   const [onboardingOpen, setOnboardingOpen] = useState(false);
   const [onboardingClosedThisSession, setOnboardingClosedThisSession] = useState(false);
   const [hasLoggedInThisSession, setHasLoggedInThisSession] = useState(false);
   const [lastPreferencesSavedAt, setLastPreferencesSavedAt] = useState(null);
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
+
+  const openMobileFilters = () => {
+    setMobileFiltersClosing(false);
+    setMobileFiltersOpen(true);
+  };
+
+  const closeMobileFilters = () => {
+    // Trigger closing animation, then unmount after it finishes
+    setMobileFiltersClosing(true);
+    setTimeout(() => {
+      setMobileFiltersOpen(false);
+      setMobileFiltersClosing(false);
+    }, 300);
+  };
 
   // Close mobile filters when window is resized to desktop view
   useEffect(() => {
@@ -83,6 +98,7 @@ const InnerApp = () => {
       setIsMobile(isMobileView);
       if (!isMobileView && mobileFiltersOpen) {
         setMobileFiltersOpen(false);
+        setMobileFiltersClosing(false);
       }
     };
 
@@ -379,8 +395,15 @@ const InnerApp = () => {
           handleOpenPublishConfirm();
         }}
         onLogout={handleLogout}
-        onMobileFiltersToggle={() => setMobileFiltersOpen(!mobileFiltersOpen)}
+        onMobileFiltersToggle={() => {
+          if (mobileFiltersOpen) {
+            closeMobileFilters();
+          } else {
+            openMobileFilters();
+          }
+        }}
         mobileFiltersOpen={mobileFiltersOpen}
+        isMobile={isMobile}
         statusText={statusText}
         statusSubtext={statusSubtext}
         statusDotClass={statusDotClass}
@@ -394,7 +417,7 @@ const InnerApp = () => {
             statusText={null}
             statusDotClass={null}
             autoFocusOrgSearch={false}
-            onClose={() => setMobileFiltersOpen(false)}
+            onClose={closeMobileFilters}
           />
         </div>
 
@@ -418,13 +441,23 @@ const InnerApp = () => {
 
       {/* Mobile filters overlay */}
       {mobileFiltersOpen && (
-        <div className="mobile-filters-overlay" onClick={() => setMobileFiltersOpen(false)}>
-          <div className="mobile-filters-drawer" onClick={(e) => e.stopPropagation()}>
+        <div
+          className={`mobile-filters-overlay ${
+            mobileFiltersClosing ? "mobile-filters-overlay-closing" : ""
+          }`}
+          onClick={closeMobileFilters}
+        >
+          <div
+            className={`mobile-filters-drawer ${
+              mobileFiltersClosing ? "mobile-filters-drawer-closing" : ""
+            }`}
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="mobile-filters-header">
               <h3>Filters</h3>
               <button
                 className="mobile-filters-close"
-                onClick={() => setMobileFiltersOpen(false)}
+                onClick={closeMobileFilters}
                 aria-label="Close filters"
               >
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -438,7 +471,7 @@ const InnerApp = () => {
               statusText={null}
               statusDotClass={null}
               autoFocusOrgSearch={false}
-              onClose={() => setMobileFiltersOpen(false)}
+              onClose={closeMobileFilters}
             />
           </div>
         </div>

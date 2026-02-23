@@ -189,7 +189,7 @@
   background: transparent;
   border: 1px solid transparent;
   border-radius: 8px;
-  padding: 6px 8px;
+  padding: 6px 6px;
   cursor: pointer;
   transition: background-color 0.2s ease, border-color 0.2s ease;
 }
@@ -215,8 +215,7 @@
   font-family: 'Poppins', sans-serif;
   color: #000000;
   transition: background-color 0.2s ease, border-color 0.2s ease;
-  margin-right: 8px;
-}
+  }
 
 .help-button:hover {
   background: #f5f9f0;
@@ -604,8 +603,7 @@
   background: transparent;
   border: none;
   cursor: pointer;
-  padding: 8px;
-  margin-right: 4px;
+  padding: 6px 6px;
 }
 
 .mobile-menu-button svg {
@@ -667,6 +665,7 @@
 
   .app-header-left {
     gap: 8px;
+    margin-right: 8px;
   }
 
   .app-header-right {
@@ -710,6 +709,11 @@
     display: none;
   }
 
+  /* Hide desktop calendars button on mobile; Calendars moves into user menu */
+  .header-calendars-desktop {
+    display: none;
+  }
+
   .calendars-button {
     padding: 5px 7px;
     font-size: 13px;
@@ -741,6 +745,10 @@
     left: auto;
     right: 0;
     transform: translateX(0);
+    min-width: 0;
+    width: min(320px, calc(100vw - 16px));
+    max-width: calc(100vw - 16px);
+    box-sizing: border-box;
   }
 
   .user-menu-dropdown {
@@ -810,23 +818,6 @@
   }
 }
 
-@media (max-width: 600px) {
-  .app-header-button {
-    font-size: 12px;
-    padding: 4px 8px;
-  }
-
-  .calendars-button {
-    font-size: 12px;
-    padding: 4px 6px;
-  }
-
-  .publish-button-icon {
-    width: 12px;
-    height: 12px;
-  }
-}
-
 @media (max-width: 640px) {
   .app-header {
     padding: 0 8px;
@@ -835,6 +826,7 @@
 
   .app-header-left {
     gap: 4px;
+    margin-right: 4px;
   }
 
   .app-header-right {
@@ -942,6 +934,17 @@
     padding: 9px 11px;
     font-size: 11.5px;
   }
+  .nudges-count-badge {
+    padding: 3px 3px;
+    font-size: 11px;
+    margin-left: 4px;
+  }
+  .nudges-dropdown {
+    /* Make nudges dropdown narrower and responsive on mobile */
+    min-width: 0;
+    width: min(240px, calc(100vw - 24px));
+    max-width: calc(100vw - 24px);
+  }
 }
 
 @media (max-width: 375px) {
@@ -952,6 +955,7 @@
 
   .app-header-left {
     gap: 2px;
+    margin-right: 2px;
   }
 
   .app-header-right {
@@ -1026,7 +1030,11 @@
     font-size: 9px;
     padding: 1px 3px;
   }
-
+  .nudges-count-badge {
+    padding: 3px 3px;
+    font-size: 10px;
+    margin-left: 4px;
+  }
   .user-menu-item {
     padding: 6px 10px;
     font-size: 11px;
