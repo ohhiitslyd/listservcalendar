@@ -180,9 +180,9 @@ export const api = {
     preferences: any;
     organizationPreference: string[];
     eventTypePreference: string[];
-    nudgedEvents: { id: string; email: string }[];
-    invitedEvents: { id: string; email: string }[];
-    acceptedNudges: { id: string; email: string }[];
+    nudgedEvents: { id: string; email: string; name?: string }[];
+    invitedEvents: { id: string; email: string; name?: string }[];
+    acceptedNudges: { id: string; email: string; name?: string }[];
   }> =>
     fetch("/api/user/preferences", { credentials: "include" }).then((r) =>
       r.json()
@@ -250,28 +250,32 @@ export const api = {
   respondToInvite: async ({
     eventId,
     action,
+    inviterEmail,
   }: {
     eventId: string;
     action: "accept" | "decline";
+    inviterEmail?: string;
   }): Promise<{
     success?: boolean;
     error?: string;
     action?: "accept" | "decline";
     eventId?: string;
-    invitedEvents?: { id: string; email: string }[];
-    acceptedNudges?: { id: string; email: string }[];
+    inviterEmail?: string;
+    invitedEvents?: { id: string; email: string; name?: string }[];
+    acceptedNudges?: { id: string; email: string; name?: string }[];
   }> =>
     fetch("/api/user/invited-events/respond", {
       method: "POST",
       credentials: "include",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ eventId, action }),
+      body: JSON.stringify({ eventId, action, inviterEmail }),
     }).then((r) => r.json()),
 
   fetchNudgedEventsStatus: async (): Promise<{
     nudgedEventsStatus: {
       id: string;
       email: string;
+      name?: string;
       status: "pending" | "accepted" | "declined";
     }[];
     error?: string;
