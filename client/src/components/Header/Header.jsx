@@ -11,6 +11,7 @@ export const Header = ({
   statusSubtext,
   statusDotClass,
   onHelpClick,
+  isMobile = false,
 }) => {
   const { 
     user, 
@@ -70,20 +71,33 @@ export const Header = ({
   // Close dropdowns when clicking outside
   useEffect(() => {
     const handleClickOutside = (event) => {
-      if (userMenuRef.current && !userMenuRef.current.contains(event.target)) {
+      const target = event.target;
+
+      // Close user menu if click is outside it
+      if (userMenuRef.current && !userMenuRef.current.contains(target)) {
         setUserMenuOpen(false);
       }
-      if (calendarsMenuRef.current && !calendarsMenuRef.current.contains(event.target)) {
+
+      // Close calendars dropdown if click is outside its container.
+      // On mobile, calendars content lives inside the user menu, so don't
+      // auto-close it when clicking inside the user menu.
+      if (
+        calendarsMenuRef.current &&
+        !calendarsMenuRef.current.contains(target) &&
+        (!isMobile || !userMenuRef.current || !userMenuRef.current.contains(target))
+      ) {
         setUserCalendarsOpen(false);
       }
-      if (nudgesMenuRef.current && !nudgesMenuRef.current.contains(event.target)) {
+
+      // Close nudges dropdown if click is outside it
+      if (nudgesMenuRef.current && !nudgesMenuRef.current.contains(target)) {
         setNudgesOpen(false);
       }
     };
 
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
+  }, [isMobile]);
 
 
   // Get user initials for avatar
@@ -185,81 +199,84 @@ export const Header = ({
       </div>
 
       <div className="app-header-right">
-        <div className="dropdown-container" ref={calendarsMenuRef}>
-          <button
-            className="app-header-button calendars-button"
-            onClick={() => {
-              setUserCalendarsOpen(!userCalendarsOpen);
-              setNudgesOpen(false);
-            }}
-            type="button"
-          >
-            Calendars
-            <svg 
-              className={`dropdown-arrow ${userCalendarsOpen ? 'open' : ''}`} 
-              width="16" 
-              height="16" 
-              viewBox="0 0 24 24" 
-              fill="none" 
-              stroke="currentColor" 
-              strokeWidth="2"
-              style={{ marginLeft: '2px' }}
+        {/* Desktop Calendars dropdown (hidden on mobile) */}
+        {!isMobile && (
+          <div className="dropdown-container header-calendars-desktop" ref={calendarsMenuRef}>
+            <button
+              className="app-header-button calendars-button"
+              onClick={() => {
+                setUserCalendarsOpen(!userCalendarsOpen);
+                setNudgesOpen(false);
+              }}
+              type="button"
             >
-              <polyline points="6 9 12 15 18 9"></polyline>
-            </svg>
-          </button>
-          {userCalendarsOpen && (
-            <div className="dropdown-content calendars-dropdown">
-              <div className="calendars-dropdown-header">
-                <h4>Calendars</h4>
-              </div>
-              <div className="calendars-list">
-                {calendars.length > 0 ? (
-                  calendars
-                    .sort((a, b) => {
-                      const aName = a.summary?.toLowerCase() || "";
-                      const bName = b.summary?.toLowerCase() || "";
-                      const aIsListServ = aName === "listserv events";
-                      const bIsListServ = bName === "listserv events";
-                      if (aIsListServ && !bIsListServ) return -1;
-                      if (!aIsListServ && bIsListServ) return 1;
+              Calendars
+              <svg 
+                className={`dropdown-arrow ${userCalendarsOpen ? 'open' : ''}`} 
+                width="16" 
+                height="16" 
+                viewBox="0 0 24 24" 
+                fill="none" 
+                stroke="currentColor" 
+                strokeWidth="2"
+                style={{ marginLeft: '2px' }}
+              >
+                <polyline points="6 9 12 15 18 9"></polyline>
+              </svg>
+            </button>
+            {userCalendarsOpen && (
+              <div className="dropdown-content calendars-dropdown">
+                <div className="calendars-dropdown-header">
+                  <h4>Calendars</h4>
+                </div>
+                <div className="calendars-list">
+                  {calendars.length > 0 ? (
+                    calendars
+                      .sort((a, b) => {
+                        const aName = a.summary?.toLowerCase() || "";
+                        const bName = b.summary?.toLowerCase() || "";
+                        const aIsListServ = aName === "listserv events";
+                        const bIsListServ = bName === "listserv events";
+                        if (aIsListServ && !bIsListServ) return -1;
+                        if (!aIsListServ && bIsListServ) return 1;
 
-                      const aIsPrimary = !!a.primary;
-                      const bIsPrimary = !!b.primary;
-                      if (aIsPrimary && !bIsPrimary) return -1;
-                      if (!aIsPrimary && bIsPrimary) return 1;
+                        const aIsPrimary = !!a.primary;
+                        const bIsPrimary = !!b.primary;
+                        if (aIsPrimary && !bIsPrimary) return -1;
+                        if (!aIsPrimary && bIsPrimary) return 1;
 
-                      return aName.localeCompare(bName);
-                    })
-                    .map(c => {
-                      const isListServ = c.summary?.toLowerCase() === "listserv events";
-                      const isVisible = visibleCalendars.has(c.id);
-                      return (
-                        <label 
-                          key={c.id} 
-                          className={`calendar-item ${!isListServ ? 'calendar-item-other' : ''}`}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={isVisible}
-                            onChange={() => toggleCalendar(c.id)}
-                            disabled={isListServ}
-                          />
-                          <span className="calendar-name">
-                            {c.summary}
-                            {c.primary && <span className="calendar-badge">primary</span>}
-                            {isListServ && <span className="calendar-badge">ListServ</span>}
-                          </span>
-                        </label>
-                      );
-                    })
-                ) : (
-                  <div className="user-menu-empty">No calendars available.</div>
-                )}
+                        return aName.localeCompare(bName);
+                      })
+                      .map(c => {
+                        const isListServ = c.summary?.toLowerCase() === "listserv events";
+                        const isVisible = visibleCalendars.has(c.id);
+                        return (
+                          <label 
+                            key={c.id} 
+                            className={`calendar-item ${!isListServ ? 'calendar-item-other' : ''}`}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={isVisible}
+                              onChange={() => toggleCalendar(c.id)}
+                              disabled={isListServ}
+                            />
+                            <span className="calendar-name">
+                              {c.summary}
+                              {c.primary && <span className="calendar-badge">primary</span>}
+                              {isListServ && <span className="calendar-badge">ListServ</span>}
+                            </span>
+                          </label>
+                        );
+                      })
+                  ) : (
+                    <div className="user-menu-empty">No calendars available.</div>
+                  )}
+                </div>
               </div>
-            </div>
-          )}
-        </div>
+            )}
+          </div>
+        )}
         <div className="dropdown-container" ref={nudgesMenuRef}>
           <button
             className="app-header-button calendars-button"
@@ -354,6 +371,75 @@ export const Header = ({
           </button>
           {userMenuOpen && (
             <div className="dropdown-content user-menu-dropdown">
+              {/* Mobile-only Calendars section inside the user menu */}
+              {isMobile && (
+                <>
+                  <button
+                    className="user-menu-accordion"
+                    type="button"
+                    onClick={() => setUserCalendarsOpen((prev) => !prev)}
+                  >
+                    <span>Calendars</span>
+                    <svg
+                      className={`dropdown-arrow ${userCalendarsOpen ? "open" : ""}`}
+                      width="16"
+                      height="16"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                    >
+                      <polyline points="6 9 12 15 18 9"></polyline>
+                    </svg>
+                  </button>
+                  {userCalendarsOpen && (
+                    <div className="calendars-list user-menu-calendars-list">
+                      {calendars.length > 0 ? (
+                        calendars
+                          .sort((a, b) => {
+                            const aName = a.summary?.toLowerCase() || "";
+                            const bName = b.summary?.toLowerCase() || "";
+                            const aIsListServ = aName === "listserv events";
+                            const bIsListServ = bName === "listserv events";
+                            if (aIsListServ && !bIsListServ) return -1;
+                            if (!aIsListServ && bIsListServ) return 1;
+
+                            const aIsPrimary = !!a.primary;
+                            const bIsPrimary = !!b.primary;
+                            if (aIsPrimary && !bIsPrimary) return -1;
+                            if (!aIsPrimary && bIsPrimary) return 1;
+
+                            return aName.localeCompare(bName);
+                          })
+                          .map((c) => {
+                            const isListServ = c.summary?.toLowerCase() === "listserv events";
+                            const isVisible = visibleCalendars.has(c.id);
+                            return (
+                              <label
+                                key={c.id}
+                                className={`calendar-item ${!isListServ ? "calendar-item-other" : ""}`}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={isVisible}
+                                  onChange={() => toggleCalendar(c.id)}
+                                  disabled={isListServ}
+                                />
+                                <span className="calendar-name">
+                                  {c.summary}
+                                  {c.primary && <span className="calendar-badge">primary</span>}
+                                  {isListServ && <span className="calendar-badge">ListServ</span>}
+                                </span>
+                              </label>
+                            );
+                          })
+                      ) : (
+                        <div className="user-menu-empty">No calendars available.</div>
+                      )}
+                    </div>
+                  )}
+                </>
+              )}
               <button className="user-menu-item" onClick={onLogout} type="button">
                 <span>Log Out</span>
                 <svg className="logout-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">

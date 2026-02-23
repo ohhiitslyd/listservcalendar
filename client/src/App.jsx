@@ -403,6 +403,7 @@ const InnerApp = () => {
           }
         }}
         mobileFiltersOpen={mobileFiltersOpen}
+        isMobile={isMobile}
         statusText={statusText}
         statusSubtext={statusSubtext}
         statusDotClass={statusDotClass}

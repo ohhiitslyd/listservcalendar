@@ -2,8 +2,18 @@
 .app-container {
   display: flex;
   flex-direction: column;
+  /* Base fallback for browsers without dynamic viewport units */
+  min-height: 100vh;
   height: 100vh;
   overflow: hidden;
+}
+
+/* Prefer dynamic viewport height on modern browsers (fixes iOS Safari bottom bar issues) */
+@supports (height: 100dvh) {
+  .app-container {
+    min-height: 100dvh;
+    height: 100dvh;
+  }
 }
 
 .app-container-login {
@@ -33,6 +43,19 @@
   display: flex;
   flex-direction: column;
   min-width: 0;
+}
+
+/* Respect iOS safe area at the bottom so content / footer aren't hidden under the Safari bar */
+@supports (padding-bottom: env(safe-area-inset-bottom)) {
+  @media (max-width: 768px) {
+    .app-main-panel {
+      padding-bottom: env(safe-area-inset-bottom);
+    }
+
+    .app-footer {
+      padding-bottom: env(safe-area-inset-bottom);
+    }
+  }
 }
 
 /* Right Panel – reused for the Event Type Colors legend */

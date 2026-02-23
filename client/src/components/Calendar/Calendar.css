@@ -38,9 +38,17 @@
   flex-direction: column;
   min-width: 280px;
   max-width: 320px;
+  /* Base fallback using classic viewport units */
   max-height: calc(100vh - 32px);
   overflow-y: auto;
   border: 2px solid #9fbe8b;
+}
+
+@supports (height: 100dvh) {
+  .personal-event-card {
+    /* Use dynamic viewport height on browsers that support it (e.g., iOS Safari) */
+    max-height: calc(100dvh - 32px);
+  }
 }
 
 .personal-event-header {
