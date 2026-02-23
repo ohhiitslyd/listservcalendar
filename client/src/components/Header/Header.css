@@ -745,6 +745,10 @@
     left: auto;
     right: 0;
     transform: translateX(0);
+    min-width: 0;
+    width: min(320px, calc(100vw - 16px));
+    max-width: calc(100vw - 16px);
+    box-sizing: border-box;
   }
 
   .user-menu-dropdown {
@@ -811,23 +815,6 @@
   .user-menu-accordion {
     padding: 10px 12px;
     font-size: 12px;
-  }
-}
-
-@media (max-width: 600px) {
-  .app-header-button {
-    font-size: 12px;
-    padding: 4px 8px;
-  }
-
-  .calendars-button {
-    font-size: 12px;
-    padding: 4px 6px;
-  }
-
-  .publish-button-icon {
-    width: 12px;
-    height: 12px;
   }
 }
 
@@ -947,6 +934,17 @@
     padding: 9px 11px;
     font-size: 11.5px;
   }
+  .nudges-count-badge {
+    padding: 3px 3px;
+    font-size: 11px;
+    margin-left: 4px;
+  }
+  .nudges-dropdown {
+    /* Make nudges dropdown narrower and responsive on mobile */
+    min-width: 0;
+    width: min(240px, calc(100vw - 24px));
+    max-width: calc(100vw - 24px);
+  }
 }
 
 @media (max-width: 375px) {
@@ -1032,7 +1030,11 @@
     font-size: 9px;
     padding: 1px 3px;
   }
-
+  .nudges-count-badge {
+    padding: 3px 3px;
+    font-size: 10px;
+    margin-left: 4px;
+  }
   .user-menu-item {
     padding: 6px 10px;
     font-size: 11px;
