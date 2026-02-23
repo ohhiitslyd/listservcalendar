@@ -267,4 +267,16 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ eventId, action }),
     }).then((r) => r.json()),
+
+  fetchNudgedEventsStatus: async (): Promise<{
+    nudgedEventsStatus: {
+      id: string;
+      email: string;
+      status: "pending" | "accepted" | "declined";
+    }[];
+    error?: string;
+  }> =>
+    fetch("/api/user/nudged-events-status", { credentials: "include" }).then((r) =>
+      r.json()
+    ),
 };

@@ -297,7 +297,7 @@ export const Calendar = ({
         const pos = computeOverlayPosition(eventEl.getBoundingClientRect(), 320, 520);
         setPersonalEventInfo(null);
         setDetailsOverlayPosition(pos);
-        setEventDetailsSource("nudge");
+        setEventDetailsSource(focusEventRequest?.detailsSource || "nudge_received");
         setSelectedEventInviters(focusEventRequest?.inviterEmails || []);
         setSelectedEvent(targetEvent);
         clearFocusEventRequest();
@@ -313,7 +313,7 @@ export const Calendar = ({
             left: Math.max(16, rect.right - 340),
           });
         }
-        setEventDetailsSource("nudge");
+        setEventDetailsSource(focusEventRequest?.detailsSource || "nudge_received");
         setSelectedEventInviters(focusEventRequest?.inviterEmails || []);
         setSelectedEvent(targetEvent);
         clearFocusEventRequest();
@@ -338,20 +338,31 @@ export const Calendar = ({
   const handleEventDidMount = (info) => {
     info.el.setAttribute("data-event-id", info.event.id || "");
     const ev = info.event;
-    const isNudged = !!ev.extendedProps?.isNudged;
+    const nudgeDisplayStatus = ev.extendedProps?.nudgeDisplayStatus || "none";
     const isListServ = ev.classNames.includes("fc-event-listserv");
     const harness = info.el.parentElement; // FullCalendar wraps events in a harness div
-
-    // Use the same green as the "Free Food" tag for all ListServ events
+    // Base color for untagged regular ListServ events.
     const freeFoodGreen = tagColorMap?.["Free Food"] || "#d4e9c4";
 
-    if (isNudged) {
+    if (nudgeDisplayStatus === "accepted") {
+      if (harness) harness.style.zIndex = "35";
+      info.el.style.zIndex = "35";
+      info.el.style.backgroundImage = "none";
+      info.el.style.backgroundColor = "#c4b5fd";
+      info.el.style.color = "#000000";
+      info.el.style.border = "none";
+      info.el.style.borderRadius = "4px";
+      return;
+    }
+
+    if (nudgeDisplayStatus === "pending") {
       if (harness) harness.style.zIndex = "35";
       info.el.style.zIndex = "35";
       info.el.style.backgroundImage = "none";
       info.el.style.backgroundColor = freeFoodGreen;
       info.el.style.color = "#000000";
-      info.el.style.borderRadius = "5px";
+      info.el.style.border = "3px dotted #6d28d9";
+      info.el.style.borderRadius = "4px";
       return;
     }
 
@@ -359,6 +370,11 @@ export const Calendar = ({
       // Primary / other calendars → intentionally under ListServ events
       if (harness) harness.style.zIndex = "5";
       info.el.style.zIndex = "5";
+      info.el.style.backgroundImage = "none";
+      info.el.style.backgroundColor = "#ffffff";
+      info.el.style.color = "#000000";
+      info.el.style.border = "none";
+      info.el.style.borderRadius = "4px";
       return;
     }
 
@@ -370,8 +386,16 @@ export const Calendar = ({
     info.el.style.backgroundImage = "none";
     info.el.style.backgroundColor = freeFoodGreen;
     info.el.style.color = "#000000";
+    info.el.style.border = "none";
 
-    info.el.style.borderRadius = "5px";
+    info.el.style.borderRadius = "4px";
+  };
+
+  const eventClassNames = (arg) => {
+    const status = arg.event.extendedProps?.nudgeDisplayStatus || "none";
+    if (status === "accepted") return ["fc-event-nudge-accepted"];
+    if (status === "pending") return ["fc-event-nudge-pending"];
+    return [];
   };
 
   return (
@@ -505,6 +529,7 @@ export const Calendar = ({
           eventClick={handleEventClickLocal}
           datesSet={onDatesSet}
           scrollTime={scrollTime}
+          eventClassNames={eventClassNames}
           eventDidMount={handleEventDidMount}
           nowIndicator={true}
           slotMaxTime="24:00:00"
