@@ -371,7 +371,7 @@ export const Calendar = ({
       if (harness) harness.style.zIndex = "5";
       info.el.style.zIndex = "5";
       info.el.style.backgroundImage = "none";
-      info.el.style.backgroundColor = freeFoodGreen;
+      info.el.style.backgroundColor = "#ffffff";
       info.el.style.color = "#000000";
       info.el.style.border = "none";
       info.el.style.borderRadius = "4px";
@@ -389,6 +389,13 @@ export const Calendar = ({
     info.el.style.border = "none";
 
     info.el.style.borderRadius = "4px";
+  };
+
+  const eventClassNames = (arg) => {
+    const status = arg.event.extendedProps?.nudgeDisplayStatus || "none";
+    if (status === "accepted") return ["fc-event-nudge-accepted"];
+    if (status === "pending") return ["fc-event-nudge-pending"];
+    return [];
   };
 
   return (
@@ -522,6 +529,7 @@ export const Calendar = ({
           eventClick={handleEventClickLocal}
           datesSet={onDatesSet}
           scrollTime={scrollTime}
+          eventClassNames={eventClassNames}
           eventDidMount={handleEventDidMount}
         />
         {selectedEvent && detailsOverlayPosition && (

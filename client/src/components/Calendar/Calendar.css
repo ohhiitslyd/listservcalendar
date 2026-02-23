@@ -309,9 +309,9 @@
   font-weight: 400;
 }
 
-/* Non-listserv events - flat green bubble */
+/* Non-listserv events - flat white bubble */
 .fc-event-other {
-  background-color: #d4e9c4 !important;
+  background-color: #ffffff !important;
   border: none !important;
   color: #000 !important;
   padding: 6px;
@@ -319,7 +319,7 @@
 }
 
 .fc-event-other:hover {
-  box-shadow: 0 4px 12px rgba(212, 233, 196, 0.4);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
 .fc-event-other .fc-event-title {
@@ -330,6 +330,18 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.fc-event-nudge-accepted {
+  background-color: #c4b5fd !important;
+  color: #000000 !important;
+  border: none !important;
+  z-index: 35 !important;
+}
+
+.fc-event-nudge-pending {
+  border: 3px dotted #6d28d9 !important;
+  z-index: 35 !important;
 }
 
 /* Remove default event time display - we use custom eventContent */

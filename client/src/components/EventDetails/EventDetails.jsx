@@ -8,6 +8,8 @@ export const EventDetails = () => {
     user,
     selectedEvent,
     setSelectedEvent,
+    setEvents,
+    calendarRef,
     listservCalendarId,
     eventDetailsSource,
     setEventDetailsSource,
@@ -177,9 +179,77 @@ export const EventDetails = () => {
     normalizeEventId(selectedEvent?.id),
   ]);
 
+  const updateEventNudgeStatus = (eventId, nextStatus) => {
+    const targetId = String(eventId || "").trim();
+    const normalizedTargetId = normalizeEventId(targetId);
+    if (!targetId) return;
+
+    setEvents((prev) =>
+      (prev || []).map((ev) => {
+        const currentId = String(ev?.id || "").trim();
+        const normalizedCurrentId = normalizeEventId(currentId);
+        const matches =
+          currentId === targetId ||
+          normalizedCurrentId === normalizedTargetId;
+        if (!matches) return ev;
+
+        return {
+          ...ev,
+          extendedProps: {
+            ...(ev.extendedProps || {}),
+            nudgeDisplayStatus: nextStatus,
+          },
+        };
+      })
+    );
+
+    setSelectedEvent((prev) => {
+      if (!prev) return prev;
+      const currentId = String(prev?.id || "").trim();
+      const normalizedCurrentId = normalizeEventId(currentId);
+      const matches =
+        currentId === targetId ||
+        normalizedCurrentId === normalizedTargetId;
+      if (!matches) return prev;
+
+      return {
+        ...prev,
+        extendedProps: {
+          ...(prev.extendedProps || {}),
+          nudgeDisplayStatus: nextStatus,
+        },
+      };
+    });
+
+    const api = calendarRef?.current?.getApi?.();
+    if (!api) return;
+    const candidates = Array.from(
+      new Set([targetId, normalizedTargetId].filter(Boolean))
+    );
+    candidates.forEach((id) => {
+      const fcEvent = api.getEventById(id);
+      if (fcEvent) {
+        fcEvent.setExtendedProp("nudgeDisplayStatus", nextStatus);
+      }
+    });
+  };
+
   const acceptedInviters = Array.from(
     new Set(
       (Array.isArray(user?.acceptedNudges) ? user.acceptedNudges : [])
+        .filter((entry) => {
+          const entryId = String(entry?.id || "").trim();
+          const normalizedEntryId = normalizeEventId(entryId);
+          return selectedEventIds.has(entryId) || selectedEventIds.has(normalizedEntryId);
+        })
+        .map((entry) => String(entry?.email || "").trim().toLowerCase())
+        .filter(Boolean)
+    )
+  );
+
+  const pendingInviters = Array.from(
+    new Set(
+      (Array.isArray(user?.invitedEvents) ? user.invitedEvents : [])
         .filter((entry) => {
           const entryId = String(entry?.id || "").trim();
           const normalizedEntryId = normalizeEventId(entryId);
@@ -202,7 +272,7 @@ export const EventDetails = () => {
   );
 
   const displayInviters = Array.from(
-    new Set([...(selectedEventInviters || []), ...acceptedInviters])
+    new Set([...(selectedEventInviters || []), ...pendingInviters, ...acceptedInviters])
   );
 
   // Format date and time
@@ -275,14 +345,26 @@ export const EventDetails = () => {
 
   const respondToInvite = async (action) => {
     if (!selectedEvent?.id) return;
+    const eventId = selectedEvent.id;
+    const previousStatus = selectedEvent?.extendedProps?.nudgeDisplayStatus || "none";
+    const optimisticStatus =
+      action === "accept" ? "accepted" : action === "decline" ? "none" : previousStatus;
+
+    if (optimisticStatus !== previousStatus) {
+      updateEventNudgeStatus(eventId, optimisticStatus);
+    }
+
     try {
       setInviteResponseLoading(true);
       const result = await api.respondToInvite({
-        eventId: selectedEvent.id,
+        eventId,
         action,
       });
 
       if (!result?.success) {
+        if (optimisticStatus !== previousStatus) {
+          updateEventNudgeStatus(eventId, previousStatus);
+        }
         alert(result?.error || "Failed to update invited event");
         return;
       }
@@ -295,6 +377,9 @@ export const EventDetails = () => {
         closeDetails();
       }
     } catch (error) {
+      if (optimisticStatus !== previousStatus) {
+        updateEventNudgeStatus(eventId, previousStatus);
+      }
       alert("Failed to update invited event");
     } finally {
       setInviteResponseLoading(false);
