@@ -771,6 +771,123 @@
   }
 }
 
+@media (max-width: 640px) {
+  .app-header {
+    padding: 0 8px;
+    height: 56px;
+  }
+
+  .app-header-left {
+    gap: 4px;
+  }
+
+  .app-header-right {
+    gap: 4px;
+  }
+
+  .app-header-button {
+    font-size: 11px;
+    padding: 4px 6px;
+  }
+
+  .calendars-button {
+    font-size: 11px;
+    padding: 4px 6px;
+  }
+
+  .publish-button-icon {
+    width: 11px;
+    height: 11px;
+  }
+
+  .publish-button-mobile-text {
+    font-size: 11px;
+  }
+
+  .calendars-button .dropdown-arrow {
+    width: 12px;
+    height: 12px;
+    margin-left: 1px;
+  }
+
+  .help-button {
+    width: 26px;
+    height: 26px;
+    font-size: 15px;
+  }
+
+  .user-avatar {
+    width: 28px;
+    height: 28px;
+    font-size: 12px;
+  }
+
+  .dropdown-content {
+    min-width: 230px;
+    max-width: calc(100vw - 20px);
+  }
+
+  .calendars-dropdown-header {
+    padding: 11px;
+  }
+
+  .calendars-dropdown-header h4 {
+    font-size: 12.5px;
+  }
+
+  .calendars-list {
+    padding: 5px;
+    max-height: 220px;
+  }
+
+  .calendar-item {
+    padding: 5.5px 9px;
+  }
+
+  .calendar-name {
+    font-size: 11.5px;
+  }
+
+  .calendar-badge {
+    font-size: 9.5px;
+    padding: 1px 3.5px;
+  }
+
+  .user-menu-item {
+    padding: 7px 11px;
+    font-size: 11.5px;
+  }
+
+  .user-menu-empty {
+    padding: 9px 7px;
+    font-size: 10.5px;
+  }
+
+  .nudges-events-list {
+    max-height: 220px;
+    padding: 2px 8px;
+    gap: 5px;
+  }
+
+  .nudges-event-bubble {
+    height: 42px;
+    padding: 2.5px 4.5px;
+  }
+
+  .nudges-event-title {
+    font-size: 8px;
+  }
+
+  .nudges-event-org {
+    font-size: 7px;
+  }
+
+  .user-menu-accordion {
+    padding: 9px 11px;
+    font-size: 11.5px;
+  }
+}
+
 @media (max-width: 375px) {
   .app-header {
     padding: 0px 6px;

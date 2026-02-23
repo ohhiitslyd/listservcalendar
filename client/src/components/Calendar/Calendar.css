@@ -550,6 +550,146 @@
   }
 }
 
+@media (max-width: 640px) {
+  .app-calendar-wrapper {
+    padding: 0px 8px 14px 8px;
+  }
+
+  .fc-event-title {
+    font-size: 10.5px;
+  }
+
+  .fc-timegrid-slot {
+    font-size: 10.5px;
+  }
+
+  .fc-col-header-cell {
+    font-size: 11.5px;
+    padding: 4.5px 0 !important;
+  }
+
+  .fc-col-header-cell-cushion {
+    font-size: 10.5px;
+    padding: 1.5px 0;
+    gap: 1.5px;
+  }
+
+  .fc-timegrid-col-header .fc-col-header-cell-cushion::after {
+    font-size: 11px;
+    margin-top: 1.5px;
+  }
+
+  .fc-timegrid-slot-label {
+    font-size: 10.5px;
+    padding: 0 7px;
+  }
+
+  .fc-timegrid-slot-label-cushion {
+    padding: 0 4px;
+  }
+
+  /* Mobile event styling - title only, reduced size, minimal padding, aggressive word breaking */
+  .fc-event {
+    padding: 2px 3.5px !important;
+    margin: 1px 0px 2px 0px !important;
+    font-size: 8.5px !important;
+    overflow: hidden !important;
+    white-space: normal !important;
+  }
+
+  .fc-event-main,
+  .fc-event-body {
+    padding: 0 !important;
+    margin: 0 !important;
+    overflow: hidden !important;
+  }
+
+  /* Hide time range div (second child div) */
+  .fc-event-main > div > div:nth-child(2),
+  .fc-event-body > div > div:nth-child(2),
+  .fc-event > div > div:nth-child(2) {
+    display: none !important;
+  }
+
+  /* Target the title div directly */
+  .fc-event-main > div > div:first-child,
+  .fc-event-body > div > div:first-child,
+  .fc-event > div > div:first-child {
+    font-size: 8.5px !important;
+    font-weight: 400 !important;
+    line-height: 1.1 !important;
+    white-space: normal !important;
+    overflow: hidden !important;
+    text-overflow: clip !important;
+    word-wrap: break-word !important;
+    word-break: break-all !important;
+    overflow-wrap: anywhere !important;
+    hyphens: auto !important;
+    padding: 0.4px !important;
+    margin: 0 !important;
+    display: block !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+  }
+
+  /* Ensure event containers allow wrapping */
+  .fc-event > div,
+  .fc-event-main > div,
+  .fc-event-body > div {
+    padding: 0 !important;
+    margin: 0 !important;
+    gap: 0 !important;
+    overflow: hidden !important;
+    white-space: normal !important;
+    display: flex !important;
+    flex-direction: column !important;
+    height: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+  }
+
+  /* ListServ events */
+  .fc-event-listserv {
+    padding: 2px 3.5px !important;
+    white-space: normal !important;
+    overflow: hidden !important;
+  }
+
+  .fc-event-listserv .fc-event-title {
+    font-size: 8.5px !important;
+    font-weight: 400 !important;
+    white-space: normal !important;
+    overflow: hidden !important;
+    word-break: break-all !important;
+    overflow-wrap: anywhere !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+  }
+
+  /* Other events */
+  .fc-event-other {
+    padding: 2px 3.5px !important;
+    white-space: normal !important;
+    overflow: hidden !important;
+  }
+
+  .fc-event-other .fc-event-title {
+    font-size: 8.5px !important;
+    font-weight: 400 !important;
+    white-space: normal !important;
+    overflow: hidden !important;
+    word-break: break-all !important;
+    overflow-wrap: anywhere !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+  }
+  /* HIDING ALL DAY EVENTS ON MOBILE */
+  .fc-daygrid-day {
+    display: none !important;    
+  }
+}
+
 @media (max-width: 375px) {
   .app-calendar-wrapper {
     padding: 0px 6px 12px 6px;

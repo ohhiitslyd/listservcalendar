@@ -428,6 +428,36 @@
   }
 }
 
+@media (max-width: 640px) {
+  .mobile-filters-header {
+    padding: 14px 18px;
+  }
+
+  .mobile-filters-header h3 {
+    font-size: 17px;
+  }
+
+  .publish-toast {
+    right: 14px;
+    bottom: 22px;
+    left: 14px;
+  }
+
+  /* Publish modal - constrain width on medium mobile */
+  .publish-modal {
+    width: calc(100% - 40px) !important;
+    max-width: 400px !important;
+    margin: 0 20px;
+  }
+  .app-footer {
+    display: block;
+    height: 24px;
+    flex-shrink: 0;
+    background: #ffffff;
+    border-top: 1px solid #e5e7eb;
+  }
+}
+
 @media (max-width: 375px) {
   .mobile-filters-header {
     padding: 12px 16px;

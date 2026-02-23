@@ -384,6 +384,116 @@
   }
 }
 
+@media (max-width: 640px) {
+  .onboarding-overlay {
+    padding: 16px;
+  }
+
+  .onboarding-modal {
+    max-height: 88vh;
+    border-radius: 10px;
+  }
+
+  .onboarding-left-panel {
+    flex: 0 0 175px;
+    padding: 16px;
+  }
+
+  .onboarding-visual-placeholder {
+    max-height: 135px;
+  }
+
+  .onboarding-right-panel {
+    padding: 20px 18px;
+    max-height: calc(88vh - 175px);
+  }
+
+  .onboarding-top-bar {
+    margin-bottom: 20px;
+  }
+
+  .onboarding-progress-dots {
+    gap: 7px;
+  }
+
+  .onboarding-dot {
+    width: 9px;
+    height: 9px;
+  }
+
+  .onboarding-dot.active {
+    width: 11px;
+    height: 11px;
+  }
+
+  .onboarding-skip-button {
+    font-size: 12.5px;
+    padding: 3.5px 7px;
+  }
+
+  .onboarding-screen {
+    gap: 16px;
+  }
+
+  .onboarding-title {
+    font-size: 18px;
+  }
+
+  .onboarding-body {
+    font-size: 13px;
+  }
+
+  .onboarding-disclaimer-box {
+    padding: 16px;
+  }
+
+  .onboarding-disclaimer-title {
+    font-size: 13px;
+  }
+
+  .onboarding-disclaimer-list {
+    font-size: 11px;
+    padding-left: 16px;
+  }
+
+  .onboarding-bullet-list {
+    font-size: 11px;
+    padding-left: 16px;
+  }
+
+  .onboarding-footer-note {
+    font-size: 11px;
+    margin: 8px 0 0 0;
+  }
+
+  .onboarding-footer-note-small {
+    font-size: 11px;
+    margin: 12px 0 0 0;
+  }
+
+  .onboarding-faq-question {
+    padding: 10px 14px;
+    font-size: 13px;
+  }
+
+  .onboarding-faq-answer {
+    padding: 8px 14px 10px 14px;
+    font-size: 13px;
+  }
+
+  .onboarding-navigation {
+    margin-top: 20px;
+    padding-top: 16px;
+  }
+
+  .onboarding-back-button,
+  .onboarding-next-button,
+  .onboarding-login-button {
+    padding: 7px 18px;
+    font-size: 13px;
+  }
+}
+
 @media (max-width: 375px) {
   .onboarding-overlay {
     padding: 12px;
