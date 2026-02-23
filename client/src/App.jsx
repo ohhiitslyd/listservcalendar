@@ -2,7 +2,7 @@
    src/App.jsx – entry point for the React app
    ------------------------------------------------- */
 
-import React, { useContext, useMemo, useState, useEffect } from "react";
+import React, { useContext, useMemo, useState, useEffect, useRef } from "react";
 import { AppProvider, AppContext } from "./context/AppContext";
 
 import { Header } from "./components/Header/Header";
@@ -70,6 +70,9 @@ const InnerApp = () => {
   const [publishedKey, setPublishedKey] = useState(null); // Key computed from database preferences
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
   const [mobileFiltersClosing, setMobileFiltersClosing] = useState(false);
+  const mobileFiltersTouchStartXRef = useRef(null);
+  const mobileFiltersTouchStartYRef = useRef(null);
+  const mobileFiltersTouchStartTimeRef = useRef(0);
   const [showPublishConfirm, setShowPublishConfirm] = useState(false);
   const [onboardingOpen, setOnboardingOpen] = useState(false);
   const [onboardingClosedThisSession, setOnboardingClosedThisSession] = useState(false);
@@ -89,6 +92,50 @@ const InnerApp = () => {
       setMobileFiltersOpen(false);
       setMobileFiltersClosing(false);
     }, 300);
+  };
+
+  const handleMobileFiltersTouchStart = (e) => {
+    if (!isMobile || e.touches.length !== 1) return;
+    const touch = e.touches[0];
+    mobileFiltersTouchStartXRef.current = touch.clientX;
+    mobileFiltersTouchStartYRef.current = touch.clientY;
+    mobileFiltersTouchStartTimeRef.current = Date.now();
+  };
+
+  const handleMobileFiltersTouchEnd = (e) => {
+    if (!isMobile || mobileFiltersTouchStartXRef.current == null) return;
+    const touch = e.changedTouches[0];
+    const dx = touch.clientX - mobileFiltersTouchStartXRef.current;
+    const dy = touch.clientY - mobileFiltersTouchStartYRef.current;
+    const dt = Date.now() - mobileFiltersTouchStartTimeRef.current;
+
+    const absDx = Math.abs(dx);
+    const absDy = Math.abs(dy);
+
+    // Right-to-left swipe (close drawer) — require it to start on the right side
+    // so normal vertical scrolling inside the drawer isn't impacted.
+    const MIN_DISTANCE = 70;
+    const MAX_OFF_AXIS = 60;
+    const MAX_DURATION = 700;
+    const MIN_START_X = window.innerWidth * 0.6; // start from right 40%
+
+    const startedOnRight = mobileFiltersTouchStartXRef.current >= MIN_START_X;
+    const isSwipeLeft = dx < 0;
+    const isMostlyHorizontal = absDy <= MAX_OFF_AXIS;
+
+    if (
+      startedOnRight &&
+      isSwipeLeft &&
+      isMostlyHorizontal &&
+      absDx >= MIN_DISTANCE &&
+      dt <= MAX_DURATION
+    ) {
+      closeMobileFilters();
+    }
+
+    mobileFiltersTouchStartXRef.current = null;
+    mobileFiltersTouchStartYRef.current = null;
+    mobileFiltersTouchStartTimeRef.current = 0;
   };
 
   // Close mobile filters when window is resized to desktop view
@@ -452,6 +499,8 @@ const InnerApp = () => {
               mobileFiltersClosing ? "mobile-filters-drawer-closing" : ""
             }`}
             onClick={(e) => e.stopPropagation()}
+            onTouchStart={handleMobileFiltersTouchStart}
+            onTouchEnd={handleMobileFiltersTouchEnd}
           >
             <div className="mobile-filters-header">
               <h3>Filters</h3>

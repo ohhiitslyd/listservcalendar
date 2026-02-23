@@ -66,6 +66,17 @@ export const Calendar = ({
   const [personalEventInfo, setPersonalEventInfo] = useState(null);
   const personalEventCardRef = useRef(null);
 
+  // Container used for mobile swipe gestures
+  const swipeContainerRef = useRef(null);
+  const touchStartXRef = useRef(null);
+  const touchStartYRef = useRef(null);
+  const touchStartTimeRef = useRef(0);
+
+  // Touch tracking for closing full-screen overlays on mobile
+  const overlayTouchStartXRef = useRef(null);
+  const overlayTouchStartYRef = useRef(null);
+  const overlayTouchStartTimeRef = useRef(0);
+
   // 3. DELETE the local `handleSelect` and `handleEventClick` functions.
   //    They are now correctly passed in as props from InnerApp.
 
@@ -113,6 +124,121 @@ export const Calendar = ({
 
   // Check if we're on mobile
   const isMobile = () => window.innerWidth <= 768;
+
+  // Handlers for swipe-down-to-close when an event card is full-screen on mobile
+  const handleOverlayTouchStart = (e) => {
+    if (!isMobile() || e.touches.length !== 1) return;
+    const touch = e.touches[0];
+    overlayTouchStartXRef.current = touch.clientX;
+    overlayTouchStartYRef.current = touch.clientY;
+    overlayTouchStartTimeRef.current = Date.now();
+  };
+
+  const shouldCloseOnSwipeDown = (touch) => {
+    if (!isMobile() || overlayTouchStartYRef.current == null) return false;
+    const dx = touch.clientX - overlayTouchStartXRef.current;
+    const dy = touch.clientY - overlayTouchStartYRef.current;
+    const dt = Date.now() - overlayTouchStartTimeRef.current;
+
+    const absDx = Math.abs(dx);
+    const absDy = Math.abs(dy);
+
+    // Require a reasonably quick, mostly vertical downward gesture,
+    // starting near the top of the screen, to avoid conflicting with scroll.
+    const MIN_DISTANCE = 80;
+    const MAX_OFF_AXIS = 40;
+    const MAX_DURATION = 700;
+    const MAX_START_Y = window.innerHeight * 0.25; // top 25% of screen
+
+    if (overlayTouchStartYRef.current > MAX_START_Y) return false;
+    if (dt > MAX_DURATION) return false;
+    if (dy <= 0) return false; // must be downward
+    if (absDy < MIN_DISTANCE) return false;
+    if (absDx > MAX_OFF_AXIS) return false;
+
+    return true;
+  };
+
+  const handleDetailsOverlayTouchEnd = (e) => {
+    if (!isMobile() || !overlayTouchStartYRef.current) return;
+    const touch = e.changedTouches[0];
+    if (shouldCloseOnSwipeDown(touch)) {
+      e.preventDefault();
+      e.stopPropagation();
+      setSelectedEvent(null);
+      setDetailsOverlayPosition(null);
+    }
+    overlayTouchStartXRef.current = null;
+    overlayTouchStartYRef.current = null;
+    overlayTouchStartTimeRef.current = 0;
+  };
+
+  const handlePersonalOverlayTouchEnd = (e) => {
+    if (!isMobile() || !overlayTouchStartYRef.current) return;
+    const touch = e.changedTouches[0];
+    if (shouldCloseOnSwipeDown(touch)) {
+      e.preventDefault();
+      e.stopPropagation();
+      setPersonalEventInfo(null);
+    }
+    overlayTouchStartXRef.current = null;
+    overlayTouchStartYRef.current = null;
+    overlayTouchStartTimeRef.current = 0;
+  };
+
+  // Enable left/right swipe on mobile to move between calendar ranges
+  useEffect(() => {
+    const el = swipeContainerRef.current;
+    if (!el) return;
+
+    const handleTouchStart = (e) => {
+      if (!isMobile() || e.touches.length !== 1) return;
+      const touch = e.touches[0];
+      touchStartXRef.current = touch.clientX;
+      touchStartYRef.current = touch.clientY;
+      touchStartTimeRef.current = Date.now();
+    };
+
+    const handleTouchEnd = (e) => {
+      if (!isMobile() || touchStartXRef.current == null) return;
+      const touch = e.changedTouches[0];
+      const dx = touch.clientX - touchStartXRef.current;
+      const dy = touch.clientY - touchStartYRef.current;
+      const dt = Date.now() - touchStartTimeRef.current;
+
+      const absDx = Math.abs(dx);
+      const absDy = Math.abs(dy);
+
+      // Basic swipe heuristics: mostly horizontal, fast enough, and long enough
+      const MIN_DISTANCE = 50;
+      const MAX_OFF_AXIS = 40;
+      const MAX_DURATION = 600;
+
+      if (dt <= MAX_DURATION && absDx >= MIN_DISTANCE && absDy <= MAX_OFF_AXIS) {
+        const api = calendarRef.current?.getApi?.();
+        if (api) {
+          // dx < 0 → swipe left → go forward (next); dx > 0 → swipe right → go back (prev)
+          if (dx < 0) {
+            api.next();
+          } else {
+            api.prev();
+          }
+        }
+      }
+
+      touchStartXRef.current = null;
+      touchStartYRef.current = null;
+      touchStartTimeRef.current = 0;
+    };
+
+    el.addEventListener("touchstart", handleTouchStart, { passive: true });
+    el.addEventListener("touchend", handleTouchEnd);
+
+    return () => {
+      el.removeEventListener("touchstart", handleTouchStart);
+      el.removeEventListener("touchend", handleTouchEnd);
+    };
+  }, [calendarRef]);
 
   // Local handler: position overlay next to the clicked event
   const handleEventClickLocal = (clickInfo) => {
@@ -405,7 +531,7 @@ export const Calendar = ({
         statusSubtext={statusSubtext}
         statusDotClass={statusDotClass}
       />
-      <div className="app-calendar-wrapper">
+      <div className="app-calendar-wrapper" ref={swipeContainerRef}>
         <FullCalendar
           ref={calendarRef}
           plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
@@ -542,6 +668,8 @@ export const Calendar = ({
               top: detailsOverlayPosition.top,
               left: detailsOverlayPosition.left,
             }}
+            onTouchStart={handleOverlayTouchStart}
+            onTouchEnd={handleDetailsOverlayTouchEnd}
           >
             {/* Reuse the existing EventDetails card UI */}
             {/* We import lazily here to avoid circular deps in comments; actual import is at top of file */}
@@ -559,6 +687,8 @@ export const Calendar = ({
               left: personalEventInfo.position.left,
               maxHeight: `${Math.max(100, window.innerHeight - personalEventInfo.position.top - 16)}px`,
             }}
+            onTouchStart={handleOverlayTouchStart}
+            onTouchEnd={handlePersonalOverlayTouchEnd}
           >
             <div className="personal-event-card" ref={personalEventCardRef}>
               <div className="personal-event-header">
