@@ -443,55 +443,57 @@ app.post("/api/user/nudge-event", ensureAuthed, async (req, res) => {
       return res.status(404).json({ error: "Current user not found" });
     }
 
+    const senderUser = senderResult.rows[0];
+
     const targetResult = await client.query(
       "SELECT id, email, invited_events FROM users WHERE LOWER(email) = LOWER($1::text) FOR UPDATE",
       [normalizedTargetEmail]
     );
-    if (targetResult.rows.length === 0) {
+    const targetUser = targetResult.rows.length > 0 ? targetResult.rows[0] : null;
+
+    if (targetUser) {
+      // Both users exist — full DB tracking
+      const alreadyNudged = Array.isArray(targetUser.invited_events)
+        ? targetUser.invited_events.some(
+            (entry) =>
+              String(entry?.id || "").trim() === String(eventId).trim() &&
+              String(entry?.email || "").trim().toLowerCase() ===
+                String(senderUser.email || "").trim().toLowerCase()
+          )
+        : false;
+
+      if (alreadyNudged) {
+        await client.query("ROLLBACK");
+        return res.status(409).json({
+          error: "You already nudged this user for this event",
+        });
+      }
+
+      await client.query(
+        `UPDATE users
+         SET invited_events = COALESCE(invited_events, '[]'::jsonb) ||
+           jsonb_build_array(jsonb_build_object('id', $1::text, 'email', $2::text)),
+             updated_at = CURRENT_TIMESTAMP
+         WHERE id = $3`,
+        [eventId, senderUser.email, targetUser.id]
+      );
+
+      await client.query(
+        `UPDATE users
+         SET nudged_events = COALESCE(nudged_events, '[]'::jsonb) ||
+           jsonb_build_array(jsonb_build_object('id', $1::text, 'email', $2::text)),
+             updated_at = CURRENT_TIMESTAMP
+         WHERE id = $3`,
+        [eventId, targetUser.email, senderUser.id]
+      );
+
+      await client.query("COMMIT");
+    } else {
+      // Non-user target — skip DB tracking
       await client.query("ROLLBACK");
-      return res.status(404).json({ error: "Target email does not match any user" });
     }
 
-    const targetUser = targetResult.rows[0];
-    const senderUser = senderResult.rows[0];
-
-    const alreadyNudged = Array.isArray(targetUser.invited_events)
-      ? targetUser.invited_events.some(
-          (entry) =>
-            String(entry?.id || "").trim() === String(eventId).trim() &&
-            String(entry?.email || "").trim().toLowerCase() ===
-              String(senderUser.email || "").trim().toLowerCase()
-        )
-      : false;
-
-    if (alreadyNudged) {
-      await client.query("ROLLBACK");
-      return res.status(409).json({
-        error: "You already nudged this user for this event",
-      });
-    }
-
-    await client.query(
-      `UPDATE users
-       SET invited_events = COALESCE(invited_events, '[]'::jsonb) ||
-         jsonb_build_array(jsonb_build_object('id', $1::text, 'email', $2::text)),
-           updated_at = CURRENT_TIMESTAMP
-       WHERE id = $3`,
-      [eventId, senderUser.email, targetUser.id]
-    );
-
-    await client.query(
-      `UPDATE users
-       SET nudged_events = COALESCE(nudged_events, '[]'::jsonb) ||
-         jsonb_build_array(jsonb_build_object('id', $1::text, 'email', $2::text)),
-           updated_at = CURRENT_TIMESTAMP
-       WHERE id = $3`,
-      [eventId, targetUser.email, senderUser.id]
-    );
-
-    await client.query("COMMIT");
-
-    // Fire-and-forget email notification
+    // Fire-and-forget email notification (sent for both users and non-users)
     try {
       const oauth2Client = getOAuthClient(req);
       const rawId = eventId.replace(/^(email:|draft:)/, "");
@@ -515,7 +517,7 @@ app.post("/api/user/nudge-event", ensureAuthed, async (req, res) => {
     return res.json({
       success: true,
       eventId,
-      invitedEmail: targetUser.email,
+      invitedEmail: normalizedTargetEmail,
       nudgedBy: senderUser.email,
     });
   } catch (error) {
