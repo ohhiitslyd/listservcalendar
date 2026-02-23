@@ -411,6 +411,11 @@ const InnerApp = () => {
 
       </div>
 
+      {/* Footer */}
+      <div className="app-footer">
+        {/* Footer content can be added here if needed */}
+      </div>
+
       {/* Mobile filters overlay */}
       {mobileFiltersOpen && (
         <div className="mobile-filters-overlay" onClick={() => setMobileFiltersOpen(false)}>

@@ -284,3 +284,101 @@
     gap: 6px;
   }
 }
+
+@media (max-width: 640px) {
+  .date-bar {
+    padding: 6px 10px;
+  }
+
+  .date-bar-left {
+    gap: 4px;
+  }
+
+  .date-bar-today-btn,
+  .date-bar-date-range,
+  .date-bar-view-btn {
+    font-size: 11px;
+    padding: 4px 5.5px;
+  }
+
+  .date-bar-view-btn {
+    min-width: 42px;
+  }
+
+  .date-bar-arrow-btn {
+    width: 12.5px;
+    height: 12.5px;
+  }
+
+  .date-bar-navigation {
+    gap: 5px;
+  }
+
+  .date-bar-status-mobile {
+    font-size: 10.5px;
+    margin-left: 7px;
+    gap: 5px;
+  }
+
+  .date-bar-status-mobile .filters-status-text {
+    font-size: 9px;
+  }
+
+  .date-bar-status-mobile .filters-status-subtext {
+    font-size: 8px;
+  }
+
+  .date-bar-status-mobile .filters-status-dot {
+    width: 5.5px;
+    height: 5.5px;
+  }
+}
+
+@media (max-width: 375px) {
+  .date-bar {
+    padding: 6px 8px;
+  }
+
+  .date-bar-left {
+    gap: 2px;
+  }
+
+  .date-bar-today-btn,
+  .date-bar-date-range,
+  .date-bar-view-btn {
+    font-size: 10px;
+    padding: 4px 5px;
+  }
+
+  .date-bar-view-btn {
+    min-width: 40px;
+  }
+
+  .date-bar-arrow-btn {
+    width: 12px;
+    height: 12px;
+  }
+
+  .date-bar-navigation {
+    gap: 4px;
+  }
+
+  .date-bar-status-mobile {
+    font-size: 10px;
+    margin-left: 6px;
+    gap: 4px;
+  }
+
+  .date-bar-status-mobile .filters-status-text {
+    font-size: 8px;
+  }
+
+  .date-bar-status-mobile .filters-status-subtext {
+    font-size: 7px;
+  }
+
+  .date-bar-status-mobile .filters-status-dot {
+    width: 5px;
+    height: 5px;
+  }
+}
