@@ -688,6 +688,10 @@
   .fc-daygrid-day {
     display: none !important;    
   }
+  /* Make red time indicator bar thinner on mobile */
+  .fc-timegrid-now-indicator-line {
+    border-width: 0.8px !important;
+  }
 }
 
 @media (max-width: 375px) {
