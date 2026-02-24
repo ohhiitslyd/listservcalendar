@@ -68,12 +68,12 @@ async function getLastScrapeTime(pool) {
       return new Date(lastEmailResult.rows[0].received_date);
     }
 
-    // Default: 8 hours ago (matches the cron schedule)
-    return new Date(Date.now() - 8 * 60 * 60 * 1000);
+    // Default: 12 hours ago (covers the longest gap in the cron schedule)
+    return new Date(Date.now() - 12 * 60 * 60 * 1000);
   } catch (error) {
     console.error("[autoScraper] Error getting last scrape time:", error);
-    // Default: 8 hours ago
-    return new Date(Date.now() - 8 * 60 * 60 * 1000);
+    // Default: 12 hours ago
+    return new Date(Date.now() - 12 * 60 * 60 * 1000);
   }
 }
 
