@@ -15,6 +15,52 @@
   background: #fff;
   overflow: hidden;
   padding: 0px 40px 20px 40px;
+  position: relative;
+}
+
+/* Slide animations for calendar navigation on mobile */
+@media (max-width: 768px) {
+  .app-calendar-wrapper {
+    transition: transform 0.2s ease-out, opacity 0.2s ease-out;
+  }
+
+  .app-calendar-wrapper.swipe-left {
+    animation: slideLeft 0.2s ease-out;
+  }
+
+  .app-calendar-wrapper.swipe-right {
+    animation: slideRight 0.2s ease-out;
+  }
+
+  @keyframes slideLeft {
+    0% {
+      transform: translateX(0);
+      opacity: 1;
+    }
+    50% {
+      transform: translateX(-2.5%);
+      opacity: 0.5;
+    }
+    100% {
+      transform: translateX(0);
+      opacity: 1;
+    }
+  }
+
+  @keyframes slideRight {
+    0% {
+      transform: translateX(0);
+      opacity: 1;
+    }
+    50% {
+      transform: translateX(2.5%);
+      opacity: 0.5;
+    }
+    100% {
+      transform: translateX(0);
+      opacity: 1;
+    }
+  }
 }
 
 /* Floating event details overlay (shown next to clicked event) */
@@ -537,6 +583,15 @@
     animation: eventDetailsCardZoomIn 0.25s ease-out forwards;
   }
 
+  /* Closing animation for event details overlay */
+  .event-details-overlay.closing {
+    animation: eventDetailsOverlayFadeOut 0.25s ease-out forwards;
+  }
+
+  .event-details-overlay.closing .event-details-card {
+    animation: eventDetailsCardZoomOut 0.25s ease-out forwards;
+  }
+
   .personal-event-overlay {
     position: fixed !important;
     top: 0 !important;
@@ -558,12 +613,30 @@
     animation: eventDetailsCardZoomIn 0.25s ease-out forwards;
   }
 
+  /* Closing animation for personal event overlay */
+  .personal-event-overlay.closing {
+    animation: eventDetailsOverlayFadeOut 0.25s ease-out forwards;
+  }
+
+  .personal-event-overlay.closing .personal-event-card {
+    animation: eventDetailsCardZoomOut 0.25s ease-out forwards;
+  }
+
   @keyframes eventDetailsOverlayFadeIn {
     from {
       background: rgba(0, 0, 0, 0);
     }
     to {
       background: rgba(0, 0, 0, 0.5);
+    }
+  }
+
+  @keyframes eventDetailsOverlayFadeOut {
+    from {
+      background: rgba(0, 0, 0, 0.5);
+    }
+    to {
+      background: rgba(0, 0, 0, 0);
     }
   }
 
@@ -575,6 +648,17 @@
     to {
       transform: scale(1) translateY(0);
       opacity: 1;
+    }
+  }
+
+  @keyframes eventDetailsCardZoomOut {
+    from {
+      transform: scale(1) translateY(0);
+      opacity: 1;
+    }
+    to {
+      transform: scale(0.5) translateY(0);
+      opacity: 0;
     }
   }
 
@@ -605,7 +689,7 @@
 
 @media (max-width: 640px) {
   .app-calendar-wrapper {
-    padding: 0px 8px 14px 8px;
+    padding: 0px 8px 8px 8px;
   }
 
   .fc-event-title {
@@ -749,7 +833,7 @@
 
 @media (max-width: 375px) {
   .app-calendar-wrapper {
-    padding: 0px 6px 12px 6px;
+    padding: 0px 6px 6px 6px;
   }
 
   .fc-event-title {

@@ -9,7 +9,7 @@ import { AppContext } from "../../context/AppContext";
 import { api } from "../../api/calendarApi";
 import "./EventDetails.css";
 
-export const EventDetails = () => {
+export const EventDetails = ({ onClose }) => {
   const {
     user,
     selectedEvent,
@@ -511,9 +511,13 @@ export const EventDetails = () => {
   };
 
   const closeDetails = () => {
-    setSelectedEvent(null);
-    setEventDetailsSource("calendar");
-    setSelectedEventInviters([]);
+    if (onClose) {
+      onClose();
+    } else {
+      setSelectedEvent(null);
+      setEventDetailsSource("calendar");
+      setSelectedEventInviters([]);
+    }
   };
 
   const respondToInvite = async (action, inviterEmail = "") => {

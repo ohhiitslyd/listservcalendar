@@ -74,11 +74,19 @@ export const Calendar = ({
   const touchStartXRef = useRef(null);
   const touchStartYRef = useRef(null);
   const touchStartTimeRef = useRef(0);
+  
+  // State for slide animation during calendar navigation
+  const [isTransitioning, setIsTransitioning] = useState(false);
+  const [transitionDirection, setTransitionDirection] = useState(null);
 
   // Touch tracking for closing full-screen overlays on mobile
   const overlayTouchStartXRef = useRef(null);
   const overlayTouchStartYRef = useRef(null);
   const overlayTouchStartTimeRef = useRef(0);
+  
+  // State for closing animations
+  const [detailsOverlayClosing, setDetailsOverlayClosing] = useState(false);
+  const [personalOverlayClosing, setPersonalOverlayClosing] = useState(false);
 
   // 3. DELETE the local `handleSelect` and `handleEventClick` functions.
   //    They are now correctly passed in as props from InnerApp.
@@ -113,10 +121,7 @@ export const Calendar = ({
         if (target.closest(selector)) return;
       }
 
-      setSelectedEvent(null);
-      setEventDetailsSource("calendar");
-      setSelectedEventInviters([]);
-      setDetailsOverlayPosition(null);
+      closeDetailsOverlay();
     };
 
     document.addEventListener("mousedown", handleOutsideClick);
@@ -195,14 +200,39 @@ export const Calendar = ({
     return true;
   };
 
+  const closeDetailsOverlay = () => {
+    if (!isMobile()) {
+      setSelectedEvent(null);
+      setDetailsOverlayPosition(null);
+      return;
+    }
+    setDetailsOverlayClosing(true);
+    setTimeout(() => {
+      setSelectedEvent(null);
+      setDetailsOverlayPosition(null);
+      setDetailsOverlayClosing(false);
+    }, 250); // Match animation duration
+  };
+
+  const closePersonalOverlay = () => {
+    if (!isMobile()) {
+      setPersonalEventInfo(null);
+      return;
+    }
+    setPersonalOverlayClosing(true);
+    setTimeout(() => {
+      setPersonalEventInfo(null);
+      setPersonalOverlayClosing(false);
+    }, 250); // Match animation duration
+  };
+
   const handleDetailsOverlayTouchEnd = (e) => {
     if (!isMobile() || !overlayTouchStartYRef.current) return;
     const touch = e.changedTouches[0];
     if (shouldCloseOnSwipeDown(touch)) {
       e.preventDefault();
       e.stopPropagation();
-      setSelectedEvent(null);
-      setDetailsOverlayPosition(null);
+      closeDetailsOverlay();
     }
     overlayTouchStartXRef.current = null;
     overlayTouchStartYRef.current = null;
@@ -215,7 +245,7 @@ export const Calendar = ({
     if (shouldCloseOnSwipeDown(touch)) {
       e.preventDefault();
       e.stopPropagation();
-      setPersonalEventInfo(null);
+      closePersonalOverlay();
     }
     overlayTouchStartXRef.current = null;
     overlayTouchStartYRef.current = null;
@@ -255,9 +285,23 @@ export const Calendar = ({
         if (api) {
           // dx < 0 → swipe left → go forward (next); dx > 0 → swipe right → go back (prev)
           if (dx < 0) {
+            // Swipe left → slide left animation
+            setIsTransitioning(true);
+            setTransitionDirection('left');
             api.next();
+            setTimeout(() => {
+              setIsTransitioning(false);
+              setTransitionDirection(null);
+            }, 300);
           } else {
+            // Swipe right → slide right animation
+            setIsTransitioning(true);
+            setTransitionDirection('right');
             api.prev();
+            setTimeout(() => {
+              setIsTransitioning(false);
+              setTransitionDirection(null);
+            }, 300);
           }
         }
       }
@@ -564,7 +608,10 @@ export const Calendar = ({
         statusSubtext={statusSubtext}
         statusDotClass={statusDotClass}
       />
-      <div className="app-calendar-wrapper" ref={swipeContainerRef}>
+      <div 
+        className={`app-calendar-wrapper ${isTransitioning ? `swipe-${transitionDirection}` : ''}`}
+        ref={swipeContainerRef}
+      >
         <FullCalendar
           ref={calendarRef}
           plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
@@ -696,7 +743,7 @@ export const Calendar = ({
         {selectedEvent && detailsOverlayPosition && (
           <div
             ref={detailsOverlayRef}
-            className="event-details-overlay"
+            className={`event-details-overlay ${detailsOverlayClosing ? 'closing' : ''}`}
             style={{
               position: "fixed",
               top: detailsOverlayPosition.top,
@@ -708,13 +755,13 @@ export const Calendar = ({
             {/* Reuse the existing EventDetails card UI */}
             {/* We import lazily here to avoid circular deps in comments; actual import is at top of file */}
             {/* eslint-disable-next-line react/jsx-pascal-case */}
-            <EventDetails />
+            <EventDetails onClose={closeDetailsOverlay} />
           </div>
         )}
 
         {personalEventInfo && (
           <div
-            className="personal-event-overlay"
+            className={`personal-event-overlay ${personalOverlayClosing ? 'closing' : ''}`}
             style={{
               position: "fixed",
               top: personalEventInfo.position.top,
@@ -731,7 +778,7 @@ export const Calendar = ({
                 </h3>
                 <button
                   className="close-panel-button"
-                  onClick={() => setPersonalEventInfo(null)}
+                  onClick={closePersonalOverlay}
                   aria-label="Close"
                 >
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#4b5563" strokeWidth="2">

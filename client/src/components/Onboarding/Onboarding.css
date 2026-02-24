@@ -345,9 +345,15 @@
 
 /* Responsive */
 @media (max-width: 768px) {
+  .onboarding-overlay {
+    padding: 16px;
+  }
+
   .onboarding-modal {
-    max-width: 100%;
-    max-height: 95vh;
+    width: calc(100vw - 32px);
+    max-width: calc(100vw - 32px);
+    height: calc(100vh - 32px);
+    max-height: min(90vh, calc(100vh - 32px));
   }
 
   .onboarding-layout {
@@ -368,7 +374,19 @@
 
   .onboarding-right-panel {
     padding: 24px 20px;
-    max-height: calc(95vh - 200px);
+    max-height: calc(min(90vh, calc(100vh - 32px)) - 200px);
+  }
+
+  /* Prefer dynamic viewport height on iOS Safari */
+  @supports (height: 100dvh) {
+    .onboarding-modal {
+      height: calc(100dvh - 32px);
+      max-height: min(90dvh, calc(100dvh - 32px));
+    }
+
+    .onboarding-right-panel {
+      max-height: calc(min(90vh, calc(100vh - 32px)) - 200px);
+    }
   }
 
   .onboarding-title {
@@ -390,8 +408,10 @@
   }
 
   .onboarding-modal {
-    /* Match the tighter 375px behavior to prevent overflow on small-height phones (e.g. ~402px wide) */
-    max-height: 85vh;
+    width: calc(100vw - 32px);
+    max-width: calc(100vw - 32px);
+    height: calc(100vh - 32px);
+    max-height: min(90vh, calc(100vh - 32px));
     border-radius: 10px;
   }
 
@@ -406,17 +426,18 @@
 
   .onboarding-right-panel {
     padding: 20px 18px;
-    max-height: calc(85vh - 175px);
+    max-height: calc(min(90vh, calc(100vh - 32px)) - 175px);
   }
 
   /* Prefer dynamic viewport height on iOS Safari */
   @supports (height: 100dvh) {
     .onboarding-modal {
-      max-height: 85dvh;
+      height: calc(100dvh - 32px);
+      max-height: min(90dvh, calc(100dvh - 32px));
     }
 
     .onboarding-right-panel {
-      max-height: calc(85dvh - 285px);
+      max-height: calc(min(90dvh, calc(100dvh - 32px)) - 175px);
     }
   }
 
@@ -508,11 +529,14 @@
 
 @media (max-width: 375px) {
   .onboarding-overlay {
-    padding: 12px;
+    padding: 16px;
   }
 
   .onboarding-modal {
-    max-height: 85vh;
+    width: calc(100vw - 32px);
+    max-width: calc(100vw - 32px);
+    height: calc(100vh - 32px);
+    max-height: min(90vh, calc(100vh - 32px));
     border-radius: 8px;
   }
 
@@ -527,7 +551,19 @@
 
   .onboarding-right-panel {
     padding: 12px 16px;
-    max-height: calc(85vh - 150px);
+    max-height: calc(min(90vh, calc(100vh - 32px)) - 150px);
+  }
+
+  /* Prefer dynamic viewport height on iOS Safari */
+  @supports (height: 100dvh) {
+    .onboarding-modal {
+      height: calc(100dvh - 32px);
+      max-height: min(90dvh, calc(100dvh - 32px));
+    }
+
+    .onboarding-right-panel {
+      max-height: calc(min(90dvh, calc(100dvh - 32px)) - 150px);
+    }
   }
 
   .onboarding-top-bar {
