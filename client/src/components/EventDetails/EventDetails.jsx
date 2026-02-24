@@ -938,7 +938,12 @@ export const EventDetails = () => {
                         <li
                           key={s.email}
                           className={`event-nudge-suggestion-item${i === activeSuggestionIndex ? " active" : ""}`}
-                          onMouseDown={() => handleSuggestionClick(s)}
+                          onMouseDown={(e) => {
+                            // Prevent global outside-click handlers from closing the card.
+                            e.preventDefault();
+                            e.stopPropagation();
+                            handleSuggestionClick(s);
+                          }}
                           onMouseEnter={() => setActiveSuggestionIndex(i)}
                         >
                           <span className="suggestion-name">
