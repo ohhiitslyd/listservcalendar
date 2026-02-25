@@ -3059,8 +3059,8 @@ app.get("*", (req, res, next) => {
   next();
 });
 
-// --- Setup Automated Email Scraping (9am, 3pm, 9pm ET daily) ---
-cron.schedule("0 9,15,21 * * *", async () => {
+// --- Setup Automated Email Scraping (9am, 12pm, 3pm, 6pm ET daily) ---
+cron.schedule("0 9,12,15,18 * * *", async () => {
   console.log("\n[CRON] Automated email scrape triggered");
   try {
     const result = await runAutomatedScrape(pool);
@@ -3087,7 +3087,7 @@ cron.schedule("0 9,15,21 * * *", async () => {
   }
 }, { timezone: "America/New_York" });
 
-console.log("[CRON] Automated email scraping + per-user sync scheduled at 9am, 3pm, 9pm ET");
+console.log("[CRON] Automated email scraping + per-user sync scheduled at 9am, 12pm, 3pm, 6pm ET");
 
 app.listen(PORT, () =>
   console.log(`Server listening on http://localhost:${PORT}`)
