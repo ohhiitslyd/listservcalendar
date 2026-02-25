@@ -580,22 +580,38 @@
     background: rgba(0, 0, 0, 0.5);
     z-index: 1500;
     animation: eventDetailsOverlayFadeIn 0.25s ease-out forwards;
+    padding-top: 16px;
   }
 
   .event-details-overlay .event-details-popup-wrapper {
     width: 100%;
     max-width: 480px;
-    max-height: 92vh;
+    max-height: calc(100vh - 32px);
     padding: 0 16px 0 16px;
     display: flex;
     flex-direction: column;
   }
 
   .event-details-overlay .event-details-card {
-    max-height: 92vh;
+    max-height: calc(100vh - 32px);
     transform-origin: center bottom;
     animation: eventDetailsCardSlideUp 0.25s ease-out forwards;
     border-radius: 12px 12px 0 0;
+  }
+
+  /* Prefer dynamic viewport height on iOS Safari */
+  @supports (height: 100dvh) {
+    .event-details-overlay {
+      padding-top: env(safe-area-inset-top, 16px);
+    }
+
+    .event-details-overlay .event-details-popup-wrapper {
+      max-height: calc(100dvh - 32px);
+    }
+
+    .event-details-overlay .event-details-card {
+      max-height: calc(100dvh - 32px);
+    }
   }
 
   /* Closing animation for event details overlay */
