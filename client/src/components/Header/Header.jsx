@@ -6,8 +6,6 @@ import "./Header.css";
 export const Header = ({
   onPublish,
   onLogout,
-  onMobileFiltersToggle,
-  mobileFiltersOpen,
   statusText,
   statusSubtext,
   statusDotClass,
@@ -236,19 +234,6 @@ export const Header = ({
   return (
     <div className="app-header">
       <div className="app-header-left">
-        {onMobileFiltersToggle && (
-          <button
-            className="mobile-menu-button"
-            onClick={onMobileFiltersToggle}
-            aria-label="Toggle filters"
-          >
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <line x1="3" y1="6" x2="21" y2="6"></line>
-              <line x1="3" y1="12" x2="21" y2="12"></line>
-              <line x1="3" y1="18" x2="21" y2="18"></line>
-            </svg>
-          </button>
-        )}
         <div className="app-header-logo">
           <svg className="calendar-icon" width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
             <rect x="3" y="4" width="18" height="18" rx="2" ry="2" stroke="#d4e9c4" strokeWidth="2" fill="none"/>

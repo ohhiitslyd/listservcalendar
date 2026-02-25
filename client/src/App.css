@@ -376,6 +376,31 @@
     min-width: 0;
   }
 
+  /* Floating filters button - bottom right */
+  .mobile-filters-fab {
+    position: fixed;
+    bottom: 24px;
+    right: 20px;
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    background: #d4e9c4;
+    border: none;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    z-index: 1400;
+    color: #000000;
+  }
+
+  .mobile-filters-fab svg {
+    width: 24px;
+    height: 24px;
+    stroke: #000000;
+  }
+
   /* Mobile filters overlay */
   .mobile-filters-overlay {
     position: fixed;
@@ -386,8 +411,8 @@
     background: rgba(0, 0, 0, 0);
     z-index: 2000;
     display: flex;
-    align-items: flex-start;
-    justify-content: flex-start;
+    align-items: stretch;
+    justify-content: flex-end;
     animation: fadeInOverlay 0.3s ease-in-out forwards;
   }
 
@@ -415,18 +440,19 @@
 
   .mobile-filters-drawer {
     width: 100%;
+    max-width: 360px;
     height: 100%;
     background: #ffffff;
     display: flex;
     flex-direction: column;
     overflow: hidden;
-    transform: translateX(-100%);
-    animation: slideInFromLeft 0.3s ease-in-out forwards;
+    transform: translateX(100%);
+    animation: slideInFromRight 0.3s ease-in-out forwards;
   }
 
-  @keyframes slideInFromLeft {
+  @keyframes slideInFromRight {
     from {
-      transform: translateX(-100%);
+      transform: translateX(100%);
     }
     to {
       transform: translateX(0);
@@ -434,15 +460,15 @@
   }
 
   .mobile-filters-drawer-closing {
-    animation: slideOutToLeft 0.3s ease-in-out forwards;
+    animation: slideOutToRight 0.3s ease-in-out forwards;
   }
 
-  @keyframes slideOutToLeft {
+  @keyframes slideOutToRight {
     from {
       transform: translateX(0);
     }
     to {
-      transform: translateX(-100%);
+      transform: translateX(100%);
     }
   }
 

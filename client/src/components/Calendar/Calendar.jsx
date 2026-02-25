@@ -175,7 +175,7 @@ export const Calendar = ({
     overlayTouchStartTimeRef.current = Date.now();
   };
 
-  const shouldCloseOnSwipeDown = (touch) => {
+  const shouldCloseOnSwipeDown = (touch, overlayRef) => {
     if (!isMobile() || overlayTouchStartYRef.current == null) return false;
     const dx = touch.clientX - overlayTouchStartXRef.current;
     const dy = touch.clientY - overlayTouchStartYRef.current;
@@ -184,18 +184,20 @@ export const Calendar = ({
     const absDx = Math.abs(dx);
     const absDy = Math.abs(dy);
 
-    // Require a reasonably quick, mostly vertical downward gesture,
-    // starting near the top of the screen, to avoid conflicting with scroll.
-    const MIN_DISTANCE = 80;
-    const MAX_OFF_AXIS = 40;
+    // Require a reasonably quick, mostly vertical downward gesture.
+    // Allow swipe from anywhere on the card - but only when scroll is at top (avoid conflict with scroll).
+    const MIN_DISTANCE = 60;
+    const MAX_OFF_AXIS = 50;
     const MAX_DURATION = 700;
-    const MAX_START_Y = window.innerHeight * 0.25; // top 25% of screen
 
-    if (overlayTouchStartYRef.current > MAX_START_Y) return false;
     if (dt > MAX_DURATION) return false;
     if (dy <= 0) return false; // must be downward
     if (absDy < MIN_DISTANCE) return false;
     if (absDx > MAX_OFF_AXIS) return false;
+
+    // Don't close if scrollable content is scrolled down - user is likely scrolling, not dismissing
+    const scrollEl = overlayRef?.current?.querySelector(".event-details-content, .personal-event-card");
+    if (scrollEl && scrollEl.scrollTop > 0) return false;
 
     return true;
   };
@@ -229,7 +231,7 @@ export const Calendar = ({
   const handleDetailsOverlayTouchEnd = (e) => {
     if (!isMobile() || !overlayTouchStartYRef.current) return;
     const touch = e.changedTouches[0];
-    if (shouldCloseOnSwipeDown(touch)) {
+    if (shouldCloseOnSwipeDown(touch, detailsOverlayRef)) {
       e.preventDefault();
       e.stopPropagation();
       closeDetailsOverlay();
@@ -242,7 +244,8 @@ export const Calendar = ({
   const handlePersonalOverlayTouchEnd = (e) => {
     if (!isMobile() || !overlayTouchStartYRef.current) return;
     const touch = e.changedTouches[0];
-    if (shouldCloseOnSwipeDown(touch)) {
+    const personalOverlayRef = { current: e.currentTarget };
+    if (shouldCloseOnSwipeDown(touch, personalOverlayRef)) {
       e.preventDefault();
       e.stopPropagation();
       closePersonalOverlay();
@@ -749,13 +752,16 @@ export const Calendar = ({
               top: detailsOverlayPosition.top,
               left: detailsOverlayPosition.left,
             }}
+            onClick={(e) => { if (e.target === e.currentTarget) closeDetailsOverlay(); }}
             onTouchStart={handleOverlayTouchStart}
             onTouchEnd={handleDetailsOverlayTouchEnd}
           >
-            {/* Reuse the existing EventDetails card UI */}
-            {/* We import lazily here to avoid circular deps in comments; actual import is at top of file */}
-            {/* eslint-disable-next-line react/jsx-pascal-case */}
-            <EventDetails onClose={closeDetailsOverlay} />
+            <div className="event-details-popup-wrapper">
+              <div className="event-details-swipe-handle" aria-hidden="true" />
+              {/* Reuse the existing EventDetails card UI */}
+              {/* eslint-disable-next-line react/jsx-pascal-case */}
+              <EventDetails onClose={closeDetailsOverlay} />
+            </div>
           </div>
         )}
 
@@ -768,10 +774,13 @@ export const Calendar = ({
               left: personalEventInfo.position.left,
               maxHeight: `${Math.max(100, window.innerHeight - personalEventInfo.position.top - 16)}px`,
             }}
+            onClick={(e) => { if (e.target === e.currentTarget) closePersonalOverlay(); }}
             onTouchStart={handleOverlayTouchStart}
             onTouchEnd={handlePersonalOverlayTouchEnd}
           >
-            <div className="personal-event-card" ref={personalEventCardRef}>
+            <div className="personal-event-popup-wrapper">
+              <div className="personal-event-swipe-handle" aria-hidden="true" />
+              <div className="personal-event-card" ref={personalEventCardRef}>
               <div className="personal-event-header">
                 <h3 className="personal-event-title">
                   {personalEventInfo.event.title || "(No title)"}
@@ -806,6 +815,7 @@ export const Calendar = ({
                   </div>
                 </div>
               </div>
+            </div>
             </div>
           </div>
         )}

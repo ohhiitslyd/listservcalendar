@@ -68,6 +68,12 @@
   z-index: 1500;
 }
 
+/* Swipe handle hidden on desktop, shown only on mobile */
+.event-details-swipe-handle,
+.personal-event-swipe-handle {
+  display: none;
+}
+
 /* Personal calendar event popup */
 .personal-event-overlay {
   z-index: 1500;
@@ -559,7 +565,7 @@
     padding: 0px 8px 16px 8px;
   }
 
-  /* Make event details overlay full-page on mobile */
+  /* Mobile event popup - backdrop full screen, card as bottom sheet (not full screen) */
   .event-details-overlay {
     position: fixed !important;
     top: 0 !important;
@@ -569,18 +575,27 @@
     width: 100% !important;
     height: 100% !important;
     display: flex;
-    align-items: center;
+    align-items: flex-end;
     justify-content: center;
     background: rgba(0, 0, 0, 0.5);
     z-index: 1500;
-    /* Smooth fade + zoom-in animation when opening */
     animation: eventDetailsOverlayFadeIn 0.25s ease-out forwards;
   }
 
-  /* Zoom the event card itself */
+  .event-details-overlay .event-details-popup-wrapper {
+    width: 100%;
+    max-width: 480px;
+    max-height: 92vh;
+    padding: 0 16px 0 16px;
+    display: flex;
+    flex-direction: column;
+  }
+
   .event-details-overlay .event-details-card {
-    transform-origin: center center;
-    animation: eventDetailsCardZoomIn 0.25s ease-out forwards;
+    max-height: 92vh;
+    transform-origin: center bottom;
+    animation: eventDetailsCardSlideUp 0.25s ease-out forwards;
+    border-radius: 12px 12px 0 0;
   }
 
   /* Closing animation for event details overlay */
@@ -589,7 +604,7 @@
   }
 
   .event-details-overlay.closing .event-details-card {
-    animation: eventDetailsCardZoomOut 0.25s ease-out forwards;
+    animation: eventDetailsCardSlideDown 0.25s ease-out forwards;
   }
 
   .personal-event-overlay {
@@ -601,16 +616,25 @@
     width: 100% !important;
     height: 100% !important;
     display: flex;
-    align-items: center;
+    align-items: flex-end;
     justify-content: center;
     background: rgba(0, 0, 0, 0.5);
     z-index: 1500;
     animation: eventDetailsOverlayFadeIn 0.25s ease-out forwards;
   }
 
+  .personal-event-overlay .personal-event-popup-wrapper {
+    width: 100%;
+    max-width: 480px;
+    max-height: 92vh;
+    padding: 0 16px 0 16px;
+  }
+
   .personal-event-overlay .personal-event-card {
-    transform-origin: center center;
-    animation: eventDetailsCardZoomIn 0.25s ease-out forwards;
+    max-height: 92vh;
+    transform-origin: center bottom;
+    animation: eventDetailsCardSlideUp 0.25s ease-out forwards;
+    border-radius: 12px 12px 0 0;
   }
 
   /* Closing animation for personal event overlay */
@@ -619,7 +643,7 @@
   }
 
   .personal-event-overlay.closing .personal-event-card {
-    animation: eventDetailsCardZoomOut 0.25s ease-out forwards;
+    animation: eventDetailsCardSlideDown 0.25s ease-out forwards;
   }
 
   @keyframes eventDetailsOverlayFadeIn {
@@ -640,26 +664,45 @@
     }
   }
 
-  @keyframes eventDetailsCardZoomIn {
+  @keyframes eventDetailsCardSlideUp {
     from {
-      transform: scale(0.5) translateY(0);
+      transform: translateY(100%);
       opacity: 0;
     }
     to {
-      transform: scale(1) translateY(0);
+      transform: translateY(0);
       opacity: 1;
     }
   }
 
-  @keyframes eventDetailsCardZoomOut {
+  @keyframes eventDetailsCardSlideDown {
     from {
-      transform: scale(1) translateY(0);
+      transform: translateY(0);
       opacity: 1;
     }
     to {
-      transform: scale(0.5) translateY(0);
+      transform: translateY(100%);
       opacity: 0;
     }
+  }
+
+  /* Swipe handle at top of mobile popup - visual affordance for swipe down */
+  .event-details-swipe-handle,
+  .personal-event-swipe-handle {
+    display: flex;
+    flex-shrink: 0;
+    padding: 8px 0 4px 0;
+    justify-content: center;
+    align-items: center;
+  }
+
+  .event-details-swipe-handle::before,
+  .personal-event-swipe-handle::before {
+    content: "";
+    width: 36px;
+    height: 4px;
+    background: rgba(0, 0, 0, 0.25);
+    border-radius: 2px;
   }
 
   /* Adjust calendar font sizes for mobile */
