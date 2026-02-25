@@ -34,6 +34,8 @@
   color: #000;
   flex: 1;
   line-height: 1.2;
+  word-break: break-word;
+  overflow-wrap: break-word;
 }
 
 /* Close (×) button on the top‑right of the card */
@@ -68,6 +70,8 @@
   font-size: 12px;
   color: #1f2937;
   line-height: 1.4;
+  word-break: break-word;
+  overflow-wrap: break-word;
 }
 
 .event-details-inviters-label {
@@ -147,6 +151,8 @@
   gap: 15px;
   flex: 1;
   overflow-y: auto;
+  word-break: break-word;
+  overflow-wrap: break-word;
 }
 
 /* Individual details rows */
@@ -154,6 +160,13 @@
   display: flex;
   align-items: center;
   gap: 17px;
+  min-width: 0;
+}
+
+.event-details-row .event-details-text,
+.event-details-row span.event-details-text {
+  min-width: 0;
+  max-width: 100%;
 }
 
 .event-details-tags-row {
@@ -170,6 +183,8 @@
   font-size: 12px;
   color: #000;
   line-height: 1.33;
+  word-break: break-word;
+  overflow-wrap: break-word;
 }
 
 .event-details-time-group {
@@ -262,6 +277,8 @@
   text-decoration: none;
   font-size: 10px;
   font-weight: 300;
+  word-break: break-word;
+  overflow-wrap: break-word;
 }
 
 .event-poster-link:hover {
@@ -573,8 +590,9 @@
   }
 
   .event-poster-image {
-    max-height: 200px;
-    object-fit: cover;
+    max-height: none;
+    object-fit: contain;
     width: 100%;
+    height: auto;
   }
 }
