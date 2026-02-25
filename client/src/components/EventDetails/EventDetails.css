@@ -313,6 +313,13 @@
   gap: 10px;
 }
 
+.nudge-confirm-message {
+  font-size: 13px;
+  color: #374151;
+  line-height: 1.5;
+  padding: 8px 0;
+}
+
 .event-nudge-input {
   width: 100%;
   box-sizing: border-box;
@@ -549,18 +556,11 @@
   background-color: #f5f9f0;
 }
 
-/* Mobile Responsive Styles */
+/* Mobile Responsive Styles - card stays as compact popup, not full screen */
 @media (max-width: 768px) {
   .event-details-card {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
     max-width: 100%;
-    max-height: 100%;
-    border-radius: 0;
-    z-index: 1500;
+    border-radius: 12px 12px 0 0;
     display: flex;
     flex-direction: column;
     overflow: hidden;
@@ -573,9 +573,8 @@
   }
 
   .event-poster-image {
-    max-height: none;
-    height: auto;
-    object-fit: contain;
+    max-height: 200px;
+    object-fit: cover;
     width: 100%;
   }
 }

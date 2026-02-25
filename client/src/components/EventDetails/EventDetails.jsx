@@ -28,6 +28,7 @@ export const EventDetails = ({ onClose }) => {
   const [nudgeRecipients, setNudgeRecipients] = useState([]);
   const [nudgeLoading, setNudgeLoading] = useState(false);
   const [nudgeSuccess, setNudgeSuccess] = useState(null); // { emails: string[] } when nudge succeeds
+  const [nudgePendingConfirm, setNudgePendingConfirm] = useState(null); // { recipients: [...] } when awaiting confirmation
   const [inviteResponseLoading, setInviteResponseLoading] = useState(false);
   const [optimisticallyRemovedInviters, setOptimisticallyRemovedInviters] = useState(new Set());
   const [suggestions, setSuggestions] = useState([]);
@@ -64,6 +65,7 @@ export const EventDetails = ({ onClose }) => {
     setNudgeRecipients([]);
     setNudgeLoading(false);
     setNudgeSuccess(null);
+    setNudgePendingConfirm(null);
     setInviteResponseLoading(false);
     setSuggestions([]);
     setShowSuggestions(false);
@@ -451,9 +453,7 @@ export const EventDetails = ({ onClose }) => {
   const freeFoodGreen = tagColorMap?.["Free Food"] || "#d4e9c4";
   const getTagColor = () => freeFoodGreen;
 
-  const handleNudgeSubmit = async (e) => {
-    e.preventDefault();
-    // Also add any leftover typed email as a recipient before submitting
+  const buildFinalRecipients = () => {
     const finalRecipients = [...nudgeRecipients];
     const leftover = nudgeEmail.trim();
     if (leftover && leftover.includes("@")) {
@@ -462,7 +462,22 @@ export const EventDetails = ({ onClose }) => {
         finalRecipients.push({ email: leftover, displayName: leftover });
       }
     }
+    return finalRecipients;
+  };
+
+  const handleNudgeSubmit = async (e) => {
+    e.preventDefault();
+    const finalRecipients = buildFinalRecipients();
     if (!selectedEvent?.id || finalRecipients.length === 0) return;
+
+    // Show confirmation before sending
+    setNudgePendingConfirm({ recipients: finalRecipients });
+  };
+
+  const handleNudgeConfirm = async () => {
+    if (!nudgePendingConfirm || !selectedEvent?.id) return;
+    const finalRecipients = nudgePendingConfirm.recipients;
+    setNudgePendingConfirm(null);
 
     try {
       setNudgeLoading(true);
@@ -508,6 +523,10 @@ export const EventDetails = ({ onClose }) => {
     } finally {
       setNudgeLoading(false);
     }
+  };
+
+  const handleNudgeConfirmCancel = () => {
+    setNudgePendingConfirm(null);
   };
 
   const closeDetails = () => {
@@ -962,6 +981,33 @@ export const EventDetails = ({ onClose }) => {
                     </ul>
                   )}
                 </div>
+                {nudgePendingConfirm ? (
+                  <>
+                    <div className="nudge-confirm-message">
+                      This will send an email from your email address to{" "}
+                      <strong>{nudgePendingConfirm.recipients.map((r) => r.displayName || r.email).join(", ")}</strong>.
+                      Do you want to continue?
+                    </div>
+                    <div className="event-nudge-actions">
+                      <button
+                        type="button"
+                        className="event-action-button event-action-button-secondary"
+                        onClick={handleNudgeConfirmCancel}
+                        disabled={nudgeLoading}
+                      >
+                        Back
+                      </button>
+                      <button
+                        type="button"
+                        className="event-action-button"
+                        onClick={handleNudgeConfirm}
+                        disabled={nudgeLoading}
+                      >
+                        {nudgeLoading ? "Sending..." : "Confirm"}
+                      </button>
+                    </div>
+                  </>
+                ) : (
                 <div className="event-nudge-actions">
                   <button
                     type="button"
@@ -987,6 +1033,7 @@ export const EventDetails = ({ onClose }) => {
                     {nudgeLoading ? "Sending..." : "Submit"}
                   </button>
                 </div>
+                )}
               </form>
             )}
           </div>

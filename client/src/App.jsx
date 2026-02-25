@@ -104,6 +104,7 @@ const InnerApp = () => {
 
   const handleMobileFiltersTouchEnd = (e) => {
     if (!isMobile || mobileFiltersTouchStartXRef.current == null) return;
+    if (!e.changedTouches || !e.changedTouches[0]) return;
     const touch = e.changedTouches[0];
     const dx = touch.clientX - mobileFiltersTouchStartXRef.current;
     const dy = touch.clientY - mobileFiltersTouchStartYRef.current;
@@ -112,20 +113,20 @@ const InnerApp = () => {
     const absDx = Math.abs(dx);
     const absDy = Math.abs(dy);
 
-    // Right-to-left swipe (close drawer) — require it to start on the right side
-    // so normal vertical scrolling inside the drawer isn't impacted.
-    const MIN_DISTANCE = 70;
-    const MAX_OFF_AXIS = 60;
-    const MAX_DURATION = 700;
-    const MIN_START_X = window.innerWidth * 0.6; // start from right 40%
+    // Swipe right (left-to-right) to close — touch must start on the drawer (right side).
+    const MIN_DISTANCE = 50;
+    const MAX_OFF_AXIS = 80;
+    const MAX_DURATION = 800;
+    const DRAWER_WIDTH = 360;
+    const MIN_START_X = Math.max(0, window.innerWidth - DRAWER_WIDTH - 20);
 
-    const startedOnRight = mobileFiltersTouchStartXRef.current >= MIN_START_X;
-    const isSwipeLeft = dx < 0;
+    const startedOnDrawer = mobileFiltersTouchStartXRef.current >= MIN_START_X;
+    const isSwipeRight = dx > 0;
     const isMostlyHorizontal = absDy <= MAX_OFF_AXIS;
 
     if (
-      startedOnRight &&
-      isSwipeLeft &&
+      startedOnDrawer &&
+      isSwipeRight &&
       isMostlyHorizontal &&
       absDx >= MIN_DISTANCE &&
       dt <= MAX_DURATION
@@ -442,14 +443,6 @@ const InnerApp = () => {
           handleOpenPublishConfirm();
         }}
         onLogout={handleLogout}
-        onMobileFiltersToggle={() => {
-          if (mobileFiltersOpen) {
-            closeMobileFilters();
-          } else {
-            openMobileFilters();
-          }
-        }}
-        mobileFiltersOpen={mobileFiltersOpen}
         isMobile={isMobile}
         statusText={statusText}
         statusSubtext={statusSubtext}
@@ -486,6 +479,19 @@ const InnerApp = () => {
         {/* Footer content can be added here if needed */}
       </div>
 
+      {/* Floating filters button (mobile only, hidden when filters open) */}
+      {isMobile && !mobileFiltersOpen && (
+        <button
+          className="mobile-filters-fab"
+          onClick={openMobileFilters}
+          aria-label="Open filters"
+        >
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon>
+          </svg>
+        </button>
+      )}
+
       {/* Mobile filters overlay */}
       {mobileFiltersOpen && (
         <div
@@ -493,14 +499,14 @@ const InnerApp = () => {
             mobileFiltersClosing ? "mobile-filters-overlay-closing" : ""
           }`}
           onClick={closeMobileFilters}
+          onTouchStartCapture={handleMobileFiltersTouchStart}
+          onTouchEndCapture={handleMobileFiltersTouchEnd}
         >
           <div
             className={`mobile-filters-drawer ${
               mobileFiltersClosing ? "mobile-filters-drawer-closing" : ""
             }`}
             onClick={(e) => e.stopPropagation()}
-            onTouchStart={handleMobileFiltersTouchStart}
-            onTouchEnd={handleMobileFiltersTouchEnd}
           >
             <div className="mobile-filters-header">
               <h3>Filters</h3>

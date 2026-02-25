@@ -552,21 +552,6 @@
   }
 }
 
-@media (max-width: 600px) {
-  .filter-tab {
-    font-size: 14px;
-    padding: 4px 6px;
-  }
-
-  .filters-status-text {
-    font-size: 9px;
-  }
-
-  .filters-tabs {
-    padding: 10px 14px;
-  }
-}
-
 @media (max-width: 640px) {
   .filters-header {
     padding: 18px 18px 14px 18px;
