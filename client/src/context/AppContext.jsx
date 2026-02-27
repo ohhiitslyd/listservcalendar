@@ -741,10 +741,10 @@ export const AppProvider = ({ children }) => {
     fetchEvents,
   ]);
 
-  // 6.4 Deep-link: open shared event after login + events load
+  // 6.4 Deep-link: open shared event after login + initial data load
   const sharedEventHandledRef = useRef(false);
   useEffect(() => {
-    if (!user || !events || events.length === 0 || sharedEventHandledRef.current) return;
+    if (!user || !preferencesLoaded || sharedEventHandledRef.current) return;
 
     // Check URL param first, then sessionStorage
     const params = new URLSearchParams(window.location.search);
@@ -763,7 +763,7 @@ export const AppProvider = ({ children }) => {
     window.history.replaceState({}, "", url.pathname + url.search);
 
     requestFocusEvent(pendingEventId, [], "share_link");
-  }, [user, events]);
+  }, [user, preferencesLoaded]);
 
   /* -------------------------------------------------
      7️⃣  CONTEXT VALUE

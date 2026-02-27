@@ -3002,7 +3002,7 @@ app.get("/api/events/:eventId/info", async (req, res) => {
     const rawId = req.params.eventId.replace(/^(email:|draft:)/, "");
     const event = await queryOne(
       `SELECT id, title, organization, location, description, start, "end", all_day, poster_url
-       FROM events WHERE id = $1`,
+       FROM events WHERE id = $1 AND source = 'email'`,
       [rawId]
     );
     if (!event) return res.status(404).json({ error: "Event not found" });
