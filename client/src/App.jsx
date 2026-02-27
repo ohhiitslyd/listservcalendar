@@ -16,6 +16,85 @@ import { api } from "./api/calendarApi";
 import "./App.css";
 
 /* -------------------------------------------------
+   Event preview overlay (shown to logged-out users
+   who open a shared event link)
+   ------------------------------------------------- */
+function EventPreviewOverlay({ event, onLogin, onClose }) {
+  const startDate = event.start ? new Date(event.start) : null;
+  let dateStr = "";
+  if (startDate && !isNaN(startDate)) {
+    const dayPart = startDate.toLocaleDateString("en-US", {
+      weekday: "long",
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    });
+    if (event.allDay) {
+      dateStr = dayPart;
+    } else {
+      const timePart = startDate
+        .toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true })
+        .toLowerCase();
+      const endDate = event.end ? new Date(event.end) : null;
+      const endPart =
+        endDate && !isNaN(endDate) && endDate.getTime() !== startDate.getTime()
+          ? ` – ${endDate.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true }).toLowerCase()}`
+          : "";
+      dateStr = `${dayPart} · ${timePart}${endPart}`;
+    }
+  }
+
+  const posterSrc = event.posterUrl
+    ? `/api/posters/${encodeURIComponent(event.id)}`
+    : "";
+
+  return (
+    <div className="event-preview-overlay" onClick={onClose}>
+      <div className="event-preview-card" onClick={(e) => e.stopPropagation()}>
+        <div className="event-preview-header">
+          <h2 className="event-preview-title">{event.title || "Untitled Event"}</h2>
+          <button className="event-preview-close" onClick={onClose} aria-label="Close">×</button>
+        </div>
+        <div className="event-preview-body">
+          {event.organization && (
+            <div className="event-preview-field">
+              <p className="event-preview-label">Organization</p>
+              <p className="event-preview-value">{event.organization}</p>
+            </div>
+          )}
+          {dateStr && (
+            <div className="event-preview-field">
+              <p className="event-preview-label">When</p>
+              <p className="event-preview-value">{dateStr}</p>
+            </div>
+          )}
+          {event.location && (
+            <div className="event-preview-field">
+              <p className="event-preview-label">Location</p>
+              <p className="event-preview-value">{event.location}</p>
+            </div>
+          )}
+          {event.description && (
+            <div className="event-preview-field">
+              <p className="event-preview-label">Description</p>
+              <p className="event-preview-value">{event.description}</p>
+            </div>
+          )}
+          {posterSrc && (
+            <img className="event-preview-poster" src={posterSrc} alt="Event poster" />
+          )}
+        </div>
+        <div className="event-preview-cta">
+          <button className="event-preview-login-btn" onClick={onLogin}>
+            Log in to save this event and discover more
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* -------------------------------------------------
    Helper function to format last saved time
    ------------------------------------------------- */
 function formatLastSaved(timestamp) {
@@ -60,6 +139,7 @@ const InnerApp = () => {
     listservCalendarId,
     logout,
     login,
+    sharedEventId,
     preferencesLoaded,
     // **NOTE:** we *do not* destructure `onSelect` or `onEventClick`
     // because we will define them locally (see below).
@@ -79,6 +159,19 @@ const InnerApp = () => {
   const [hasLoggedInThisSession, setHasLoggedInThisSession] = useState(false);
   const [lastPreferencesSavedAt, setLastPreferencesSavedAt] = useState(null);
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
+  const [previewEvent, setPreviewEvent] = useState(null);
+  const [previewDismissed, setPreviewDismissed] = useState(false);
+
+  // Fetch shared event preview for logged-out users
+  useEffect(() => {
+    if (user || !sharedEventId || previewDismissed) return;
+    let cancelled = false;
+    fetch(`/api/events/${encodeURIComponent(sharedEventId)}/info`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => { if (!cancelled && data) setPreviewEvent(data); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [user, sharedEventId, previewDismissed]);
 
   const openMobileFilters = () => {
     setMobileFiltersClosing(false);
@@ -421,7 +514,7 @@ const InnerApp = () => {
      Render the UI layout
      ------------------------------------------------- */
   
-  // If not logged in, only show the onboarding modal
+  // If not logged in, only show the onboarding modal (+ optional event preview)
   if (!user) {
     return (
       <div className="app-container app-container-login">
@@ -431,6 +524,13 @@ const InnerApp = () => {
           onLogin={login}
           isSignedIn={false}
         />
+        {previewEvent && !previewDismissed && (
+          <EventPreviewOverlay
+            event={previewEvent}
+            onLogin={login}
+            onClose={() => setPreviewDismissed(true)}
+          />
+        )}
       </div>
     );
   }
