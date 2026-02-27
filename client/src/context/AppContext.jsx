@@ -347,7 +347,20 @@ export const AppProvider = ({ children }) => {
   };
 
   const clearFocusEventRequest = () => setFocusEventRequest(null);
-  const login = () => (window.location.href = "/auth/google");
+
+  // Read ?event= param from URL (for share link deep-linking)
+  const [sharedEventId] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get("event") || sessionStorage.getItem("listserv_pending_event") || null;
+  });
+
+  const login = () => {
+    // Preserve share link event ID across OAuth redirect
+    const params = new URLSearchParams(window.location.search);
+    const eventId = params.get("event");
+    if (eventId) sessionStorage.setItem("listserv_pending_event", eventId);
+    window.location.href = "/auth/google";
+  };
   const logout = async () => {
     await fetch("/auth/logout", { method: "POST", credentials: "include" });
     setUser(null);
@@ -728,6 +741,30 @@ export const AppProvider = ({ children }) => {
     fetchEvents,
   ]);
 
+  // 6.4 Deep-link: open shared event after login + events load
+  const sharedEventHandledRef = useRef(false);
+  useEffect(() => {
+    if (!user || !events || events.length === 0 || sharedEventHandledRef.current) return;
+
+    // Check URL param first, then sessionStorage
+    const params = new URLSearchParams(window.location.search);
+    let pendingEventId = params.get("event");
+    if (!pendingEventId) {
+      pendingEventId = sessionStorage.getItem("listserv_pending_event");
+    }
+    if (!pendingEventId) return;
+
+    sharedEventHandledRef.current = true;
+    sessionStorage.removeItem("listserv_pending_event");
+
+    // Clean the URL without reload
+    const url = new URL(window.location.href);
+    url.searchParams.delete("event");
+    window.history.replaceState({}, "", url.pathname + url.search);
+
+    requestFocusEvent(pendingEventId, [], "share_link");
+  }, [user, events]);
+
   /* -------------------------------------------------
      7️⃣  CONTEXT VALUE
      ------------------------------------------------- */
@@ -736,6 +773,7 @@ export const AppProvider = ({ children }) => {
     user,
     login,
     logout,
+    sharedEventId,
 
     // calendars
     calendars,

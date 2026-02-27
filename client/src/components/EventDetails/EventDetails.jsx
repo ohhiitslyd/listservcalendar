@@ -7,6 +7,7 @@ import React, {
 } from "react";
 import { AppContext } from "../../context/AppContext";
 import { api } from "../../api/calendarApi";
+import { shareEvent } from "../../utils/shareEvent";
 import "./EventDetails.css";
 
 export const EventDetails = ({ onClose }) => {
@@ -31,6 +32,7 @@ export const EventDetails = ({ onClose }) => {
   const [nudgePendingConfirm, setNudgePendingConfirm] = useState(null); // { recipients: [...] } when awaiting confirmation
   const [inviteResponseLoading, setInviteResponseLoading] = useState(false);
   const [optimisticallyRemovedInviters, setOptimisticallyRemovedInviters] = useState(new Set());
+  const [shareStatus, setShareStatus] = useState(null); // "copied" | "shared" | null
   const [suggestions, setSuggestions] = useState([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [activeSuggestionIndex, setActiveSuggestionIndex] = useState(-1);
@@ -67,6 +69,7 @@ export const EventDetails = ({ onClose }) => {
     setNudgeSuccess(null);
     setNudgePendingConfirm(null);
     setInviteResponseLoading(false);
+    setShareStatus(null);
     setSuggestions([]);
     setShowSuggestions(false);
     setActiveSuggestionIndex(-1);
@@ -241,6 +244,16 @@ export const EventDetails = ({ onClose }) => {
     !!selectedEvent?.id &&
     (isEmail || isListServ || isDraft) &&
     !hasEnded;
+
+  const canShare = !!selectedEvent?.id && (isEmail || isListServ);
+
+  const handleShare = async () => {
+    const result = await shareEvent(selectedEvent);
+    if (result === "copied" || result === "shared") {
+      setShareStatus(result);
+      setTimeout(() => setShareStatus(null), 2000);
+    }
+  };
 
   const normalizeEventId = (id) => {
     const value = String(id || "").trim();
@@ -857,8 +870,11 @@ export const EventDetails = ({ onClose }) => {
           )}
       </div>
 
-      {canNudge && (
+      {(canShare || canNudge) && (
         <div className="event-details-actions">
+          {shareStatus === "copied" && (
+            <div className="share-copied-message">Copied to clipboard!</div>
+          )}
           {nudgeSuccess && (
             <div className={`nudge-success-message ${nudgeSuccess.error || (nudgeSuccess.errors?.length > 0 && nudgeSuccess.emails.length === 0) ? 'nudge-error' : nudgeSuccess.errors?.length > 0 ? 'nudge-partial' : ''}`}>
               <div className="nudge-message-content">
@@ -884,8 +900,8 @@ export const EventDetails = ({ onClose }) => {
                   </div>
                 )}
               </div>
-              <button 
-                type="button" 
+              <button
+                type="button"
                 className="nudge-success-dismiss"
                 onClick={() => setNudgeSuccess(null)}
                 aria-label="Dismiss"
@@ -895,17 +911,38 @@ export const EventDetails = ({ onClose }) => {
             </div>
           )}
           {!showNudgeForm ? (
-            <button
-              type="button"
-              className="event-action-button"
-              onClick={() => {
-                setShowNudgeForm(true);
-                setNudgeSuccess(null);
-                setTimeout(() => inputRef.current?.focus(), 0);
-              }}
-            >
-              Nudge
-            </button>
+            <div className="event-details-actions-split">
+              {canShare && (
+                <button
+                  type="button"
+                  className="event-share-icon-btn"
+                  onClick={handleShare}
+                  aria-label="Share event"
+                  title="Share"
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="18" cy="5" r="3"/>
+                    <circle cx="6" cy="12" r="3"/>
+                    <circle cx="18" cy="19" r="3"/>
+                    <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/>
+                    <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
+                  </svg>
+                </button>
+              )}
+              {canNudge && (
+                <button
+                  type="button"
+                  className="event-action-button"
+                  onClick={() => {
+                    setShowNudgeForm(true);
+                    setNudgeSuccess(null);
+                    setTimeout(() => inputRef.current?.focus(), 0);
+                  }}
+                >
+                  Nudge
+                </button>
+              )}
+            </div>
           ) : (
               <form className="event-nudge-form" onSubmit={handleNudgeSubmit}>
                 <div className="event-nudge-autocomplete">

@@ -19,6 +19,10 @@ import {
 import { initializeSchema, query, queryOne, execute, pool } from "./db.js";
 import { sendNudgeEmail } from "./services/nudgeMailer.js";
 
+// Lazy-load sharp (optional dep — OG images degrade to SVG if unavailable)
+let sharp = null;
+try { sharp = (await import("sharp")).default; } catch {}
+
 dotenv.config();
 
 // Resolve file location relative to this index.js
@@ -2923,6 +2927,102 @@ app.get("/api/posters/:eventId", async (req, res) => {
   }
 });
 
+// --- OG image endpoint (dynamic branded card for link previews) ---
+app.get("/og.png", async (req, res) => {
+  const eventId = req.query.event;
+  let title = "ListServCalendar";
+  let subtitle = "Filter campus events and publish them to your own calendar.";
+
+  if (eventId) {
+    try {
+      const rawId = eventId.replace(/^(email:|draft:)/, "");
+      const event = await queryOne(
+        `SELECT title, organization, location, start, all_day FROM events WHERE id = $1`,
+        [rawId]
+      );
+      if (event) {
+        title = event.title || "Event";
+        const parts = [];
+        if (event.organization) parts.push(event.organization);
+        if (event.start) {
+          const d = new Date(event.start);
+          const dayPart = d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+          if (event.all_day) {
+            parts.push(dayPart);
+          } else {
+            const timePart = d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true }).toLowerCase();
+            parts.push(`${dayPart} at ${timePart}`);
+          }
+        }
+        if (event.location) parts.push(event.location);
+        subtitle = parts.join(" · ");
+      }
+    } catch {}
+  }
+
+  // Escape for XML
+  const esc = (s) => String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
+  // Truncate long titles to fit
+  const truncTitle = title.length > 60 ? title.slice(0, 57) + "..." : title;
+  const truncSub = subtitle.length > 90 ? subtitle.slice(0, 87) + "..." : subtitle;
+
+  const svg = `<svg width="1200" height="630" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1200" height="630" fill="#f4f4f4"/>
+  <rect x="60" y="60" width="1080" height="510" rx="24" fill="#ffffff"/>
+  <rect x="60" y="60" width="1080" height="100" rx="24" fill="#d4e9c4"/>
+  <rect x="60" y="136" width="1080" height="24" fill="#d4e9c4"/>
+  <!-- Calendar icon -->
+  <rect x="100" y="85" width="50" height="50" rx="6" stroke="#2d5016" stroke-width="3" fill="#ffffff"/>
+  <line x1="115" y1="78" x2="115" y2="92" stroke="#2d5016" stroke-width="3" stroke-linecap="round"/>
+  <line x1="135" y1="78" x2="135" y2="92" stroke="#2d5016" stroke-width="3" stroke-linecap="round"/>
+  <line x1="100" y1="105" x2="150" y2="105" stroke="#2d5016" stroke-width="3"/>
+  <text x="170" y="122" font-family="Arial,Helvetica,sans-serif" font-size="32" font-weight="700" fill="#1f2937">ListServCalendar</text>
+  <text x="100" y="240" font-family="Arial,Helvetica,sans-serif" font-size="42" font-weight="700" fill="#1f2937">${esc(truncTitle)}</text>
+  <text x="100" y="310" font-family="Arial,Helvetica,sans-serif" font-size="28" fill="#6b7280">${esc(truncSub)}</text>
+  <text x="100" y="520" font-family="Arial,Helvetica,sans-serif" font-size="22" fill="#9ca3af">listservcal.tech</text>
+</svg>`;
+
+  try {
+    const pngBuffer = await sharp(Buffer.from(svg)).png().toBuffer();
+    res.setHeader("Content-Type", "image/png");
+    res.setHeader("Cache-Control", "public, max-age=3600");
+    res.send(pngBuffer);
+  } catch (e) {
+    console.error("[og-image] sharp conversion failed:", e.message);
+    // Fallback: serve SVG directly (some platforms handle it)
+    res.setHeader("Content-Type", "image/svg+xml");
+    res.send(svg);
+  }
+});
+
+// Public event info endpoint (no auth — used for share link previews)
+app.get("/api/events/:eventId/info", async (req, res) => {
+  try {
+    const rawId = req.params.eventId.replace(/^(email:|draft:)/, "");
+    const event = await queryOne(
+      `SELECT id, title, organization, location, description, start, "end", all_day, poster_url
+       FROM events WHERE id = $1`,
+      [rawId]
+    );
+    if (!event) return res.status(404).json({ error: "Event not found" });
+    res.json({
+      id: `email:${event.id}`,
+      title: event.title || "",
+      organization: event.organization || "",
+      location: event.location || "",
+      description: event.description || "",
+      start: event.start,
+      end: event.end,
+      allDay: !!event.all_day,
+      posterUrl: event.poster_url || "",
+    });
+  } catch (e) {
+    console.error("[event-info] Error:", e);
+    res.status(500).json({ error: "Failed to fetch event" });
+  }
+});
+
 // Update email event poster_url
 app.post("/api/email-events/:eventId/to-draft", ensureAuthed, async (req, res) => {
   try {
@@ -3050,13 +3150,94 @@ app.post("/api/clear-listserv-calendar", ensureAuthed, async (req, res) => {
 // --- Serve frontend ---
 const clientDist = path.join(__dirname, "..", "client", "dist");
 app.use(express.static(clientDist));
-app.get("*", (req, res, next) => {
-  if (!req.path.startsWith("/api") && !req.path.startsWith("/auth")) {
-    try {
-      return res.sendFile(path.join(clientDist, "index.html"));
-    } catch {}
+
+// Read index.html template once at startup
+const indexHtmlPath = path.join(clientDist, "index.html");
+let indexHtmlTemplate = "";
+try { indexHtmlTemplate = fs.readFileSync(indexHtmlPath, "utf-8"); } catch {}
+
+// Helper: build OG meta tags string
+function buildOgTags({ title, description, image, url }) {
+  const esc = (s) => String(s || "").replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
+  const tags = [
+    `<meta property="og:type" content="website"/>`,
+    `<meta property="og:site_name" content="ListServCalendar"/>`,
+    `<meta property="og:title" content="${esc(title)}"/>`,
+    `<meta property="og:description" content="${esc(description)}"/>`,
+    `<meta property="og:url" content="${esc(url)}"/>`,
+    `<meta name="twitter:card" content="summary_large_image"/>`,
+  ];
+  if (image) tags.push(`<meta property="og:image" content="${esc(image)}"/>`);
+  return tags.join("\n");
+}
+
+app.get("*", async (req, res, next) => {
+  if (req.path.startsWith("/api") || req.path.startsWith("/auth")) return next();
+  if (!indexHtmlTemplate) {
+    try { return res.sendFile(indexHtmlPath); } catch { return next(); }
   }
-  next();
+
+  const eventId = req.query.event;
+  const baseUrl = "https://listservcal.tech";
+
+  // Default OG tags
+  let ogTags = buildOgTags({
+    title: "ListServCalendar",
+    description: "Filter campus events and publish them to your own calendar.",
+    image: `${baseUrl}/og.png`,
+    url: baseUrl,
+  });
+
+  // If sharing a specific event, inject dynamic OG tags
+  if (eventId) {
+    try {
+      const rawId = eventId.replace(/^(email:|draft:)/, "");
+      const event = await queryOne(
+        `SELECT id, title, organization, location, start, "end", all_day, poster_url, description
+         FROM events WHERE id = $1`,
+        [rawId]
+      );
+      if (event) {
+        const startDate = event.start ? new Date(event.start) : null;
+        let dateStr = "";
+        if (startDate && !isNaN(startDate)) {
+          const dayPart = startDate.toLocaleDateString("en-US", {
+            weekday: "short", month: "short", day: "numeric",
+          });
+          if (event.all_day) {
+            dateStr = dayPart;
+          } else {
+            const timePart = startDate.toLocaleTimeString("en-US", {
+              hour: "numeric", minute: "2-digit", hour12: true,
+            }).toLowerCase();
+            dateStr = `${dayPart} at ${timePart}`;
+          }
+        }
+
+        const descParts = [];
+        if (event.organization) descParts.push(event.organization);
+        if (dateStr) descParts.push(dateStr);
+        if (event.location) descParts.push(event.location);
+
+        const ogImage = event.poster_url
+          ? `${baseUrl}/api/posters/${encodeURIComponent(event.id)}`
+          : `${baseUrl}/og.png?event=${encodeURIComponent(eventId)}`;
+
+        ogTags = buildOgTags({
+          title: event.title || "Event on ListServCalendar",
+          description: descParts.join(" · ") || event.description || "",
+          image: ogImage,
+          url: `${baseUrl}/?event=${encodeURIComponent(eventId)}`,
+        });
+      }
+    } catch (e) {
+      console.error("[og-tags] Error fetching event for OG:", e.message);
+    }
+  }
+
+  const html = indexHtmlTemplate.replace("</head>", `${ogTags}\n</head>`);
+  res.setHeader("Content-Type", "text/html");
+  res.send(html);
 });
 
 // --- Setup Automated Email Scraping (9am, 12pm, 3pm, 6pm ET daily) ---
