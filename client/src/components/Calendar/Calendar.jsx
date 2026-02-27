@@ -477,7 +477,8 @@ export const Calendar = ({
 
     const api = calendarRef.current?.getApi?.();
     if (!api) {
-      clearFocusEventRequest();
+      // Calendar not ready yet — don't clear the request.
+      // The effect will re-run when `events` changes (after initial load).
       return;
     }
 
@@ -486,8 +487,50 @@ export const Calendar = ({
     );
 
     if (!targetEvent) {
+      // Event not in local list (different week, filtered out, etc.)
+      // Fetch from public API and show the card directly
       clearFocusEventRequest();
-      window.alert("Could not find the invited event in the current event list.");
+      (async () => {
+        try {
+          const resp = await fetch(`/api/events/${encodeURIComponent(requestedId)}/info`);
+          if (!resp.ok) throw new Error("not found");
+          const data = await resp.json();
+          const fetched = {
+            id: data.id,
+            title: data.title || "(Event)",
+            start: data.start,
+            end: data.end,
+            allDay: data.allDay,
+            extendedProps: {
+              organization: data.organization || "",
+              location: data.location || "",
+              description: data.description || "",
+              poster_url: data.posterUrl || "",
+              source: "email",
+              tags: [],
+            },
+          };
+          // Navigate calendar to the event's date
+          if (fetched.start) api.gotoDate(fetched.start);
+          // Position card in a sensible default spot
+          const wrapper = document.querySelector(".app-calendar-wrapper");
+          const rect = wrapper?.getBoundingClientRect?.();
+          if (rect) {
+            setDetailsOverlayPosition({
+              top: Math.max(16, rect.top + 32),
+              left: Math.max(16, rect.right - 340),
+            });
+          } else {
+            setDetailsOverlayPosition({ top: 80, left: Math.max(16, window.innerWidth - 360) });
+          }
+          setPersonalEventInfo(null);
+          setEventDetailsSource(focusEventRequest?.detailsSource || "share_link");
+          setSelectedEventInviters(focusEventRequest?.inviterEmails || []);
+          setSelectedEvent(fetched);
+        } catch {
+          window.alert("Could not find the shared event.");
+        }
+      })();
       return;
     }
 

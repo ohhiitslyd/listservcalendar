@@ -873,7 +873,7 @@ export const EventDetails = ({ onClose }) => {
       {(canShare || canNudge) && (
         <div className="event-details-actions">
           {shareStatus === "copied" && (
-            <div className="share-copied-message">Copied to clipboard!</div>
+            <div className="share-copied-message">Link copied!</div>
           )}
           {nudgeSuccess && (
             <div className={`nudge-success-message ${nudgeSuccess.error || (nudgeSuccess.errors?.length > 0 && nudgeSuccess.emails.length === 0) ? 'nudge-error' : nudgeSuccess.errors?.length > 0 ? 'nudge-partial' : ''}`}>
