@@ -487,9 +487,13 @@ export const Calendar = ({
     );
 
     if (!targetEvent) {
-      // Event not in local list (different week, filtered out, etc.)
-      // Fetch from public API and show the card directly
+      // Events might not be loaded yet — wait for the next `events` change
+      if ((events || []).length === 0) return;
+
+      // Events are loaded but this event isn't in them — fetch from API
       clearFocusEventRequest();
+      const inviterEmails = focusEventRequest?.inviterEmails || [];
+      const detailsSource = focusEventRequest?.detailsSource || "share_link";
       (async () => {
         try {
           const resp = await fetch(`/api/events/${encodeURIComponent(requestedId)}/info`);
@@ -510,23 +514,32 @@ export const Calendar = ({
               tags: [],
             },
           };
-          // Navigate calendar to the event's date
           if (fetched.start) api.gotoDate(fetched.start);
-          // Position card in a sensible default spot
-          const wrapper = document.querySelector(".app-calendar-wrapper");
-          const rect = wrapper?.getBoundingClientRect?.();
-          if (rect) {
-            setDetailsOverlayPosition({
-              top: Math.max(16, rect.top + 32),
-              left: Math.max(16, rect.right - 340),
-            });
-          } else {
-            setDetailsOverlayPosition({ top: 80, left: Math.max(16, window.innerWidth - 360) });
-          }
-          setPersonalEventInfo(null);
-          setEventDetailsSource(focusEventRequest?.detailsSource || "share_link");
-          setSelectedEventInviters(focusEventRequest?.inviterEmails || []);
-          setSelectedEvent(fetched);
+          // Try to find the event bubble on the calendar for positioning
+          const showFetched = (attempt = 0) => {
+            const selector = `.fc-event[data-event-id="${escapeAttrValue(requestedId)}"]`;
+            const eventEl = document.querySelector(selector);
+            if (eventEl) {
+              setDetailsOverlayPosition(computeOverlayPosition(eventEl.getBoundingClientRect(), 320, 520));
+            } else if (attempt < 15) {
+              setTimeout(() => showFetched(attempt + 1), 90);
+              return;
+            } else {
+              // Fallback: position in the calendar area
+              const wrapper = document.querySelector(".app-calendar-wrapper");
+              const rect = wrapper?.getBoundingClientRect?.();
+              if (rect) {
+                setDetailsOverlayPosition({ top: Math.max(16, rect.top + 32), left: Math.max(16, rect.right - 340) });
+              } else {
+                setDetailsOverlayPosition({ top: 80, left: Math.max(16, window.innerWidth - 360) });
+              }
+            }
+            setPersonalEventInfo(null);
+            setEventDetailsSource(detailsSource);
+            setSelectedEventInviters(inviterEmails);
+            setSelectedEvent(fetched);
+          };
+          setTimeout(() => showFetched(0), 90);
         } catch {
           window.alert("Could not find the shared event.");
         }
@@ -534,9 +547,14 @@ export const Calendar = ({
       return;
     }
 
+    // Event found in local list — navigate and position near the DOM element
     if (targetEvent.start) {
       api.gotoDate(targetEvent.start);
     }
+
+    const inviterEmails = focusEventRequest?.inviterEmails || [];
+    const detailsSource = focusEventRequest?.detailsSource || "share_link";
+    clearFocusEventRequest();
 
     const openNearCalendarEvent = (attempt = 0) => {
       const selector = `.fc-event[data-event-id="${escapeAttrValue(requestedId)}"]`;
@@ -546,10 +564,9 @@ export const Calendar = ({
         const pos = computeOverlayPosition(eventEl.getBoundingClientRect(), 320, 520);
         setPersonalEventInfo(null);
         setDetailsOverlayPosition(pos);
-        setEventDetailsSource(focusEventRequest?.detailsSource || "nudge_received");
-        setSelectedEventInviters(focusEventRequest?.inviterEmails || []);
+        setEventDetailsSource(detailsSource);
+        setSelectedEventInviters(inviterEmails);
         setSelectedEvent(targetEvent);
-        clearFocusEventRequest();
         return;
       }
 
@@ -562,10 +579,9 @@ export const Calendar = ({
             left: Math.max(16, rect.right - 340),
           });
         }
-        setEventDetailsSource(focusEventRequest?.detailsSource || "nudge_received");
-        setSelectedEventInviters(focusEventRequest?.inviterEmails || []);
+        setEventDetailsSource(detailsSource);
+        setSelectedEventInviters(inviterEmails);
         setSelectedEvent(targetEvent);
-        clearFocusEventRequest();
         return;
       }
 
