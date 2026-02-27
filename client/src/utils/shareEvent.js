@@ -1,70 +1,25 @@
 /**
- * Build a shareable text message + URL for an event.
+ * Build the shareable URL for an event.
+ * OG meta tags on the server handle showing title, details, and poster.
  */
-export function buildShareMessage(event) {
-  const title =
-    event.title || event.extendedProps?.title || "(Untitled Event)";
-  const org = event.extendedProps?.organization || event.organization || "";
-  const location =
-    event.extendedProps?.location || event.location || "";
-  const isAllDay = event.allDay ?? event.extendedProps?.allDay;
-
-  // Build the shareable URL
+export function getShareUrl(event) {
   const eventId = event.id || "";
-  const url = `https://listservcal.tech/?event=${encodeURIComponent(eventId)}`;
-
-  // Format date/time
-  const startDate = event.start ? new Date(event.start) : null;
-  let dateStr = "";
-  if (startDate && !isNaN(startDate)) {
-    const dayPart = startDate.toLocaleDateString("en-US", {
-      weekday: "short",
-      month: "short",
-      day: "numeric",
-    });
-    if (isAllDay) {
-      dateStr = dayPart;
-    } else {
-      const timePart = startDate
-        .toLocaleTimeString("en-US", {
-          hour: "numeric",
-          minute: "2-digit",
-          hour12: true,
-        })
-        .toLowerCase();
-      dateStr = `${dayPart} at ${timePart}`;
-    }
-  }
-
-  // Build headline
-  const headline = org ? `${org} is hosting ${title}!` : title;
-
-  // Build details line (date + location)
-  let details = dateStr;
-  if (details && location) {
-    details += ` - ${location}`;
-  } else if (location) {
-    details = location;
-  }
-
-  const lines = [headline];
-  if (details) lines.push(details);
-  lines.push(`Check it out on ListServCal: ${url}`);
-
-  return { text: lines.join("\n"), url, title };
+  return `https://listservcal.tech/?event=${encodeURIComponent(eventId)}`;
 }
 
 /**
- * Share or copy event details.
+ * Share or copy an event link.
  * Uses Web Share API on mobile, clipboard on desktop.
  * Returns "shared" | "copied" | "cancelled".
  */
 export async function shareEvent(event) {
-  const { text, url, title } = buildShareMessage(event);
+  const url = getShareUrl(event);
+  const title =
+    event.title || event.extendedProps?.title || "(Untitled Event)";
 
   if (navigator.share) {
     try {
-      await navigator.share({ title, text, url });
+      await navigator.share({ title, url });
       return "shared";
     } catch (err) {
       if (err.name === "AbortError") return "cancelled";
@@ -72,14 +27,14 @@ export async function shareEvent(event) {
     }
   }
 
-  // Fallback: copy to clipboard
+  // Fallback: copy URL to clipboard
   try {
-    await navigator.clipboard.writeText(text);
+    await navigator.clipboard.writeText(url);
     return "copied";
   } catch {
     // Final fallback for older browsers
     const textarea = document.createElement("textarea");
-    textarea.value = text;
+    textarea.value = url;
     textarea.style.position = "fixed";
     textarea.style.opacity = "0";
     document.body.appendChild(textarea);
