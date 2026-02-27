@@ -762,33 +762,9 @@ export const AppProvider = ({ children }) => {
     cleanUrl.searchParams.delete("event");
     window.history.replaceState({}, "", cleanUrl.pathname + cleanUrl.search);
 
-    // Fetch the event directly from the public API instead of searching
-    // FullCalendar's list (the event may not be in the current view/filters)
-    (async () => {
-      try {
-        const resp = await fetch(`/api/events/${encodeURIComponent(pendingEventId)}/info`);
-        if (!resp.ok) return;
-        const data = await resp.json();
-        setSelectedEvent({
-          id: data.id,
-          title: data.title || "(Event)",
-          start: data.start,
-          end: data.end,
-          allDay: data.allDay,
-          extendedProps: {
-            organization: data.organization || "",
-            location: data.location || "",
-            description: data.description || "",
-            poster_url: data.posterUrl || "",
-            source: "email",
-            tags: [],
-          },
-        });
-        setEventDetailsSource("share_link");
-      } catch {
-        // Silently fail — user can still browse normally
-      }
-    })();
+    // Use requestFocusEvent so Calendar.jsx can set both selectedEvent AND
+    // detailsOverlayPosition (both are required for the card to render).
+    requestFocusEvent(pendingEventId, [], "share_link");
   }, [user, preferencesLoaded]);
 
   /* -------------------------------------------------
