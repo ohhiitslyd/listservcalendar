@@ -758,11 +758,37 @@ export const AppProvider = ({ children }) => {
     sessionStorage.removeItem("listserv_pending_event");
 
     // Clean the URL without reload
-    const url = new URL(window.location.href);
-    url.searchParams.delete("event");
-    window.history.replaceState({}, "", url.pathname + url.search);
+    const cleanUrl = new URL(window.location.href);
+    cleanUrl.searchParams.delete("event");
+    window.history.replaceState({}, "", cleanUrl.pathname + cleanUrl.search);
 
-    requestFocusEvent(pendingEventId, [], "share_link");
+    // Fetch the event directly from the public API instead of searching
+    // FullCalendar's list (the event may not be in the current view/filters)
+    (async () => {
+      try {
+        const resp = await fetch(`/api/events/${encodeURIComponent(pendingEventId)}/info`);
+        if (!resp.ok) return;
+        const data = await resp.json();
+        setSelectedEvent({
+          id: data.id,
+          title: data.title || "(Event)",
+          start: data.start,
+          end: data.end,
+          allDay: data.allDay,
+          extendedProps: {
+            organization: data.organization || "",
+            location: data.location || "",
+            description: data.description || "",
+            poster_url: data.posterUrl || "",
+            source: "email",
+            tags: [],
+          },
+        });
+        setEventDetailsSource("share_link");
+      } catch {
+        // Silently fail — user can still browse normally
+      }
+    })();
   }, [user, preferencesLoaded]);
 
   /* -------------------------------------------------
