@@ -477,7 +477,8 @@ export const Calendar = ({
 
     const api = calendarRef.current?.getApi?.();
     if (!api) {
-      clearFocusEventRequest();
+      // Calendar not ready yet — don't clear the request.
+      // The effect will re-run when `events` changes (after initial load).
       return;
     }
 
@@ -488,6 +489,7 @@ export const Calendar = ({
     if (!targetEvent) {
       // Event not in local list (different week, filtered out, etc.)
       // Fetch from public API and show the card directly
+      clearFocusEventRequest();
       (async () => {
         try {
           const resp = await fetch(`/api/events/${encodeURIComponent(requestedId)}/info`);
@@ -528,7 +530,6 @@ export const Calendar = ({
         } catch {
           window.alert("Could not find the shared event.");
         }
-        clearFocusEventRequest();
       })();
       return;
     }
