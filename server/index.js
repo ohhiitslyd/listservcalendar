@@ -2937,7 +2937,7 @@ app.get("/og.png", async (req, res) => {
     try {
       const rawId = eventId.replace(/^(email:|draft:)/, "");
       const event = await queryOne(
-        `SELECT title, organization, location, start, all_day FROM events WHERE id = $1`,
+        `SELECT title, organization, location, start, all_day FROM events WHERE id = $1 AND source = 'email'`,
         [rawId]
       );
       if (event) {
@@ -3149,7 +3149,8 @@ app.post("/api/clear-listserv-calendar", ensureAuthed, async (req, res) => {
 
 // --- Serve frontend ---
 const clientDist = path.join(__dirname, "..", "client", "dist");
-app.use(express.static(clientDist));
+// index: false so that the catch-all route handles HTML requests (with OG tag injection)
+app.use(express.static(clientDist, { index: false }));
 
 // Read index.html template once at startup
 const indexHtmlPath = path.join(clientDist, "index.html");
@@ -3157,7 +3158,7 @@ let indexHtmlTemplate = "";
 try { indexHtmlTemplate = fs.readFileSync(indexHtmlPath, "utf-8"); } catch {}
 
 // Helper: build OG meta tags string
-function buildOgTags({ title, description, image, url }) {
+function buildOgTags({ title, description, image, url, imageIsGenerated }) {
   const esc = (s) => String(s || "").replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
   const tags = [
     `<meta property="og:type" content="website"/>`,
@@ -3166,8 +3167,19 @@ function buildOgTags({ title, description, image, url }) {
     `<meta property="og:description" content="${esc(description)}"/>`,
     `<meta property="og:url" content="${esc(url)}"/>`,
     `<meta name="twitter:card" content="summary_large_image"/>`,
+    `<meta name="twitter:title" content="${esc(title)}"/>`,
+    `<meta name="twitter:description" content="${esc(description)}"/>`,
   ];
-  if (image) tags.push(`<meta property="og:image" content="${esc(image)}"/>`);
+  if (image) {
+    tags.push(`<meta property="og:image" content="${esc(image)}"/>`);
+    tags.push(`<meta name="twitter:image" content="${esc(image)}"/>`);
+    // Only set exact dimensions for the generated OG image (1200x630)
+    if (imageIsGenerated) {
+      tags.push(`<meta property="og:image:width" content="1200"/>`);
+      tags.push(`<meta property="og:image:height" content="630"/>`);
+      tags.push(`<meta property="og:image:type" content="image/png"/>`);
+    }
+  }
   return tags.join("\n");
 }
 
@@ -3186,6 +3198,7 @@ app.get("*", async (req, res, next) => {
     description: "Filter campus events and publish them to your own calendar.",
     image: `${baseUrl}/og.png`,
     url: baseUrl,
+    imageIsGenerated: true,
   });
 
   // If sharing a specific event, inject dynamic OG tags
@@ -3194,7 +3207,7 @@ app.get("*", async (req, res, next) => {
       const rawId = eventId.replace(/^(email:|draft:)/, "");
       const event = await queryOne(
         `SELECT id, title, organization, location, start, "end", all_day, poster_url, description
-         FROM events WHERE id = $1`,
+         FROM events WHERE id = $1 AND source = 'email'`,
         [rawId]
       );
       if (event) {
@@ -3219,7 +3232,8 @@ app.get("*", async (req, res, next) => {
         if (dateStr) descParts.push(dateStr);
         if (event.location) descParts.push(event.location);
 
-        const ogImage = event.poster_url
+        const hasPoster = !!event.poster_url;
+        const ogImage = hasPoster
           ? `${baseUrl}/api/posters/${encodeURIComponent(event.id)}`
           : `${baseUrl}/og.png?event=${encodeURIComponent(eventId)}`;
 
@@ -3228,6 +3242,7 @@ app.get("*", async (req, res, next) => {
           description: descParts.join(" · ") || event.description || "",
           image: ogImage,
           url: `${baseUrl}/?event=${encodeURIComponent(eventId)}`,
+          imageIsGenerated: !hasPoster,
         });
       }
     } catch (e) {
