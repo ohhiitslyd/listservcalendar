@@ -22,3 +22,6 @@ dist/
 
 # Email export files
 scraped_emails_export.json
+
+# Allow the example env template
+!.env.example
